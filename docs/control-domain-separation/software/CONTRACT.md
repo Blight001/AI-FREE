@@ -1,6 +1,7 @@
 # Software Workspace 稳定契约
 
-状态：Stage 3 冻结  
+状态：Stage 3 冻结
+
 生效条件：默认应用启动路径
 
 ## 窗口与生命周期
