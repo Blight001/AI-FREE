@@ -50,16 +50,11 @@
   function bindBrowserSelection() {
     el('ai-chat-browser')?.addEventListener('change', (event) => {
       state.currentBrowserIds = getSelectBrowserIds(event.target).slice(0, 1);
-      state.browserSelectionTouched = true;
-      state.browserSelectionExplicitlyDisabled = !state.currentBrowserIds.length;
       if (state.currentSession) {
         state.currentSession.browserConnectionId = state.currentBrowserIds[0] || '';
         state.currentSession.browserConnectionIds = [...state.currentBrowserIds];
-        if (currentMessages().length) void persistCurrentSession();
       }
-      if (!currentMessages().length) renderWelcome();
       notifyBrowserSelection();
-      syncSendState();
     });
   }
 
@@ -131,7 +126,6 @@
     document.querySelector('[data-tab="ai-control-panel"]')?.addEventListener('click', () => {
       loadModels();
       loadBrowserConnections();
-      loadAutomationCards(state.currentSession?.automationCardId || '');
       void refreshHistoryList();
       window.setTimeout(() => reclaimAiInputFocus(el('ai-chat-input')), 50);
     });
@@ -142,7 +136,6 @@
       }
       loadModels();
       loadBrowserConnections();
-      loadAutomationCards(state.currentSession?.automationCardId || '');
       void bootstrapHistory();
     });
   }
@@ -150,12 +143,10 @@
   function startAiControlPolling() {
     loadModels();
     loadBrowserConnections();
-    loadAutomationCards();
     void bootstrapHistory();
-    // 保留连接离线和外部卡片修改的发现速度；两个加载函数内部先比对快照，
+    // 保留连接离线发现速度；加载函数内部先比对快照，
     // 数据未变化时不会重建菜单、欢迎页或重复广播主窗口状态。
     window.setInterval(loadBrowserConnections, 750);
-    window.setInterval(loadAutomationCards, 1000);
   }
 
   // 正常关闭/刷新时再做一次同步本地检查点；即使 IPC 来不及完成，消息也不会丢失。

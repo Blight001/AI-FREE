@@ -4,13 +4,6 @@
     const restoredIds = sessionBrowserIds(session);
     if (restoredIds.length) {
       state.currentBrowserIds = restoredIds;
-      // 会话里带了明确的浏览器选择，视为用户已手动选择，不再默认全选。
-      state.browserSelectionTouched = true;
-    }
-    const sessionCardId = String(session?.automationCardId || '').trim();
-    if (sessionCardId) {
-      state.currentCardId = sessionCardId;
-      void selectAutomationCard(sessionCardId, { persist: false, silent: true });
     }
     const browserSelect = el('ai-chat-browser');
     if (browserSelect) {
@@ -244,7 +237,7 @@
       modelId: String(el('ai-chat-model')?.value || ''),
       browserConnectionId: state.currentBrowserIds[0] || '',
       browserConnectionIds: [...state.currentBrowserIds],
-      automationCardId: state.currentCardId,
+      automationCardId: '',
       messages: [],
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -268,7 +261,7 @@
       modelId: String(el('ai-chat-model')?.value || ''),
       browserConnectionId: state.currentBrowserIds[0] || '',
       browserConnectionIds: [...state.currentBrowserIds],
-      automationCardId: state.currentCardId,
+      automationCardId: '',
       messages: state.messages,
       createdAt: Date.now(),
       updatedAt: Date.now(),

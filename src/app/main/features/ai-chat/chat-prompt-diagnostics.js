@@ -2,7 +2,7 @@
 
 const {
   normalizeChatOptions,
-  resolveAutomationCard,
+  resolveAutomationCards,
   resolveConnections,
 } = require('./chat-request-context');
 const { buildChatToolContext } = require('./chat-tool-context');
@@ -31,14 +31,12 @@ function buildPromptPreview(deps, input, getWindowTools) {
   const options = normalizeChatOptions({ ...input, disableTools: false, stream: false });
   const resolvedConnections = resolveConnections(deps, options);
   if (resolvedConnections.error) return resolvedConnections.error;
-  const resolvedCard = resolveAutomationCard(deps, options);
-  if (resolvedCard.error) return resolvedCard.error;
+  const resolvedCards = resolveAutomationCards(deps, options);
   const toolContext = buildChatToolContext({
     connections: resolvedConnections.connections,
     controlledConnectionId: resolvedConnections.controlledConnectionId,
     windowTools: getWindowTools(),
-    selectedAutomationCard: resolvedCard.selectedAutomationCard,
-    automationCardId: options.automationCardId,
+    automationCards: resolvedCards.automationCards,
     initialMessages: options.initialMessages,
   });
   return {

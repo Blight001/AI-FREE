@@ -1,100 +1,3 @@
-  function selectedAutomationCard() {
-    return state.automationCards.find((card) => String(card.id) === state.currentCardId) || null;
-  }
-
-  function cardText(value) {
-    return String(value || '').trim();
-  }
-
-  function applyAutomationCardSelection(id, result, options) {
-    state.currentCardId = cardText(result.selectedId || id);
-    state.sharedAutomationCardId = state.currentCardId;
-    state.automationCardsError = '';
-    if (state.currentSession) {
-      state.currentSession.automationCardId = state.currentCardId;
-      if (options.persist !== false && currentMessages().length) void persistCurrentSession();
-    }
-    syncSelectUi(el('ai-chat-browser'));
-    if (!currentMessages().length) renderWelcome();
-  }
-
-  function handleAutomationCardSelectionError(error, options) {
-    state.automationCardsError = error?.message || String(error);
-    syncSelectUi(el('ai-chat-browser'));
-    if (options.silent !== true) setStatus(state.automationCardsError, 'warning');
-  }
-
-  async function selectAutomationCard(cardId, options = {}) {
-    const id = cardText(cardId);
-    if (!id || !window.aiFree?.ai?.selectAutomationCard) return false;
-    try {
-      const result = await window.aiFree.ai.selectAutomationCard({ id });
-      if (!result?.ok) throw new Error(result?.message || '选择自动化卡片失败');
-      applyAutomationCardSelection(id, result, options);
-      return true;
-    } catch (error) {
-      handleAutomationCardSelectionError(error, options);
-      return false;
-    }
-  }
-
-  function appendAutomationCardSetting(menu) {
-    const header = document.createElement('li');
-    header.className = 'ai-browser-menu-setting ai-browser-card-setting';
-
-    const label = document.createElement('span');
-    label.textContent = '自动化卡片';
-
-    const refresh = document.createElement('button');
-    refresh.type = 'button';
-    refresh.className = 'ai-browser-card-refresh';
-    refresh.textContent = '刷新';
-    refresh.title = '刷新软件卡片库';
-    refresh.disabled = state.automationCardsLoading;
-    refresh.addEventListener('click', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      refresh.blur();
-      void loadAutomationCards();
-    });
-    header.append(label, refresh);
-    menu.appendChild(header);
-
-    const cards = Array.isArray(state.automationCards) ? state.automationCards : [];
-    if (!cards.length) {
-      const empty = document.createElement('li');
-      empty.className = 'ai-browser-card-empty';
-      empty.dataset.type = state.automationCardsError ? 'error' : '';
-      empty.textContent = state.automationCardsError
-        || (state.automationCardsLoading ? '正在读取卡片…' : '暂无已保存卡片');
-      menu.appendChild(empty);
-      return;
-    }
-
-    cards.forEach((card) => {
-      const id = String(card.id || '');
-      const option = document.createElement('button');
-      option.type = 'button';
-      option.className = 'ai-select-option ai-browser-card-option';
-      option.role = 'option';
-      option.dataset.cardId = id;
-      option.setAttribute('aria-selected', id === state.currentCardId ? 'true' : 'false');
-
-      const name = document.createElement('span');
-      name.className = 'ai-select-option-label';
-      name.textContent = String(card.name || card.id || '未命名卡片');
-      const steps = document.createElement('span');
-      steps.className = 'ai-select-option-meta';
-      steps.textContent = `${Number(card.stepCount || 0)} 步`;
-      option.append(name, steps);
-      option.addEventListener('click', async (event) => {
-        event.preventDefault();
-        if (await selectAutomationCard(id)) closeSelect(menu.closest('.ai-select'));
-      });
-      menu.appendChild(option);
-    });
-  }
-
   function updateSelectDisplay(shell, select, trigger, valueEl, options) {
     const isBrowserSelect = shell.dataset.aiSelect === 'browser';
     trigger.disabled = Boolean(select.disabled);
@@ -102,13 +5,10 @@
       valueEl.textContent = optionDisplayText(options.find((opt) => opt.selected) || options[0] || null);
       return;
     }
-    const selectedOptions = options.filter((opt) => opt.selected && opt.value);
-    const placeholder = options.find((opt) => !opt.value)?.textContent || '不连接浏览器';
-    valueEl.textContent = selectedOptions[0]?.textContent || placeholder;
-    shell.classList.toggle('has-selection', Boolean(selectedOptions.length || state.currentCardId));
-    trigger.title = selectedOptions.length
-      ? selectedOptions.map((opt) => opt.title || opt.textContent).join('、')
-      : '未连接浏览器';
+    const connected = Number(state.availableBrowserIds.length || 0);
+    valueEl.textContent = connected ? `${connected} 个浏览器 · AI 自主控制` : (state.browserConnectionsError || '未连接浏览器');
+    shell.classList.toggle('has-selection', connected > 0);
+    trigger.title = connected ? `已连接 ${connected} 个浏览器，由 AI 自主选择目标` : 'AI 控制设置';
   }
 
   function resolveFocusedOption(menu) {
@@ -170,10 +70,6 @@
   function appendSelectPrefix(shell, menu) {
     if (shell.dataset.aiSelect !== 'browser') return;
     appendBrowserMcpSetting(menu);
-    const browserLabel = document.createElement('li');
-    browserLabel.className = 'ai-browser-target-label';
-    browserLabel.textContent = '目标浏览器';
-    menu.appendChild(browserLabel);
   }
 
   function appendModelAction(shell, menu) {
@@ -196,7 +92,6 @@
 
   function appendBrowserActions(shell, menu) {
     if (shell.dataset.aiSelect !== 'browser') return;
-    appendAutomationCardSetting(menu);
     updateBrowserMenuAvailableHeight(shell);
   }
 
@@ -235,7 +130,9 @@
     appendSelectPrefix(shell, menu);
     const anyBrowserSelected = isBrowserSelect && options.some((opt) => opt.selected && opt.value);
     const context = { anyBrowserSelected, isBrowserSelect, options, select, shell };
-    options.forEach((option) => menu.appendChild(createSelectOption(option, context)));
+    if (!isBrowserSelect) {
+      options.forEach((option) => menu.appendChild(createSelectOption(option, context)));
+    }
     appendModelAction(shell, menu);
     appendBrowserActions(shell, menu);
     restoreFocusedOption(shell, menu, focusedOptionValue);

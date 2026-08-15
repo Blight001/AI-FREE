@@ -24,7 +24,11 @@ test('native card management persists validated cards and supports local step ed
     stepData: { type: 'wait', selector: '#ready' },
   });
   assert.equal(state().items[0].cardData.steps.length, 2);
-  assert.equal((await service.execute({ action: 'list' })).items[0].name, '登录');
+  const listed = await service.execute({ action: 'list' });
+  assert.equal(listed.items[0].name, '登录');
+  assert.equal(listed.items[0].website, 'https://example.com');
+  assert.equal(listed.items[0].stepCount, 2);
+  await assert.rejects(() => service.execute({ action: 'get' }), /未指定/);
 });
 
 test('native card run opens the website and executes page steps through native tool dispatch', async () => {

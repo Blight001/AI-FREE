@@ -111,8 +111,7 @@ app.whenReady().then(async () => {
       })()`);
       await win.webContents.executeJavaScript(`(() => {
         state.currentBrowserIds = ['browser-preview'];
-        state.automationCards = [{ id: 'card-preview', name: '微软账号登录' }];
-        state.currentCardId = 'card-preview';
+        state.availableBrowserIds = ['browser-preview'];
         state.currentSession = { id: 'current-preview' };
         state.sessionList = [
           { id: 'recent-1', title: '整理微软账号登录流程', preview: '检查页面并完成登录', updatedAt: Date.now() - 120000 },

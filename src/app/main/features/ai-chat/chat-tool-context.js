@@ -56,6 +56,9 @@ function appendOptionalWorkflows(workflow, available) {
   if (available.has('run_command')) {
     workflow.push('需要查看或处理 AI-Workspace 文件时使用 run_command；上传文件时把工作区内路径交给 browser_file action=upload；浏览器下载也会自动保存到该工作区');
   }
+  if (available.has('manage_card')) {
+    workflow.push('自动化卡片必须由你根据用户目标自行筛选：先看系统提供的卡片目录或调用 manage_card action=list，再对匹配的 id 或唯一 card_name 调用 get/run；禁止把工作台 selectedId、第一张卡片或设置项当成用户已指定的任务');
+  }
   if (available.has('browser_environment')) {
     workflow.push('仅在用户要求查看或修改浏览器环境、指纹、代理等配置时使用 browser_environment');
   }
@@ -68,10 +71,10 @@ function createMcpContext(tools, connections, resolver, controlledConnectionId) 
   const available = new Set(availableNames);
   const controlled = connections.find((item) => String(item?.id || '') === String(controlledConnectionId || ''));
   const routing = connections.length > 1
-    ? `可用连接：${resolver.describeConnections()}。当前只控制“${String(controlled?.name || controlled?.id || '未知')}”。AI 同一时间最多控制一个浏览器；要操作其他浏览器，必须在下一次浏览器工具调用中传 change_browser（连接 ID 或唯一名称），切换后后续调用沿用新目标。禁止同时控制多个目标或猜测目标。`
+    ? `可用连接：${resolver.describeConnections()}。用户不会在设置中指定目标浏览器，必须由你根据用户目标自行选择。默认先控制“${String(controlled?.name || controlled?.id || '未知')}”。AI 同一时间最多控制一个浏览器；要操作其他浏览器，必须在下一次浏览器工具调用中传 change_browser（连接 ID 或唯一名称），切换后后续调用沿用新目标。禁止同时控制多个目标或猜测不存在的连接。`
     : (connections.length === 1
-      ? `当前唯一控制浏览器为 ${resolver.describeConnections()}；无需传 change_browser，除非之后出现新的可用连接。`
-      : '当前没有可用的浏览器自动化连接，不要调用或虚构浏览器工具。');
+      ? `当前唯一可用浏览器为 ${resolver.describeConnections()}；无需传 change_browser，除非之后出现新的可用连接。用户不会在设置中指定目标浏览器。`
+      : '当前没有可用的浏览器自动化连接，不要调用或虚构浏览器工具。需要浏览器时用 windows_tab 打开或创建栏目，等待 mcp_connected=true 后再操作页面。');
   const workflow = [];
   if (available.has('browser_tab')) workflow.push('使用 browser_tab 确认、切换或导航标签页');
   if (available.has('browser_observe') && available.has('browser_action')) {
@@ -94,20 +97,50 @@ function createMcpContext(tools, connections, resolver, controlledConnectionId) 
   };
 }
 
+const AUTOMATION_CARD_CATALOG_LIMIT = 50;
+
+function compactCatalogText(value, max = 80) {
+  return String(value || '').replace(/[\r\n\t]+/g, ' ').trim().slice(0, max);
+}
+
+function formatAutomationCardCatalog(cards) {
+  return cards.map((card) => {
+    const parts = [
+      `ID ${compactCatalogText(card.id, 80)}`,
+      `名称 ${JSON.stringify(compactCatalogText(card.name, 80))}`,
+    ];
+    if (card.website) parts.push(`网站 ${JSON.stringify(compactCatalogText(card.website, 80))}`);
+    if (card.description) parts.push(`说明 ${JSON.stringify(compactCatalogText(card.description, 80))}`);
+    parts.push(`${Number(card.stepCount || 0)} 步`);
+    return parts.join('，');
+  }).join('；');
+}
+
+function createCardCatalogContext(cards, connections) {
+  if (!connections.length) return null;
+  const allCards = Array.isArray(cards) ? cards.filter((card) => card?.id) : [];
+  if (!allCards.length) {
+    return {
+      role: 'system',
+      content: '软件卡片库当前没有自动化卡片。需要卡片时通过 manage_card 的 rules/write 新建；不要假装已有可用卡片，也不要等待用户在设置中选择。',
+      ai_free_card_context: true,
+    };
+  }
+  const visible = allCards.slice(0, AUTOMATION_CARD_CATALOG_LIMIT);
+  const omitted = allCards.length - visible.length;
+  const extra = omitted > 0 ? `目录仅列出前 ${visible.length} 张，其余 ${omitted} 张请用 manage_card action=list 继续筛选。` : '';
+  return {
+    role: 'system',
+    content: `软件卡片库现有 ${allCards.length} 张自动化卡片，必须由你根据用户目标自行筛选，不要依赖用户在 AI 控制设置中选择，也不要把工作台 selectedId 当作任务指定卡片。目录：${formatAutomationCardCatalog(visible)}。${extra}需要查看详情或运行时，用 manage_card 的 get/run 并传入匹配到的 id 或唯一 card_name；没有合适卡片时先 list 确认或按 rules 新建。禁止未筛选就默认使用第一张或某张“当前卡片”。`,
+    ai_free_card_context: true,
+  };
+}
+
 function buildChatToolContext(options = {}) {
-  const { connections, controlledConnectionId, windowTools, selectedAutomationCard, automationCardId, initialMessages } = options;
+  const { connections, controlledConnectionId, windowTools, automationCards, initialMessages } = options;
   const resolver = createConnectionResolver(connections);
   const tools = [...selectedWindowTools(windowTools, initialMessages), ...collectConnectionTools(connections, windowTools)];
-  const cardName = String(
-    selectedAutomationCard?.cardName || selectedAutomationCard?.cardData?.name || automationCardId,
-  ).replace(/[\r\n\t]+/g, ' ').trim().slice(0, 120);
-  const cardContext = selectedAutomationCard && connections.length
-    ? {
-      role: 'system',
-      content: `AI 控制当前选中的自动化卡片名称为 ${JSON.stringify(cardName)}，ID 为 ${JSON.stringify(automationCardId.slice(0, 200))}。当用户要求查看、修改或运行当前卡片时，优先通过 manage_card 使用该 ID；不要擅自改用其他卡片。`,
-      ai_free_card_context: true,
-    }
-    : null;
+  const cardContext = createCardCatalogContext(automationCards, connections);
   const mcpContext = createMcpContext(tools, connections, resolver, controlledConnectionId);
   return {
     ...resolver,
@@ -121,9 +154,12 @@ function buildChatToolContext(options = {}) {
 }
 
 module.exports = {
+  AUTOMATION_CARD_CATALOG_LIMIT,
   buildChatToolContext,
+  createCardCatalogContext,
   createConnectionResolver,
   createMcpContext,
+  formatAutomationCardCatalog,
   selectedWindowTools,
   shouldIncludeBrowserEnvironment,
   withBrowserRouteParam,

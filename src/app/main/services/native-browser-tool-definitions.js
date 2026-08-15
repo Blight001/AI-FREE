@@ -16,7 +16,7 @@ const NATIVE_BROWSER_TOOL_DEFINITIONS = Object.freeze([
   },
   {
     name: 'manage_card',
-    description: '管理并运行原生 Chromium 自动化卡片。rules/list/get 可在只读模式使用；写入或 run 前必须先调用 browser_control action=acquire 接管当前活动页面，完成后允许 AI 调用 action=release 停止接管。切换或新开标签页后需要重新接管。支持 rules/list/get/write/patch_step/insert_step/delete_step/move_step/delete/run。',
+    description: '管理并运行原生 Chromium 自动化卡片。用户不会在 AI 控制设置中指定卡片，必须先根据系统卡片目录或 action=list 自行按名称/网站/说明筛选，再对匹配的 id 或唯一 card_name 调用 get/run。rules/list/get 可在只读模式使用；写入或 run 前必须先调用 browser_control action=acquire 接管当前活动页面，完成后允许 AI 调用 action=release 停止接管。切换或新开标签页后需要重新接管。支持 rules/list/get/write/patch_step/insert_step/delete_step/move_step/delete/run。',
     input_schema: objectSchema({
       action: { type: 'string', enum: ['rules', 'list', 'get', 'write', 'patch_step', 'insert_step', 'delete_step', 'move_step', 'delete', 'run'] },
       id: { type: 'string' }, card_name: { type: 'string' }, cardData: { type: 'object' },

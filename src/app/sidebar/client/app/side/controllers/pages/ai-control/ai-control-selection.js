@@ -13,18 +13,6 @@
     })));
   }
 
-  function automationCardsSnapshot(cards, selectedId) {
-    return JSON.stringify({
-      selectedId: String(selectedId || ''),
-      cards: (Array.isArray(cards) ? cards : []).map((card) => ({
-        id: String(card?.id || ''),
-        name: String(card?.name || ''),
-        stepCount: Number(card?.stepCount || 0),
-        savedAt: String(card?.savedAt || ''),
-      })),
-    });
-  }
-
   function sessionBrowserIds(session) {
     return normalizeBrowserIds(Array.isArray(session?.browserConnectionIds)
       ? session.browserConnectionIds
@@ -79,13 +67,11 @@
     if (state.dynamicDataRefreshQueued) {
       state.dynamicDataRefreshQueued = false;
       void loadBrowserConnections();
-      void loadAutomationCards(state.currentSession?.automationCardId || '');
     }
     if (state.accountSessionRefreshQueued) {
       state.accountSessionRefreshQueued = false;
       void loadModels();
       void loadBrowserConnections();
-      void loadAutomationCards(state.currentSession?.automationCardId || '');
       void bootstrapHistory();
     }
   }
@@ -149,7 +135,7 @@
       modelId: selectionString(session?.modelId),
       browserConnectionId: selectionString(session?.browserConnectionId),
       browserConnectionIds: sessionBrowserIds(session),
-      automationCardId: selectionString(session?.automationCardId),
+      automationCardId: '',
       preview: selectionString(session?.preview),
       messageCount: messages.length,
       createdAt: selectionTimestamp(session?.createdAt),

@@ -38,15 +38,27 @@ function validateCard(card) {
   }
 }
 
+function summarizeListedCard(item) {
+  const data = item?.cardData && typeof item.cardData === 'object' ? item.cardData : {};
+  return {
+    id: item.id,
+    name: item.cardName,
+    website: text(data.website),
+    description: text(data.description).slice(0, 160),
+    stepCount: Array.isArray(data.steps) ? data.steps.length : 0,
+    updatedAt: item.updatedAt,
+  };
+}
+
 function resolveCard(state, args) {
-  const id = text(args.id || state.selectedId);
+  const id = text(args.id);
   const byId = id ? state.items.find((item) => text(item.id) === id) : null;
   if (byId) return byId;
   const name = text(args.card_name);
   const matches = name ? state.items.filter((item) => text(item.cardName) === name) : [];
   if (matches.length === 1) return matches[0];
   if (matches.length > 1) throw new Error(`存在多个同名卡片「${name}」，请使用 id`);
-  throw new Error(`自动化卡片不存在: ${id || name || '(未选择)'}`);
+  throw new Error(`自动化卡片不存在: ${id || name || '(未指定)'}。请先 list 并根据名称、网站或说明筛选后传入 id 或唯一 card_name`);
 }
 
 function normalizeInputs(args, card) {
@@ -274,7 +286,7 @@ class NativeAutomationCardService {
     if (!ACTIONS.has(action)) throw new Error(`未知的 manage_card action: ${action || '(空)'}`);
     if (action === 'rules') return { success: true, rules: RULES, stepTypes: Array.from(STEP_TYPES) };
     const state = this.state();
-    if (action === 'list') return { success: true, selectedId: state.selectedId, items: state.items.map((item) => ({ id: item.id, name: item.cardName, updatedAt: item.updatedAt })) };
+    if (action === 'list') return { success: true, selectedId: state.selectedId, items: state.items.map(summarizeListedCard) };
     if (action === 'get') return { success: true, item: clone(resolveCard(state, args)) };
     if (action === 'write') return this.writeCard(args);
     if (action === 'delete') return this.deleteCard(args);

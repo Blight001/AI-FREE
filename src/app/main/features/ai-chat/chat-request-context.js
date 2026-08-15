@@ -8,6 +8,7 @@ const {
 const { createVipRequiredResult, resolveVipAccess } = require('../../utils/vip-access');
 const { normalizeAccountSession } = require('../../utils/account-session');
 const { enrichBrowserConnectionNames } = require('./connection-names');
+const { listAutomationCards } = require('./automation-card-service');
 const { buildChatToolContext } = require('./chat-tool-context');
 
 function validateQuota(quota) {
@@ -89,15 +90,14 @@ function normalizeChatOptions(input) {
 }
 
 function resolveConnections(deps, options) {
-  if (options.disableTools || !options.connectionIds.length) return { connections: [] };
-  const controlledConnectionId = options.connectionIds[0];
+  if (options.disableTools) return { connections: [] };
   const publicConnections = deps.browserAutomationBridge?.listConnections?.() || [];
-  if (!publicConnections.some((item) => String(item?.id || '') === controlledConnectionId)) {
-    return { error: { ok: false, message: '当前 Chromium 原生控制连接已离线，请刷新后重新选择' } };
-  }
   const connections = publicConnections
     .map((item) => deps.browserAutomationBridge?.getConnection?.(item.id))
     .filter(Boolean);
+  const availableIds = new Set(connections.map((item) => String(item?.id || '')).filter(Boolean));
+  const preferred = (options.connectionIds || []).find((id) => availableIds.has(id));
+  const controlledConnectionId = preferred || String(connections[0]?.id || '');
   try {
     return {
       controlledConnectionId,
@@ -112,12 +112,12 @@ function resolveConnections(deps, options) {
   }
 }
 
-function resolveAutomationCard(deps, options) {
-  if (options.disableTools || !options.automationCardId) return { selectedAutomationCard: null };
+function resolveAutomationCards(deps, options) {
+  if (options.disableTools) return { automationCards: [] };
   try {
-    return { selectedAutomationCard: deps.browserAutomationBridge?.selectCard?.(options.automationCardId)?.item || null };
-  } catch (error) {
-    return { error: { ok: false, message: error?.message || '所选自动化卡片不存在，请刷新后重新选择' } };
+    return { automationCards: listAutomationCards(deps.browserAutomationBridge) };
+  } catch (_) {
+    return { automationCards: [] };
   }
 }
 
@@ -135,15 +135,13 @@ function prepareChatRequest(deps, event, input, chatRuns, getWindowTools) {
   const started = options.useStream && options.requestId ? chatRuns.begin(event, options.requestId) : {};
   const resolvedConnections = resolveConnections(deps, options);
   if (resolvedConnections.error) return { ...resolvedConnections, ...started };
-  const resolvedCard = resolveAutomationCard(deps, options);
-  if (resolvedCard.error) return { ...resolvedCard, ...started };
+  const resolvedCards = resolveAutomationCards(deps, options);
   const windowTools = options.disableTools ? null : getWindowTools();
   const toolContext = buildChatToolContext({
     connections: resolvedConnections.connections,
     controlledConnectionId: resolvedConnections.controlledConnectionId,
     windowTools,
-    selectedAutomationCard: resolvedCard.selectedAutomationCard,
-    automationCardId: options.automationCardId,
+    automationCards: resolvedCards.automationCards,
     initialMessages: options.initialMessages,
   });
   return {
@@ -164,7 +162,7 @@ module.exports = {
   createIdentityRecovery,
   normalizeChatOptions,
   prepareChatRequest,
-  resolveAutomationCard,
+  resolveAutomationCards,
   resolveBuiltinAccess,
   resolveChatAccess,
   resolveConnections,

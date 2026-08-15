@@ -66,6 +66,8 @@ test('AI MCP prompt 按可用工具注入准确的多浏览器路由和页面操
   const prompt = context.modelMessages[0].content;
   assert.match(prompt, /browser_tab、browser_observe、browser_action/);
   assert.match(prompt, /同一时间最多控制一个浏览器/);
+  assert.match(prompt, /用户不会在设置中指定目标浏览器/);
+  assert.match(prompt, /必须由你根据用户目标自行选择/);
   assert.match(prompt, /必须在下一次浏览器工具调用中传 change_browser/);
   assert.match(prompt, /页面明显变化后重新 observe/);
   assert.match(prompt, /先主动调用 browser_observe/);
@@ -79,6 +81,31 @@ test('AI MCP prompt 按可用工具注入准确的多浏览器路由和页面操
   assert.match(prompt, /窗口已打开不等于其 MCP 已连接/);
   assert.match(prompt, /未收到成功结果前不得声称操作完成/);
   assert.equal(context.tools.find((tool) => tool.name === 'browser_tab').input_schema.properties.change_browser.type, 'string');
+});
+
+test('自动化卡片目录注入全部卡片并要求 AI 自行筛选', () => {
+  const context = buildChatToolContext({
+    connections: [{
+      id: 'one',
+      name: '工作窗口',
+      tools: [{ name: 'manage_card', input_schema: { type: 'object' } }],
+    }],
+    controlledConnectionId: 'one',
+    initialMessages: [{ role: 'user', content: '帮我登录微软账号' }],
+    automationCards: [
+      { id: 'card-login', name: '微软登录', website: 'https://login.live.com', description: '账号登录', stepCount: 4 },
+      { id: 'card-shop', name: '下单流程', website: 'https://shop.example', description: '', stepCount: 8 },
+    ],
+    windowTools: { has: () => false, tools: [] },
+  });
+  const prompt = context.modelMessages.map((message) => message.content).join('\n');
+  assert.match(prompt, /必须由你根据用户目标自行筛选/);
+  assert.match(prompt, /card-login/);
+  assert.match(prompt, /微软登录/);
+  assert.match(prompt, /card-shop/);
+  assert.match(prompt, /下单流程/);
+  assert.doesNotMatch(prompt, /当前选中的自动化卡片/);
+  assert.doesNotMatch(prompt, /不要擅自改用其他卡片/);
 });
 
 test('没有浏览器连接时 prompt 不会诱导 AI 虚构浏览器 MCP', () => {

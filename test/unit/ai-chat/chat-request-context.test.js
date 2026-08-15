@@ -7,6 +7,7 @@ const {
   createChatEmitter,
   createIdentityRecovery,
   normalizeChatOptions,
+  resolveAutomationCards,
   resolveChatAccess,
   resolveConnections,
   validateQuota,
@@ -36,18 +37,58 @@ test('内置模型要求登录和服务可用，自定义模型同时要求 VIP 
   assert.match(resolveChatAccess(vip, { modelId: '__custom_openai_api__' }).error.message, /尚未配置完整/);
 });
 
-test('浏览器连接离线立即失败，正常连接保留插件元数据', () => {
-  const options = { disableTools: false, connectionIds: ['one'] };
-  const missing = resolveConnections({ browserAutomationBridge: { listConnections: () => [] } }, options);
-  assert.match(missing.error.message, /离线/);
-  const connection = { id: 'one', name: 'Browser' };
+test('对话会装入全部在线浏览器，不因用户未选择或旧连接离线而失败', () => {
+  const empty = resolveConnections({ browserAutomationBridge: { listConnections: () => [] } }, {
+    disableTools: false, connectionIds: ['stale'],
+  });
+  assert.equal(empty.error, undefined);
+  assert.deepEqual(empty.connections, []);
+  assert.equal(empty.controlledConnectionId, '');
+
+  const one = { id: 'one', name: 'Browser' };
+  const two = { id: 'two', name: 'Other' };
   const found = resolveConnections({
-    browserAutomationBridge: { listConnections: () => [connection], getConnection: () => connection },
+    browserAutomationBridge: {
+      listConnections: () => [one, two],
+      getConnection: (id) => [one, two].find((item) => item.id === id),
+    },
     getTabs: () => [],
     browserRuntimeManager: { listStates: () => [] },
-  }, options);
-  assert.equal(found.connections[0].id, 'one');
+  }, { disableTools: false, connectionIds: [] });
+  assert.equal(found.connections.length, 2);
   assert.equal(found.controlledConnectionId, 'one');
+
+  const preferred = resolveConnections({
+    browserAutomationBridge: {
+      listConnections: () => [one, two],
+      getConnection: (id) => [one, two].find((item) => item.id === id),
+    },
+    getTabs: () => [],
+    browserRuntimeManager: { listStates: () => [] },
+  }, { disableTools: false, connectionIds: ['stale', 'two'] });
+  assert.equal(preferred.controlledConnectionId, 'two');
+  assert.equal(preferred.connections.length, 2);
+});
+
+test('对话上下文读取全部自动化卡片，不再绑定用户选择', () => {
+  const cards = resolveAutomationCards({
+    browserAutomationBridge: {
+      getCardCacheState: () => ({
+        exists: true,
+        state: {
+          selectedId: 'ignored',
+          items: [
+            { id: 'a', cardName: '登录', cardData: { website: 'https://a.example', description: 'A', steps: [{}] } },
+            { id: 'b', cardName: '下单', cardData: { website: 'https://b.example', steps: [{}, {}] } },
+          ],
+        },
+      }),
+    },
+  }, { disableTools: false });
+  assert.equal(cards.automationCards.length, 2);
+  assert.equal(cards.automationCards[0].id, 'a');
+  assert.equal(cards.automationCards[1].name, '下单');
+  assert.equal(resolveAutomationCards({}, { disableTools: true }).automationCards.length, 0);
 });
 
 test('流式事件仅发送到仍存活的原请求窗口', () => {

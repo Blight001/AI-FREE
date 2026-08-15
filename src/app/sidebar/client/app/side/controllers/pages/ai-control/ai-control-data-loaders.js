@@ -108,13 +108,8 @@
     const newIds = state.browserConnectionsInitialized
       ? allIds.filter((id) => !previousAvailableIds.has(id))
       : [];
-    const initialId = state.browserSelectionTouched && survivingId ? survivingId : (allIds[0] || '');
-    if (state.browserSelectionExplicitlyDisabled) return { allIds, selectedIds: [] };
-    const selectedId = state.browserConnectionsInitialized
-      ? (newIds.at(-1) || survivingId || allIds[0] || '')
-      : initialId;
-    const selectedIds = selectedId ? [selectedId] : [];
-    return { allIds, selectedIds };
+    const selectedId = survivingId || newIds.at(-1) || allIds[0] || '';
+    return { allIds, selectedIds: selectedId ? [selectedId] : [] };
   }
 
   function syncBrowserSessionSelection() {
@@ -130,18 +125,19 @@
       String(connection?.id || ''),
       String(connection?.profileId || ''),
     ]));
-    select.innerHTML = '<option value="">不连接浏览器</option>';
+    select.innerHTML = '<option value="">由 AI 自主选择浏览器</option>';
     connections.forEach((connection) => select.appendChild(createBrowserConnectionOption(connection)));
     const { allIds, selectedIds } = resolveBrowserSelection(connections, previousIds);
-    const selectionChanged = selectedIds.join(',') !== state.currentBrowserIds.join(',');
+    const selectionChanged = selectedIds.join(',') !== state.currentBrowserIds.join(',')
+      || allIds.join(',') !== state.availableBrowserIds.join(',');
     state.availableBrowserIds = allIds;
     state.browserConnectionsInitialized = true;
+    state.browserSelectionExplicitlyDisabled = false;
     setSelectBrowserIds(select, selectedIds);
     state.currentBrowserIds = selectedIds;
-    if (selectedIds.length) state.browserSelectionExplicitlyDisabled = false;
     syncBrowserSessionSelection();
     select.title = connections.length
-      ? `已连接 ${connections.length} 个 Chromium 原生控制通道，AI 同时只控制当前选中的一个`
+      ? `已连接 ${connections.length} 个 Chromium 原生控制通道，由 AI 自主选择目标`
       : '未发现可用的 Chromium 原生控制通道，请先打开 AI-FREE 浏览器';
     syncSelectUi(select);
     notifyBrowserSelection();
@@ -212,92 +208,6 @@
     }
   }
 
-  function cardExists(cards, cardId) {
-    return Boolean(cardId) && cards.some((card) => String(card.id) === cardId);
-  }
-
-  function resolveAutomationCardId(cards, preferredId, sharedId) {
-    const explicitId = String(preferredId || '').trim();
-    const requestedId = String(explicitId || state.currentCardId || '').trim();
-    const requestedExists = cardExists(cards, requestedId);
-    const sharedExists = cardExists(cards, sharedId);
-    if (explicitId && requestedExists) return requestedId;
-    if (sharedId && sharedId !== state.sharedAutomationCardId && sharedExists) return sharedId;
-    if (requestedExists) return requestedId;
-    if (sharedExists) return sharedId;
-    return String(cards[0]?.id || '');
-  }
-
-  async function applyAutomationCards(result, preferredId) {
-    const cards = Array.isArray(result.cards) ? result.cards : [];
-    const sharedId = String(result.selectedId || '').trim();
-    const snapshot = automationCardsSnapshot(cards, sharedId);
-    let changed = snapshot !== state.automationCardsSnapshot || Boolean(state.automationCardsError);
-    const previousCardId = state.currentCardId;
-    state.automationCardsSnapshot = snapshot;
-    state.automationCardsError = '';
-    state.automationCards = cards;
-    state.currentCardId = resolveAutomationCardId(cards, preferredId, sharedId);
-    state.sharedAutomationCardId = sharedId;
-    changed = changed || previousCardId !== state.currentCardId;
-    if (state.currentCardId && state.currentCardId !== sharedId) {
-      await selectAutomationCard(state.currentCardId, { persist: false, silent: true });
-    }
-    if (state.currentSession && !currentMessages().length) {
-      state.currentSession.automationCardId = state.currentCardId;
-    }
-    return changed;
-  }
-
-  function refreshAutomationCardUi(uiChanged) {
-    if (!uiChanged) return;
-    if (aiInputHasActiveDraft()) {
-      state.dynamicUiRefreshPending = true;
-      return;
-    }
-    syncSelectUi(el('ai-chat-browser'));
-    if (!currentMessages().length) renderWelcome();
-  }
-
-  function runQueuedAutomationCardRefresh() {
-    if (!state.automationCardsRefreshQueued) return;
-    const queuedPreferredId = state.automationCardsQueuedPreferredId;
-    state.automationCardsRefreshQueued = false;
-    state.automationCardsQueuedPreferredId = '';
-    window.setTimeout(() => { void loadAutomationCards(queuedPreferredId); }, 0);
-  }
-
-  function queueAutomationCardRefresh(preferredId) {
-    state.automationCardsRefreshQueued = true;
-    if (preferredId) state.automationCardsQueuedPreferredId = String(preferredId);
-  }
-
-  async function loadAutomationCards(preferredId = '') {
-    const getCards = getAutomationCardsApi();
-    if (!getCards) return;
-    if (shouldDeferDynamicDataRefresh()) return;
-    if (state.automationCardsLoading) {
-      queueAutomationCardRefresh(preferredId);
-      return;
-    }
-    state.automationCardsLoading = true;
-    let uiChanged = false;
-    try {
-      const result = requireAiDataResult(await getCards(), '自动化卡片读取失败');
-      if (shouldDeferDynamicDataRefresh()) return;
-      uiChanged = await applyAutomationCards(result, preferredId);
-    } catch (error) {
-      if (shouldDeferDynamicDataRefresh()) return;
-      const errorMessage = aiDataErrorMessage(error);
-      uiChanged = state.automationCardsError !== errorMessage;
-      state.automationCardsError = errorMessage;
-      console.warn('[AI 控制] 自动化卡片读取失败:', state.automationCardsError);
-    } finally {
-      state.automationCardsLoading = false;
-      refreshAutomationCardUi(uiChanged);
-      runQueuedAutomationCardRefresh();
-    }
-  }
   function aiDataErrorMessage(value, fallback = '') {
     return String(value?.message || value?.error || fallback || value || '');
   }
@@ -319,6 +229,4 @@
     return window.aiFree?.ai?.getBrowserConnections;
   }
 
-  function getAutomationCardsApi() {
-    return window.aiFree?.ai?.getAutomationCards;
-  }
+

@@ -2,18 +2,34 @@
 
 const { firstText } = require('../../../shared/safe-values');
 
-async function getAutomationCards(bridge) {
+function compactCardField(value, max = 160) {
+  return firstText(value).replace(/[\r\n\t]+/g, ' ').trim().slice(0, max);
+}
+
+function summarizeAutomationCard(item) {
+  const data = item && item.cardData && typeof item.cardData === 'object' ? item.cardData : {};
+  return {
+    id: firstText(item && item.id),
+    name: firstText(item && item.cardName, data.name, item && item.id, '未命名卡片'),
+    website: compactCardField(data.website, 200),
+    description: compactCardField(data.description, 160),
+    stepCount: Array.isArray(data.steps) ? data.steps.length : 0,
+    savedAt: firstText(item && item.savedAt),
+  };
+}
+
+function listAutomationCards(bridge) {
   const cached = bridge?.getCardCacheState?.() || { exists: false, state: { items: [], selectedId: '' } };
   const items = cached.state && Array.isArray(cached.state.items) ? cached.state.items : [];
+  return items.map(summarizeAutomationCard).filter((item) => item.id);
+}
+
+async function getAutomationCards(bridge) {
+  const cached = bridge?.getCardCacheState?.() || { exists: false, state: { items: [], selectedId: '' } };
   return {
     ok: true,
     selectedId: firstText(cached.state && cached.state.selectedId),
-    cards: items.map((item) => ({
-      id: firstText(item && item.id),
-      name: firstText(item && item.cardName, item && item.cardData && item.cardData.name, item && item.id, '未命名卡片'),
-      stepCount: item && item.cardData && Array.isArray(item.cardData.steps) ? item.cardData.steps.length : 0,
-      savedAt: firstText(item && item.savedAt),
-    })).filter((item) => item.id),
+    cards: listAutomationCards(bridge),
   };
 }
 
@@ -59,4 +75,9 @@ function createAutomationCardService({ bridge }) {
   };
 }
 
-module.exports = { createAutomationCardService };
+module.exports = {
+  compactCardField,
+  createAutomationCardService,
+  listAutomationCards,
+  summarizeAutomationCard,
+};

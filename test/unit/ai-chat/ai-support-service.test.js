@@ -78,7 +78,7 @@ test('自动化卡片读取和选择返回稳定摘要，不泄露完整卡片�
       exists: true,
       state: {
         selectedId: 'card-1',
-        items: [{ id: 'card-1', cardName: '登录流程', cardData: { steps: [{}, {}] }, savedAt: '2026-01-01' }],
+        items: [{ id: 'card-1', cardName: '登录流程', cardData: { website: 'https://login.example', description: '微软登录', steps: [{}, {}] }, savedAt: '2026-01-01' }],
       },
     }),
     selectCard: () => ({
@@ -91,7 +91,7 @@ test('自动化卡片读取和选择返回稳定摘要，不泄露完整卡片�
   assert.deepEqual(await service.getAutomationCards(), {
     ok: true,
     selectedId: 'card-1',
-    cards: [{ id: 'card-1', name: '登录流程', stepCount: 2, savedAt: '2026-01-01' }],
+    cards: [{ id: 'card-1', name: '登录流程', website: 'https://login.example', description: '微软登录', stepCount: 2, savedAt: '2026-01-01' }],
   });
   assert.deepEqual(service.selectAutomationCard({ id: 'card-1' }), {
     ok: true,

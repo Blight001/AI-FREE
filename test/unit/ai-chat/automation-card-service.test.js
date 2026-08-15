@@ -7,7 +7,7 @@ const { createAutomationCardService } = require('../../../src/app/main/features/
 
 test('card listing maps durable cache records and selection details', async () => {
   const state = { items: [
-    { id: 'one', cardName: 'First', cardData: { name: 'Fallback', steps: [{}, {}] }, savedAt: 'now' },
+    { id: 'one', cardName: 'First', cardData: { name: 'Fallback', website: 'https://example.com', description: '登录', steps: [{}, {}] }, savedAt: 'now' },
     { id: '', cardData: {} },
   ], selectedId: 'one' };
   const bridge = {
@@ -16,7 +16,7 @@ test('card listing maps durable cache records and selection details', async () =
   };
   const service = createAutomationCardService({ bridge });
   assert.deepEqual(await service.getAutomationCards(), {
-    ok: true, selectedId: 'one', cards: [{ id: 'one', name: 'First', stepCount: 2, savedAt: 'now' }],
+    ok: true, selectedId: 'one', cards: [{ id: 'one', name: 'First', website: 'https://example.com', description: '登录', stepCount: 2, savedAt: 'now' }],
   });
   assert.deepEqual(service.selectAutomationCard({ id: 'one' }), {
     ok: true, selectedId: 'one', card: { id: 'one', name: 'First', stepCount: 2 },

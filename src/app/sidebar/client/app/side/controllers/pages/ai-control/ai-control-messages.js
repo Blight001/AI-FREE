@@ -231,19 +231,7 @@
       || message.trace_events?.length);
   }
 
-  function createWelcomeContext(card) {
-    if (!card) return null;
-    const context = document.createElement('div');
-    context.className = 'ai-chat-welcome-context';
-    const label = document.createElement('span');
-    label.textContent = '当前任务';
-    const name = document.createElement('b');
-    name.textContent = card.name;
-    context.append(label, name);
-    return context;
-  }
-
-  function createWelcomeHero(browserText, browserCount, logoUrl, card) {
+  function createWelcomeHero(browserText, browserCount, logoUrl) {
     const hero = document.createElement('div');
     hero.className = 'ai-chat-welcome-hero';
     const brand = document.createElement('div');
@@ -274,8 +262,6 @@
     const summary = document.createElement('p');
     summary.textContent = browserText;
     hero.append(brand, kicker, title);
-    const context = createWelcomeContext(card);
-    if (context) hero.appendChild(context);
     hero.appendChild(summary);
     return hero;
   }
@@ -286,15 +272,12 @@
     container.innerHTML = '';
     const welcome = document.createElement('div');
     welcome.className = 'ai-chat-welcome';
-    const card = selectedAutomationCard();
-    const browserCount = state.currentBrowserIds.length;
+    const browserCount = state.availableBrowserIds.length;
     const browserText = browserCount
-      ? `描述目标即可开始，我会在当前浏览器中观察、操作并反馈结果${browserCount > 1 ? '，也可按名称切换目标' : ''}。`
-      : (card
-        ? `当前卡片为“${card.name}”，但未连接浏览器，将进行普通对话。`
-        : '当前未连接浏览器，将进行普通对话。');
+      ? `描述目标即可开始，我会自行选择浏览器并观察、操作、反馈结果${browserCount > 1 ? '，也可按名称切换目标' : ''}。`
+      : '当前未连接浏览器，将进行普通对话。';
     const logoUrl = window.aiFreeLogoAssets?.url || '../../assets/logo.ico';
-    welcome.appendChild(createWelcomeHero(browserText, browserCount, logoUrl, card));
+    welcome.appendChild(createWelcomeHero(browserText, browserCount, logoUrl));
     container.appendChild(welcome);
     renderRecentHistory();
     updateSessionTitleUi();

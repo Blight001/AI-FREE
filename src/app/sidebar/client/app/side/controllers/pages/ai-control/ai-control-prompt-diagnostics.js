@@ -4,7 +4,7 @@
       messages: currentMessages(),
       browserConnectionId: state.currentBrowserIds[0] || '',
       browserConnectionIds: [...state.currentBrowserIds],
-      automationCardId: state.currentCardId,
+      automationCardId: '',
     };
   }
 

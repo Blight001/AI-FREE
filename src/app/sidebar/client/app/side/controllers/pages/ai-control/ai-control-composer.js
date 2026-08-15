@@ -199,7 +199,7 @@
       quota: run.useCustomApi ? null : state.quota,
       browserConnectionId: state.currentBrowserIds[0] || '',
       browserConnectionIds: [...state.currentBrowserIds],
-      automationCardId: state.currentCardId,
+      automationCardId: '',
       stream: true,
       requestId: run.requestId,
     };
@@ -237,7 +237,7 @@
     state.currentSession.modelId = run.select.value;
     state.currentSession.browserConnectionId = state.currentBrowserIds[0] || '';
     state.currentSession.browserConnectionIds = [...state.currentBrowserIds];
-    state.currentSession.automationCardId = state.currentCardId;
+    state.currentSession.automationCardId = '';
     if (!state.currentSession.title || state.currentSession.title === '新对话') {
       state.currentSession.title = provisionalTitle(run.content);
     }
