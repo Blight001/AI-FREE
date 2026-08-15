@@ -93,6 +93,7 @@
       resizeInput();
       syncSendState();
       if (!chatInput.value) flushDeferredAiControlRefresh();
+      renderMentionMenu();
     });
     chatInput?.addEventListener('compositionstart', () => {
       state.aiInputComposing = true;
@@ -106,6 +107,7 @@
       window.setTimeout(flushDeferredAiControlRefresh, 0);
     });
     chatInput?.addEventListener('keydown', (event) => {
+      if (handleChatMentionKey(event)) return;
       if (state.aiInputComposing && event.key === 'Escape') {
         state.aiInputCompositionCancelled = true;
       }
@@ -115,6 +117,7 @@
         sendMessage();
       }
     });
+    chatInput?.addEventListener('click', renderMentionMenu);
     window.setTimeout(() => {
       if (document.getElementById('ai-control-panel')?.classList.contains('active')) {
         reclaimAiInputFocus(chatInput);
@@ -161,6 +164,7 @@
     bindBrowserSelection();
     bindChatForm();
     bindChatInput();
+    if (typeof bindChatWorkspace === 'function') bindChatWorkspace();
     bindAiPanelRefresh();
     startAiControlPolling();
   });

@@ -43,12 +43,16 @@ test('window.aiFree AI methods bind fixed channels and subscriptions return disp
   await exposed.aiFree.ai.getPromptDiagnostics({ modelId: 'model-1' });
   await exposed.aiFree.ai.manageAutomationCard({ action: 'list' });
   await exposed.aiFree.ai.saveAutomationSession({ connectionId: 'native:p1' });
+  await exposed.aiFree.ai.workspaceList();
+  await exposed.aiFree.ai.workspaceRead({ path: 'notes.md' });
   exposed.aiFree.ai.emitBrowserSelectionChanged({ ids: ['browser-1'] });
   assert.deepEqual(calls, [
     ['invoke', 'ai-control-chat', { requestId: 'request-1' }],
     ['invoke', 'ai-control-get-prompt-diagnostics', { modelId: 'model-1' }],
     ['invoke', 'ai-control-manage-automation-card', { action: 'list' }],
     ['invoke', 'ai-control-save-automation-session', { connectionId: 'native:p1' }],
+    ['invoke', 'ai-control-workspace-list', undefined],
+    ['invoke', 'ai-control-workspace-read', { path: 'notes.md' }],
     ['send', 'ai-control-browser-selection-changed', { ids: ['browser-1'] }],
   ]);
 

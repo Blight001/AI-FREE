@@ -87,6 +87,10 @@ function sanitizeMessage(item) {
   };
   if (role === 'assistant') appendAssistantHistory(message, item);
   if (role === 'tool') appendToolHistory(message, item);
+  if (role === 'user' && Array.isArray(item.attachmentPaths)) {
+    message.attachmentPaths = item.attachmentPaths
+      .map((value) => String(value || '').trim()).filter(Boolean).slice(0, 16);
+  }
   return message;
 }
 

@@ -107,6 +107,8 @@ function createAndRegisterAiServices(deps, ipc) {
     browserRuntimeManager: deps.browserRuntimeManager,
     getTabs: deps.getTabs,
     getMainWindow: deps.getMainWindow,
+    aiSandboxDir: deps.aiSandboxDir,
+    dialog: deps.dialog,
     logger: deps.logger,
   });
   registerAiSupportIpc({ ipc, service: aiSupport });

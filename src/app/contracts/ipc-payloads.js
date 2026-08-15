@@ -92,6 +92,17 @@ function validateChatMessage(channel, message, index) {
   }
 }
 
+function validateChatMentions(channel, mentions) {
+  if (mentions === undefined) return;
+  if (!Array.isArray(mentions) || mentions.length > 32) fail(channel, 'mentions', '必须是最多 32 项的数组');
+  mentions.forEach((mention, index) => {
+    if (!isPlainObject(mention)) fail(channel, `mentions[${index}]`, '必须是对象');
+    for (const key of ['type', 'label', 'reference', 'detail']) {
+      stringField(channel, mention, key, { maxLength: 4096, path: `mentions[${index}].${key}` });
+    }
+  });
+}
+
 function validateHistorySession(channel, session) {
   if (!isPlainObject(session)) fail(channel, 'session', '必须是对象');
   for (const key of ['id', 'title', 'modelId', 'browserConnectionId', 'automationCardId', 'preview']) {
@@ -133,6 +144,8 @@ const IPC_PAYLOAD_SCHEMAS = Object.freeze({
       stringField(channel, input, key);
     }
     stringListField(channel, input, 'browserConnectionIds');
+    stringListField(channel, input, 'attachmentPaths');
+    validateChatMentions(channel, input.mentions);
     for (const key of ['disableTools', 'stream']) booleanField(channel, input, key);
     if (input.quota !== undefined && input.quota !== null && !isPlainObject(input.quota)) {
       fail(channel, 'quota', '必须是对象或 null');
@@ -222,6 +235,11 @@ const IPC_PAYLOAD_SCHEMAS = Object.freeze({
     if (!['ask', 'hide', 'quit'].includes(input.behavior)) {
       fail(channel, 'behavior', '必须是 ask、hide 或 quit');
     }
+    return input;
+  },
+  'ai.workspace-read': (channel, payload) => {
+    const input = objectPayload(channel, payload);
+    stringField(channel, input, 'path', { required: true, maxLength: 4096 });
     return input;
   },
   'ui.sidebar-width': (channel, payload) => {

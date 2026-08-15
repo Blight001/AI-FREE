@@ -48,6 +48,21 @@ test('消息持久化保留全部合法消息并过滤非法角色', () => {
   assert.equal(result.session.messages.some((message) => message.role === 'admin'), false);
 });
 
+test('用户消息保留工作区附件相对路径', () => {
+  const data = fixture();
+  data.repository.saveSession({}, {
+    id: 'attachments',
+    messages: [{
+      role: 'user', content: '查看附件',
+      attachmentPaths: ['Uploads/notes.md', '', 'Uploads/image.png'],
+    }],
+  });
+  assert.deepEqual(
+    data.repository.getSession({}, 'attachments').session.messages[0].attachmentPaths,
+    ['Uploads/notes.md', 'Uploads/image.png'],
+  );
+});
+
 test('工具协议和活动时间线在保存后完整恢复', () => {
   const data = fixture();
   const tool = {

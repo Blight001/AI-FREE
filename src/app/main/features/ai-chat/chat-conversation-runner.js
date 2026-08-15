@@ -223,6 +223,7 @@ function finishWithoutTools(state, result) {
   const messages = limitAiControlMessages(
     state.modelMessages.filter((message) => (
       message?.ai_free_card_context !== true && message?.ai_free_transient_image !== true
+      && message?.ai_free_attachment_context !== true
     )),
   );
   const finalResult = {

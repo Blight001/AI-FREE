@@ -50,6 +50,40 @@ function messagesHaveImageInput(messages = []) {
   ));
 }
 
+function isRecord(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function nativeOpenAiFunction(tool) {
+  return tool.type === 'function' && isRecord(tool.function) ? tool.function : null;
+}
+
+function toolParameters(tool, nativeFunction) {
+  return nativeFunction?.parameters
+    || tool.input_schema
+    || tool.inputSchema
+    || tool.parameters
+    || { type: 'object', properties: {} };
+}
+
+function normalizeOpenAiTool(tool) {
+  if (!isRecord(tool)) return null;
+  const nativeFunction = nativeOpenAiFunction(tool);
+  const name = String(nativeFunction?.name || tool.name || '').trim();
+  if (!name) return null;
+  const description = nativeFunction?.description ?? tool.description;
+  const fn = { ...(nativeFunction || {}), name, parameters: toolParameters(tool, nativeFunction) };
+  if (description) fn.description = String(description);
+  return {
+    type: 'function',
+    function: fn,
+  };
+}
+
+function normalizeOpenAiTools(tools = []) {
+  return (Array.isArray(tools) ? tools : []).map(normalizeOpenAiTool).filter(Boolean);
+}
+
 function buildCustomAiRequest(normalized, messages, options) {
   const headers = { 'Content-Type': 'application/json' };
   if (normalized.apiKey) headers.Authorization = `Bearer ${normalized.apiKey}`;
@@ -58,7 +92,8 @@ function buildCustomAiRequest(normalized, messages, options) {
     messages: normalizeMessages(messages),
     stream: false,
   };
-  if (Array.isArray(options.tools) && options.tools.length) payload.tools = options.tools;
+  const tools = normalizeOpenAiTools(options.tools);
+  if (tools.length) payload.tools = tools;
   return { headers, payload };
 }
 
@@ -130,6 +165,7 @@ async function sendCustomAIControlMessage(config, messages, options = {}) {
 module.exports = {
   messagesHaveImageInput,
   normalizeMessages,
+  normalizeOpenAiTools,
   resolveChatCompletionsUrl,
   sendCustomAIControlMessage,
 };

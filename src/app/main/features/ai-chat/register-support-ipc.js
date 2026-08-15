@@ -33,6 +33,30 @@ function registerAiSupportIpc({ ipc, service }) {
     }
   });
 
+  ipc.handle('ai-control-workspace-list', async () => {
+    try {
+      return service.workspaceList();
+    } catch (error) {
+      return { ok: false, message: error?.message || String(error), files: [] };
+    }
+  });
+
+  ipc.handle('ai-control-workspace-import', async () => {
+    try {
+      return await service.workspaceImport();
+    } catch (error) {
+      return { ok: false, message: error?.message || String(error), files: [] };
+    }
+  });
+
+  ipc.handle('ai-control-workspace-read', async (_event, input = {}) => {
+    try {
+      return service.workspaceRead(input);
+    } catch (error) {
+      return { ok: false, message: error?.message || String(error) };
+    }
+  });
+
   ipc.handle('ai-control-manage-automation-card', async (_event, input = {}) => {
     try {
       return await service.manageAutomationCard(input);

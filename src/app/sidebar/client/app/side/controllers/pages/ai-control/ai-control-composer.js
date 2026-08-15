@@ -137,9 +137,19 @@
     if (!select?.value) return null;
     ensureSessionForSend();
     const messages = currentMessages();
+    const attachmentContext = typeof takeChatAttachmentContext === 'function'
+      ? takeChatAttachmentContext(content)
+      : { attachmentPaths: [], mentions: [] };
     const wasFirstExchange = !messages.some((message) => message.role === 'assistant' && String(message.content || '').trim());
-    messages.push({ role: 'user', content });
-    appendMessage('user', content, { messageIndex: messages.length - 1 });
+    const userMessage = { role: 'user', content };
+    if (attachmentContext.attachmentPaths.length > 0) {
+      userMessage.attachmentPaths = attachmentContext.attachmentPaths;
+    }
+    messages.push(userMessage);
+    appendMessage('user', content, {
+      messageIndex: messages.length - 1,
+      attachmentPaths: attachmentContext.attachmentPaths,
+    });
     updateSessionTitleUi();
     input.value = '';
     resizeInput();
@@ -147,7 +157,7 @@
     state.loading = true;
     state.stopping = false;
     setStatus('');
-    const run = { content, input, messages, select, useCustomApi, wasFirstExchange };
+    const run = { content, input, messages, select, useCustomApi, wasFirstExchange, ...attachmentContext };
     updateCurrentSessionAfterChat(run);
     syncSendState();
     // 本地写入在函数首次 await 前同步完成；主进程文件保存排队在后台，不阻塞请求发送。
@@ -202,6 +212,8 @@
       automationCardId: '',
       stream: true,
       requestId: run.requestId,
+      attachmentPaths: run.attachmentPaths,
+      mentions: run.mentions,
     };
   }
 
@@ -302,7 +314,8 @@
   async function sendMessage() {
     const input = el('ai-chat-input');
     const select = el('ai-chat-model');
-    const content = String(input?.value || '').trim();
+    const typedContent = String(input?.value || '').trim();
+    const content = typedContent || (hasSelectedChatAttachments() ? '请查看并处理所附文件。' : '');
     if (!content) return;
     if (state.loading) {
       await insertMessageDuringRun(content, input);

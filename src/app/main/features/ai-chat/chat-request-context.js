@@ -10,6 +10,7 @@ const { normalizeAccountSession } = require('../../utils/account-session');
 const { enrichBrowserConnectionNames } = require('./connection-names');
 const { listAutomationCards } = require('./automation-card-service');
 const { buildChatToolContext } = require('./chat-tool-context');
+const { buildAttachmentMessages } = require('./ai-workspace-service');
 
 function validateQuota(quota) {
   if (!quota || quota.unlimited === true) return null;
@@ -81,9 +82,12 @@ function normalizeChatOptions(input) {
     : (input.browserConnectionId ? [input.browserConnectionId] : []);
   return {
     automationCardId: String(input.automationCardId || '').trim(),
+    attachmentPaths: [...new Set((Array.isArray(input.attachmentPaths) ? input.attachmentPaths : [])
+      .map((value) => String(value || '').trim()).filter(Boolean))].slice(0, 16),
     connectionIds: [...new Set(rawIds.map((value) => String(value || '').trim()).filter(Boolean))].slice(0, 1),
     disableTools: input.disableTools === true,
     initialMessages: Array.isArray(input.messages) ? input.messages : [],
+    mentions: Array.isArray(input.mentions) ? input.mentions : [],
     requestId: String(input.requestId || '').trim(),
     useStream: input.stream === true,
   };
@@ -137,12 +141,16 @@ function prepareChatRequest(deps, event, input, chatRuns, getWindowTools) {
   if (resolvedConnections.error) return { ...resolvedConnections, ...started };
   const resolvedCards = resolveAutomationCards(deps, options);
   const windowTools = options.disableTools ? null : getWindowTools();
+  const attachmentMessages = buildAttachmentMessages(
+    deps.aiSandboxDir, options.attachmentPaths, options.mentions,
+  );
   const toolContext = buildChatToolContext({
     connections: resolvedConnections.connections,
     controlledConnectionId: resolvedConnections.controlledConnectionId,
     windowTools,
     automationCards: resolvedCards.automationCards,
     initialMessages: options.initialMessages,
+    attachmentMessages,
   });
   return {
     ...access,

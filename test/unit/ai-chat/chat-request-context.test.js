@@ -21,6 +21,12 @@ test('额度边界和旧多选输入被归一化为单一控制浏览器', () =>
     normalizeChatOptions({ browserConnectionIds: [' a ', 'a', '', 'b'], stream: true, requestId: ' r ' }).connectionIds,
     ['a'],
   );
+  const options = normalizeChatOptions({
+    attachmentPaths: [' notes.md ', 'notes.md', ''],
+    mentions: [{ type: 'file', label: 'notes.md', reference: 'notes.md', detail: '说明' }],
+  });
+  assert.deepEqual(options.attachmentPaths, ['notes.md']);
+  assert.equal(options.mentions[0].reference, 'notes.md');
 });
 
 test('内置模型要求登录和服务可用，自定义模型同时要求 VIP 与完整配置', () => {

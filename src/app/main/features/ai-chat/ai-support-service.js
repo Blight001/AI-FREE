@@ -4,11 +4,17 @@ const { createAiModelService } = require('./ai-model-service');
 const { createAutomationCardService } = require('./automation-card-service');
 const { enrichBrowserConnectionNames } = require('./connection-names');
 const { normalizeAccountSession } = require('../../utils/account-session');
+const { createAiWorkspaceService } = require('./ai-workspace-service');
 
 function createAiSupportService(deps = {}) {
   const modelService = createAiModelService(deps);
   const cardService = createAutomationCardService({
     bridge: deps.browserAutomationBridge,
+  });
+  const workspaceService = createAiWorkspaceService({
+    dialog: deps.dialog,
+    getOwner: deps.getMainWindow,
+    workspaceDir: deps.aiSandboxDir,
   });
 
   function getBrowserConnections() {
@@ -55,6 +61,9 @@ function createAiSupportService(deps = {}) {
     redeemGiftCode,
     saveAutomationSession: cardService.saveAutomationSession,
     selectAutomationCard: cardService.selectAutomationCard,
+    workspaceImport: workspaceService.importFiles,
+    workspaceList: workspaceService.list,
+    workspaceRead: workspaceService.read,
   };
 }
 

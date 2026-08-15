@@ -191,6 +191,19 @@
       || (Array.isArray(options.traceEvents) && options.traceEvents.length > 0);
   }
 
+  function appendUserMessageFiles(bubble, attachmentPaths) {
+    if (!Array.isArray(attachmentPaths) || !attachmentPaths.length) return;
+    const files = document.createElement('div');
+    files.className = 'ai-chat-message-files';
+    attachmentPaths.forEach((filePath) => {
+      const item = document.createElement('span');
+      item.textContent = `📎 ${workspaceFileByPath(filePath)?.name || filePath}`;
+      item.title = filePath;
+      files.appendChild(item);
+    });
+    bubble.appendChild(files);
+  }
+
   function appendMessage(role, content, options = {}) {
     const container = el('ai-chat-messages');
     if (!container) return null;
@@ -207,6 +220,7 @@
     const bubble = document.createElement('div');
     bubble.className = 'ai-chat-bubble';
     bubble.textContent = content;
+    if (role === 'user') appendUserMessageFiles(bubble, options.attachmentPaths);
     row.appendChild(bubble);
     if (role === 'user') {
       const messageIndex = Number.isInteger(options.messageIndex)
@@ -301,13 +315,17 @@
         reasoning: message.reasoning,
         toolEvents: message.tool_events,
         traceEvents: message.trace_events,
+        attachmentPaths: message.attachmentPaths,
       });
     });
     updateSessionTitleUi();
   }
 
   function chatInputHasSendableContent(input = el('ai-chat-input')) {
-    return Boolean(String(input?.value || '').trim());
+    const hasAttachments = typeof hasSelectedChatAttachments === 'function'
+      && hasSelectedChatAttachments();
+    return Boolean(String(input?.value || '').trim())
+      || (!state.loading && hasAttachments);
   }
 
   function resolveChatButtonMode(hasContent) {

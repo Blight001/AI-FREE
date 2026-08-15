@@ -13,6 +13,7 @@ const {
 } = require('../../src/app/main/utils/ai-control-settings');
 const {
   normalizeMessages,
+  normalizeOpenAiTools,
   resolveChatCompletionsUrl,
   sendCustomAIControlMessage,
 } = require('../../src/app/main/services/custom-ai-api');
@@ -74,6 +75,19 @@ test('自定义 API 消息归一化保留工具协议并剔除私有字段', () 
   ]);
 });
 
+test('AI-FREE MCP 工具转换为 OpenAI function tools', () => {
+  const schema = { type: 'object', properties: { action: { type: 'string' } }, required: ['action'] };
+  assert.deepEqual(normalizeOpenAiTools([
+    { name: 'windows_tab', description: '管理窗口', input_schema: schema },
+    { type: 'function', function: { name: 'native_tool', description: '原生格式', parameters: schema, strict: true } },
+    null,
+    { description: '缺少名称' },
+  ]), [
+    { type: 'function', function: { name: 'windows_tab', description: '管理窗口', parameters: schema } },
+    { type: 'function', function: { name: 'native_tool', description: '原生格式', parameters: schema, strict: true } },
+  ]);
+});
+
 test('自定义 API 请求使用 OpenAI 兼容协议并保留工具调用', async (t) => {
   const originalPost = axios.post;
   t.after(() => { axios.post = originalPost; });
@@ -93,13 +107,17 @@ test('自定义 API 请求使用 OpenAI 兼容协议并保留工具调用', asyn
     apiKey: 'token',
     model: 'demo-model',
   }, [{ role: 'user', content: '打开网页', private_field: true }], {
-    tools: [{ type: 'function', function: { name: 'open_page', parameters: { type: 'object' } } }],
+    tools: [{ name: 'open_page', description: '打开网页', input_schema: { type: 'object' } }],
   });
   assert.equal(result.ok, true);
   assert.equal(captured.url, 'https://example.com/v1/chat/completions');
   assert.equal(captured.options.headers.Authorization, 'Bearer token');
   assert.equal(captured.payload.model, 'demo-model');
   assert.equal(captured.payload.messages[0].private_field, undefined);
+  assert.deepEqual(captured.payload.tools, [{
+    type: 'function',
+    function: { name: 'open_page', description: '打开网页', parameters: { type: 'object' } },
+  }]);
   assert.equal(result.message.tool_calls[0].function.name, 'open_page');
 });
 

@@ -137,7 +137,10 @@ function createCardCatalogContext(cards, connections) {
 }
 
 function buildChatToolContext(options = {}) {
-  const { connections, controlledConnectionId, windowTools, automationCards, initialMessages } = options;
+  const {
+    connections, controlledConnectionId, windowTools, automationCards,
+    initialMessages, attachmentMessages = [],
+  } = options;
   const resolver = createConnectionResolver(connections);
   const tools = [...selectedWindowTools(windowTools, initialMessages), ...collectConnectionTools(connections, windowTools)];
   const cardContext = createCardCatalogContext(automationCards, connections);
@@ -149,6 +152,7 @@ function buildChatToolContext(options = {}) {
       ...(mcpContext ? [mcpContext] : []),
       ...(cardContext ? [cardContext] : []),
       ...initialMessages,
+      ...attachmentMessages,
     ]),
   };
 }

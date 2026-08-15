@@ -192,6 +192,7 @@
     const previousIds = normalizeBrowserIds([...getSelectBrowserIds(select), ...state.currentBrowserIds]);
     try {
       const result = requireAiDataResult(await getConnections(), '浏览器连接读取失败');
+      state.mcpTools = Array.isArray(result.mcpTools) ? result.mcpTools : [];
       if (shouldDeferDynamicDataRefresh()) return;
       const connections = Array.isArray(result.connections) ? result.connections : [];
       // 心跳轮询只负责发现连接变化。列表内容没变时不重建 select/menu，

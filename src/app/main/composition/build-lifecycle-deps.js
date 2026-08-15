@@ -1,7 +1,7 @@
 // registerAppLifecycle 依赖装配（阶段 2D-3，自 bootstrap.js 原样迁出）。
 'use strict';
 
-const { ipcMain, BrowserWindow } = require('electron');
+const { ipcMain, BrowserWindow, dialog } = require('electron');
 const { getStorePath, initializeCoreDirectory } = require('../config');
 const { createHttpClient } = require('../lib/http-client');
 const { shortcutManager } = require('../utils/removeWatermark');
@@ -86,6 +86,7 @@ function buildLifecycleDeps({
     isMainBootstrapped: appRuntime.getIsMainBootstrapped,
     getLicenseWindow: appRuntime.getLicenseWindow,
     BrowserWindow,
+    dialog,
     createMainWindow: appShell.createMainWindow,
     revealMainWindow: appShell.revealMainWindow,
     getMainWindow: appRuntime.getMainWindow,
