@@ -51,11 +51,18 @@ function resolveInstallDirectory(app, options = {}) {
 }
 
 function resolveAiSandboxDir(app, options = {}) {
+  const desktopDirectory = typeof app?.getPath === 'function' ? app.getPath('desktop') : '';
+  const stableRoot = String(desktopDirectory || '').trim();
+  return path.join(stableRoot || resolveInstallDirectory(app, options), 'AI-Workspace');
+}
+
+function resolveLegacyAiSandboxDir(app, options = {}) {
   return path.join(resolveInstallDirectory(app, options), 'AI-Workspace');
 }
 
 module.exports = {
   resolveAiSandboxDir,
+  resolveLegacyAiSandboxDir,
   resolveAutomationCardCacheDir,
   resolveChromiumResourcesPath,
   resolveInstallDirectory,

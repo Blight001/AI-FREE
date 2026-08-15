@@ -39,23 +39,42 @@ const {
 } = require('../config');
 const {
   resolveAiSandboxDir,
+  resolveLegacyAiSandboxDir,
   resolveAutomationCardCacheDir,
   resolveChromiumResourcesPath,
 } = require('../config/paths');
 
 const APP_DISPLAY_NAME = 'AI-FREE';
 
+function prepareAiSandboxDirectory(app, fileSystem) {
+  const workspaceDir = resolveAiSandboxDir(app);
+  const legacyDir = resolveLegacyAiSandboxDir(app);
+  try {
+    const shouldCopy = workspaceDir !== legacyDir
+      && !fileSystem.existsSync(workspaceDir)
+      && fileSystem.existsSync(legacyDir)
+      && typeof fileSystem.cpSync === 'function';
+    if (shouldCopy) {
+      fileSystem.cpSync(legacyDir, workspaceDir, { recursive: true, force: false, errorOnExist: false });
+      console.log('[AI工作区] 已把原安装目录工作区复制到桌面，原文件仍保留。');
+    }
+  } catch (error) {
+    console.warn('[AI工作区] 无法复制原工作区，继续使用桌面目录:', error?.message || error);
+  }
+  try {
+    fileSystem.mkdirSync(workspaceDir, { recursive: true });
+  } catch (error) {
+    console.warn('[AI工作区] 无法创建桌面工作区:', error?.message || error);
+  }
+  return workspaceDir;
+}
+
 function createCoreServices({ app, fs, path, BrowserWindow, powerSaveBlocker, safeStorage, safeModePolicy, getTabManager }) {
   // ---- 全局状态 ----
   const appRuntime = createAppState();
   const tabs = appRuntime.tabs;
 
-  const aiSandboxDir = resolveAiSandboxDir(app);
-  try {
-    fs.mkdirSync(aiSandboxDir, { recursive: true });
-  } catch (error) {
-    console.warn('[AI工作区] 无法创建安装目录工作区:', error?.message || error);
-  }
+  const aiSandboxDir = prepareAiSandboxDirectory(app, fs);
   const browserRuntimeManager = createBrowserRuntimeManager({
     userDataDir: app.getPath('userData'),
     resourcesPath: resolveChromiumResourcesPath(app),
