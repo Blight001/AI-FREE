@@ -4,7 +4,7 @@
 
 ## 1. 开始工作前
 
-1. 阅读 `docs/ARCHITECTURE.md`、`docs/DATA-CONTRACTS.md`、`docs/refactoring/PROGRESS.md`；涉及故障时再读 `docs/TROUBLESHOOTING.md`。
+1. 阅读 `docs/control-domain-separation/software/CONTRACT.md`、`docs/control-domain-separation/browser/CONTRACT.md`、`docs/control-domain-separation/PROGRESS.md`；阶段 0 基线见同目录的 `stage0/`，涉及故障时再查对应模块的诊断文档。
 2. 先检查 `git status --short`，区分已有改动和本次改动。已有改动默认属于用户，不得覆盖、回退或顺手整理。
 3. 找到行为入口、全部调用方、契约和现有测试后再修改。修复故障必须先说明根因，不能只隐藏错误信息或增加无条件回退。
 4. 选择能完整解决问题的最小改动范围。没有用户明确授权，不做全目录改名、批量格式化、框架替换、依赖升级或无关重构。
