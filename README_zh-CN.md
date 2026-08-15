@@ -4,7 +4,7 @@
 
 AI-FREE 是面向 Windows 的多环境 AI 浏览器工作台。Electron 负责桌面外壳、账号授权、网络与环境配置，实际网页统一运行在项目内置的 **AI-FREE Chromium Fork** 中，并通过原生 Win32 宿主嵌入主窗口。
 
-当前版本：`2.6.4`
+当前版本：`2.6.38`
 
 > 当前仓库不是普通 Electron 内嵌网页项目。正式模式必须使用 `resources/chromium/ai-free-browser.exe`，并完成 Runtime Bridge 命名管道握手；不会回退到 Electron 网页视图或系统 Chrome/Edge。
 

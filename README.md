@@ -4,7 +4,7 @@ English | [简体中文](README_zh-CN.md)
 
 AI-FREE is a multi-profile AI browser workspace for Windows. Electron provides the desktop shell, account and license flows, networking, and environment controls. All web content runs in the bundled **AI-FREE Chromium Fork**, embedded into the main window through a native Win32 host.
 
-Current version: `2.6.4`
+Current version: `2.6.38`
 
 > This is no longer a conventional Electron webview application. Production mode requires `resources/chromium/ai-free-browser.exe` and an authenticated Runtime Bridge named-pipe handshake. It does not fall back to Electron web content or a system Chrome/Edge installation.
 
