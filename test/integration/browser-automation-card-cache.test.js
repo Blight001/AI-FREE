@@ -96,3 +96,43 @@ test('running an automation card holds and releases a background execution lease
 
   assert.deepEqual(events, ['acquire', 'release']);
 });
+
+async function waitForRun(bridge, runId, expected, timeoutMs = 2000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const result = bridge.manageCard('', { action: 'get_run', run_id: runId });
+    if (result.run.status === expected) return result.run;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error(`等待运行进入 ${expected} 超时`);
+}
+
+test('bridge routes persistent asynchronous runs with idempotency, progress, cancellation and retry', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-card-async-run-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const bridge = createBrowserAutomationBridge({ cardCacheDir: root, logger: { log() {} } });
+  const written = await bridge.manageCard('', {
+    action: 'write',
+    cardData: { name: '异步运行', steps: [{ id: 'pause', type: 'delay', delayMs: 40 }, { id: 'done', type: 'end' }] },
+  });
+  const progress = [];
+  const unsubscribe = bridge.onRunProgress((event) => progress.push(event));
+  t.after(unsubscribe);
+
+  const first = await bridge.manageCard('', {
+    action: 'start_run', id: written.item.id, idempotency_key: 'one-click', inputs: {},
+  });
+  const duplicate = await bridge.manageCard('', {
+    action: 'start_run', id: written.item.id, idempotency_key: 'one-click', inputs: {},
+  });
+  assert.equal(duplicate.run.id, first.run.id);
+  await waitForRun(bridge, first.run.id, 'running');
+  assert.equal(bridge.manageCard('', { action: 'cancel_run', run_id: first.run.id }).run.status, 'cancelled');
+  const retried = bridge.manageCard('', { action: 'retry_run', run_id: first.run.id }).run;
+  const completed = await waitForRun(bridge, retried.id, 'succeeded');
+  assert.equal(completed.sourceRunId, first.run.id);
+  assert.equal(bridge.manageCard('', { action: 'list_run_steps', run_id: retried.id }).items.length >= 2, true);
+  assert.equal(bridge.manageCard('', { action: 'list_runs', card_id: written.item.id }).items.length, 2);
+  assert.equal(fs.existsSync(bridge.runsFilePath), true);
+  assert.equal(progress.some((event) => event.event === 'progress'), true);
+});

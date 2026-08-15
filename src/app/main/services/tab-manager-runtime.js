@@ -13,12 +13,44 @@ function focusMainWindowShell(mainWindow) {
   if (isUsableWebContents(mainWindow?.webContents)) mainWindow.webContents.focus?.();
 }
 
+function resolveLiveChromiumTab(response) {
+  const direct = response?.activeTab || response?.result?.activeTab;
+  if (direct) return direct;
+  const rawTabs = Array.isArray(response?.tabs) ? response.tabs : response?.result?.tabs;
+  const tabs = Array.isArray(rawTabs) ? rawTabs : [];
+  return tabs.find((item) => item?.active === true)
+    || tabs.find((item) => /^https?:\/\//i.test(String(item?.url || '')))
+    || null;
+}
+
+function readLiveWebsite(activeTab) {
+  const rawUrl = String(activeTab?.url || '');
+  const url = /^https?:\/\//i.test(rawUrl) ? rawUrl : '';
+  const rawIcon = String(activeTab?.faviconUrl || '').trim();
+  const isRemoteIcon = /^https?:\/\//i.test(rawIcon);
+  const isBoundedDataIcon = /^data:image\//i.test(rawIcon) && rawIcon.length <= 524288;
+  return { url, iconUrl: isRemoteIcon || isBoundedDataIcon ? rawIcon : '' };
+}
+
+function applyLiveWebsite(tab, website) {
+  const pageChanged = website.url !== String(tab.firstWebsiteUrl || '');
+  const iconChanged = website.iconUrl && website.iconUrl !== String(tab.firstWebsiteIconUrl || '');
+  if (pageChanged) {
+    tab.firstWebsiteUrl = website.url;
+    tab.firstWebsiteIconUrl = website.iconUrl;
+  } else if (iconChanged) {
+    tab.firstWebsiteIconUrl = website.iconUrl;
+  }
+  return Boolean(pageChanged || iconChanged);
+}
+
 class TabManagerRuntime {
   constructor(deps = {}) {
     this.deps = deps;
     this.logger = deps.logger || console;
     this.closingTabIds = new Set();
     this.profileStopTasks = new Map();
+    this.websiteIconSyncTimers = new Map();
     this.initializeTutorialController();
     this.initializeNetworkController();
     this.initializeTabLauncher();
@@ -164,11 +196,46 @@ class TabManagerRuntime {
   }
 
   handleRuntimeStateChanged(runtimeState) {
-    const tab = this.resolveTabs().get(String(runtimeState?.profileId || ''));
+    const tabId = String(runtimeState?.profileId || '');
+    const tab = this.resolveTabs().get(tabId);
     if (!tab) return;
     tab.runtimeStatus = runtimeState.status;
     tab.runtimeError = runtimeState.lastError || null;
+    if (runtimeState.status === 'ready') this.scheduleWebsiteIconSync(tabId, 0);
+    else this.clearWebsiteIconSync(tabId);
     this.deps.updateTabs(true);
+  }
+
+  clearWebsiteIconSync(tabId) {
+    const id = String(tabId || '');
+    const timer = this.websiteIconSyncTimers.get(id);
+    if (timer) clearTimeout(timer);
+    this.websiteIconSyncTimers.delete(id);
+  }
+
+  scheduleWebsiteIconSync(tabId, delayMs = 5000) {
+    const id = String(tabId || '');
+    const tab = this.resolveTabs().get(id);
+    if (!tab || tab.runtimeStatus !== 'ready' || id !== String(this.resolveActiveTabId() || '')
+      || this.websiteIconSyncTimers.has(id)) return;
+    if (typeof this.deps.browserRuntimeManager?.listTabs !== 'function') return;
+    const timer = setTimeout(() => {
+      this.websiteIconSyncTimers.delete(id);
+      void this.syncFirstWebsiteUrl(id);
+    }, delayMs);
+    timer.unref?.();
+    this.websiteIconSyncTimers.set(id, timer);
+  }
+
+  async syncFirstWebsiteUrl(tabId) {
+    const tab = this.resolveTabs().get(tabId);
+    if (!tab || tab.runtimeStatus !== 'ready') return;
+    try {
+      const response = await this.deps.browserRuntimeManager.listTabs(tabId, 'chromium');
+      const website = readLiveWebsite(resolveLiveChromiumTab(response));
+      if (applyLiveWebsite(tab, website)) this.deps.updateTabs(true);
+    } catch (_) {}
+    this.scheduleWebsiteIconSync(tabId, 2000);
   }
 
   handleRuntimeCrash(runtimeState) {
@@ -177,6 +244,7 @@ class TabManagerRuntime {
     if (!tab) return;
     tab.runtimeStatus = 'crashed';
     tab.runtimeError = runtimeState.lastError || null;
+    this.clearWebsiteIconSync(tabId);
     this.deps.updateTabs(true);
   }
 
@@ -184,7 +252,15 @@ class TabManagerRuntime {
     const tab = this.resolveTabs().get(String(event?.profileId || ''));
     if (!tab) return;
     if (event.type === 'title-changed') tab.runtimeTitle = String(event.title || '').trim();
-    if (event.type === 'url-changed') tab.runtimeUrl = String(event.url || '').trim();
+    if (event.type === 'url-changed') {
+      tab.runtimeUrl = String(event.url || '').trim();
+      if (/^https?:\/\//i.test(tab.runtimeUrl) && tab.firstWebsiteUrl !== tab.runtimeUrl) {
+        tab.firstWebsiteUrl = tab.runtimeUrl;
+        tab.firstWebsiteIconUrl = '';
+        this.clearWebsiteIconSync(tab.id);
+        this.scheduleWebsiteIconSync(tab.id, 350);
+      }
+    }
     this.deps.updateTabs();
   }
 
@@ -235,10 +311,13 @@ class TabManagerRuntime {
     if (!tabs.has(tabId)) return;
     const activeTabId = this.resolveActiveTabId();
     if (activeTabId && tabs.has(activeTabId)) {
+      this.clearWebsiteIconSync(activeTabId);
       void this.deps.browserRuntimeManager?.hide(tabs.get(activeTabId).id, 'chromium');
     }
     this.deps.setActiveTabId?.(tabId);
     const activeTab = tabs.get(tabId);
+    this.clearWebsiteIconSync(tabId);
+    this.scheduleWebsiteIconSync(tabId, 0);
     void this.deps.browserRuntimeManager?.show(activeTab.id, 'chromium').then(() => (
       options.focusBrowser === true
         ? this.deps.browserRuntimeManager.focus(activeTab.id, 'chromium')
@@ -253,6 +332,7 @@ class TabManagerRuntime {
   showHomePage(tabs = this.resolveTabs()) {
     const activeTabId = this.resolveActiveTabId();
     if (activeTabId && tabs.has(activeTabId)) {
+      this.clearWebsiteIconSync(activeTabId);
       void this.deps.browserRuntimeManager?.hide(tabs.get(activeTabId).id, 'chromium');
     }
     this.deps.setActiveTabId?.(null);
@@ -263,6 +343,7 @@ class TabManagerRuntime {
     const tabs = this.resolveTabs();
     if (!tabs.has(tabId) || !this.resolveMainWindow() || this.closingTabIds.has(tabId)) return;
     this.closingTabIds.add(tabId);
+    this.clearWebsiteIconSync(tabId);
     const orderedTabIds = Array.from(tabs.keys());
     const tabToClose = tabs.get(tabId);
     this.hideClosingTab(tabId);

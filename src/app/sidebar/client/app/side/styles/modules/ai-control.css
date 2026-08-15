@@ -1374,7 +1374,7 @@ summary[aria-expanded="true"] .ai-chat-disclosure { transform: rotate(90deg); }
   overflow-x: hidden;
 }
 .ai-chat-composer textarea::placeholder { color: #74869f; }
-.ai-chat-composer button {
+#ai-chat-send {
   width: 36px;
   height: 36px;
   border: 0;
@@ -1386,7 +1386,7 @@ summary[aria-expanded="true"] .ai-chat-disclosure { transform: rotate(90deg); }
   display: grid;
   place-items: center;
 }
-.ai-chat-composer button svg {
+#ai-chat-send svg {
   width: 19px;
   height: 19px;
   fill: none;
@@ -1396,22 +1396,22 @@ summary[aria-expanded="true"] .ai-chat-disclosure { transform: rotate(90deg); }
   stroke-linejoin: round;
   pointer-events: none;
 }
-.ai-chat-composer button.is-stop svg {
+#ai-chat-send.is-stop svg {
   width: 18px;
   height: 18px;
   fill: currentColor;
   stroke: none;
 }
-.ai-chat-composer button.is-stop {
+#ai-chat-send.is-stop {
   border: 1px solid rgba(255, 255, 255, .18);
   background: rgba(255, 255, 255, .09);
   font-size: 14px;
 }
-.ai-chat-composer button.is-stop:hover { background: rgba(255, 255, 255, .16); }
-.ai-chat-composer button.is-insert {
+#ai-chat-send.is-stop:hover { background: rgba(255, 255, 255, .16); }
+#ai-chat-send.is-insert {
   box-shadow: 0 0 0 3px rgba(77, 163, 255, .12);
 }
-.ai-chat-composer button:disabled { opacity: .35; cursor: not-allowed; }
+#ai-chat-send:disabled { opacity: .35; cursor: not-allowed; }
 .ai-chat-status { flex: 0 0 auto; min-height: 16px; color: #f0a8a8; font-size: 12px; }
 
 /* ---- 紧凑布局 ---- */

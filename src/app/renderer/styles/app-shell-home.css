@@ -1,11 +1,10 @@
 #browser-empty-state {
   position: absolute;
-  inset: 0 30% 0 0;
+  inset: 0 var(--app-shell-sidebar-width, 30%) 0 0;
   display: block;
   overflow: auto;
   box-sizing: border-box;
   pointer-events: auto;
-  transition: right 0.18s ease;
 }
 
 #browser-empty-state[hidden] {
@@ -24,10 +23,4 @@
 
 html.sidebar-collapsed #browser-empty-state {
   right: 0;
-}
-
-@media (max-width: 760px) {
-  #browser-empty-state {
-    right: 0;
-  }
 }

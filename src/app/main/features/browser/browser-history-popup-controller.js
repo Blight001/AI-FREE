@@ -104,13 +104,13 @@ function createBrowserHistoryPopupController({ ui }) {
     const popupWidth = Math.max(220, Math.min(320, contentBounds.width - 16));
     const anchorLeft = Number.isFinite(Number(anchor.left)) ? Number(anchor.left) : 8;
     const anchorRight = Number.isFinite(Number(anchor.right)) ? Number(anchor.right) : anchorLeft + 30;
-    const anchorBottom = Number.isFinite(Number(anchor.bottom)) ? Number(anchor.bottom) : 35;
+    const anchorTop = Number.isFinite(Number(anchor.top)) ? Number(anchor.top) : contentBounds.height - 35;
     const anchorCenterX = (anchorLeft + anchorRight) / 2;
     const desiredX = contentBounds.x + anchorCenterX - popupWidth / 2;
-    const desiredY = contentBounds.y + anchorBottom + 6;
-    const display = screen.getDisplayNearestPoint({ x: desiredX, y: desiredY });
-    const maxBottom = Math.min(contentBounds.y + contentBounds.height - 8, display.workArea.y + display.workArea.height - 8);
-    const availableHeight = Math.max(86, maxBottom - desiredY);
+    const anchorY = contentBounds.y + anchorTop - 6;
+    const display = screen.getDisplayNearestPoint({ x: desiredX, y: anchorY });
+    const minTop = Math.max(contentBounds.y + 8, display.workArea.y + 8);
+    const availableHeight = Math.max(86, anchorY - minTop);
     const maxRows = Math.max(1, Math.floor((availableHeight - 48) / 51));
     const visibleHistory = sourceHistory.slice(0, maxRows);
     const popupHeight = visibleHistory.length
@@ -119,7 +119,7 @@ function createBrowserHistoryPopupController({ ui }) {
     const workAreaLeft = display.workArea.x + 8;
     const workAreaRight = display.workArea.x + display.workArea.width - 8;
     const x = Math.max(workAreaLeft, Math.min(desiredX, workAreaRight - popupWidth));
-    const y = desiredY;
+    const y = Math.max(minTop, anchorY - popupHeight);
     const layout = {
       x: x - contentBounds.x,
       y: y - contentBounds.y,

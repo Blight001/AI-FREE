@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createSidebarFocusHandler } = require('../../../src/app/main/features/browser/sidebar-focus-controller');
 
-function createHarness() {
+function createHarness(options = {}) {
   const calls = [];
   const shellContents = { focus: () => calls.push('shell-focus'), isDestroyed: () => false };
   const sideContents = {
@@ -14,7 +14,8 @@ function createHarness() {
     webContents: shellContents,
     isDestroyed: () => false,
     isMinimized: () => false,
-    isFocused: () => true,
+    isFocused: () => options.windowFocused !== false,
+    focus: () => calls.push('window-focus'),
   };
   const ui = {
     browserRuntimeManager: {
@@ -50,4 +51,16 @@ test('passive focus follows the regular sidebar focus path', async () => {
     'shell-focus', 'sidebar-focus',
   ]);
   assert.deepEqual(result, { ok: true, sideFocused: true });
+});
+
+test('background AI input focus does not activate or flash the Windows taskbar', async () => {
+  const { calls, ui } = createHarness({ windowFocused: false });
+  const handler = createSidebarFocusHandler(ui);
+
+  const textResult = await handler({ sender: {} }, { interaction: 'text-input' });
+  const passiveResult = await handler({ sender: {} }, { interaction: 'passive' });
+
+  assert.deepEqual(calls, []);
+  assert.deepEqual(textResult, { ok: true, skipped: true, reason: 'window-background' });
+  assert.deepEqual(passiveResult, { ok: true, skipped: true, reason: 'window-background' });
 });

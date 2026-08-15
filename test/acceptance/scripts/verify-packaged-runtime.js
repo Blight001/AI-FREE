@@ -203,7 +203,7 @@ function verifyAsarIntegrity(projectDir, appOutDir) {
     }
     if (appShell.includes('id="account-center-btn"')
       || !appShell.includes('../sidebar/client/scripts/logo-assets.js')
-      || (appShell.match(/<img[^>]*data-app-logo/g) || []).length !== 1
+      || (appShell.match(/<img[^>]*data-app-logo/g) || []).length !== 2
       || !appShell.includes('id="ai-free-settings-panel"')
       || !appShell.includes('id="automation-workbench"')
       || !sidebar.includes('data-tab="account-center-panel"')

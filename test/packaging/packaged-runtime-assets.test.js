@@ -96,6 +96,7 @@ test('sidebar logos use the runtime asset resolver in source and packaged apps',
   assert.ok(devConsolePage.includes('../../sidebar/ai-control.html?dev=1'));
   assert.equal(appShellSource.includes('createDevConsoleWindow'), false);
   assert.ok(appShell.includes('../sidebar/client/scripts/logo-assets.js'));
+  assert.equal((appShell.match(/<img[^>]*data-app-logo/g) || []).length, 2);
   assert.ok(appShell.includes('id="ai-free-settings-panel"'));
   assert.ok(appShell.includes('id="browser-settings-tutorial"'));
   assert.ok(appShell.includes('id="automation-workbench"'));
@@ -108,4 +109,22 @@ test('sidebar logos use the runtime asset resolver in source and packaged apps',
   assert.match(accountAuthCss, /\.account-center-panel\s*\{[^}]*overflow-y:\s*auto;/s);
   assert.match(accountAuthCss, /\.account-center-panel \.container\s*\{[^}]*overflow:\s*visible;/s);
   assert.match(layoutCss, /#browser-empty-state::\-webkit-scrollbar-thumb/);
+});
+
+test('embedded Chromium clears hover tooltips when hidden or deactivated', () => {
+  const focusManager = fs.readFileSync(path.join(
+    __dirname, '../../native/browser-host/src/focus_manager.cc',
+  ), 'utf8');
+  const hostWindow = fs.readFileSync(path.join(
+    __dirname, '../../native/browser-host/src/browser_host_window.cc',
+  ), 'utf8');
+  const shellWindow = fs.readFileSync(path.join(
+    __dirname, '../../src/app/main/services/app-shell-main-window.js',
+  ), 'utf8');
+
+  assert.match(focusManager, /DismissBrowserTransientUi\(child\)/);
+  assert.match(focusManager, /WM_MOUSELEAVE/);
+  assert.match(focusManager, /ShowWindowAsync\(hwnd, SW_HIDE\)/);
+  assert.match(hostWindow, /HideHostWindow[\s\S]*?DismissBrowserTransientUi/);
+  assert.match(shellWindow, /mainWindow\.on\('blur',[\s\S]*?dismissActiveBrowserTransientUi/);
 });

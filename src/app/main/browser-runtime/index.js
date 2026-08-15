@@ -50,6 +50,7 @@ class BrowserRuntimeManager {
   async reload(profileId, type) { return this.runtimeFor(type).reload(profileId); }
   async navigate(profileId, type, url) { return this.runtimeFor(type).navigate?.(profileId, url); }
   async openTabs(profileId, type, urls) { return this.runtimeFor(type).openTabs?.(profileId, urls); }
+  async listTabs(profileId, type) { return this.runtimeFor(type).listTabs?.(profileId); }
   async dispatchInput(profileId, input) { return this.chromium.dispatchInput(profileId, input); }
   async dispatchInputByProcessId(processId, input) {
     return this.chromium.dispatchInputByProcessId(processId, input);

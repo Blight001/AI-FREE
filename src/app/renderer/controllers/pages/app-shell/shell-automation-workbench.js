@@ -25,13 +25,14 @@
     if (website) {
       try { new URL(website); } catch (_) { throw new Error('目标网站 URL 格式错误'); }
     }
-    return {
+    const draft = {
       ...(state.cardData || {}),
       name,
       website,
       description: String(element('automation-card-description')?.value || '').trim(),
       steps,
     };
+    return window.AppShellAutomationWorkbenchUpgrade?.enrichCardDraft?.(draft) || draft;
   }
 
   async function invoke(input) {
@@ -85,6 +86,11 @@
   function renderCards() {
     const list = element('automation-card-list');
     if (!list) return;
+    if (window.AppShellAutomationWorkbenchUpgrade?.renderCards?.(state.cards, state.selectedId, loadCard)) {
+      element('automation-export').disabled = !state.selectedId;
+      element('automation-delete').disabled = !state.selectedId;
+      return;
+    }
     list.replaceChildren(...state.cards.map(cardButton));
     if (!state.cards.length) {
       const empty = document.createElement('p');
@@ -96,6 +102,14 @@
     element('automation-delete').disabled = !state.selectedId;
   }
 
+  function syncWorkflowUpgrade(entry, card) {
+    const upgrade = window.AppShellAutomationWorkbenchUpgrade;
+    if (!upgrade) return;
+    upgrade.applyMetadata?.({ ...entry, cardData: card });
+    const versionRefresh = upgrade.refreshVersions?.(String(entry?.id || ''));
+    if (versionRefresh?.catch) void versionRefresh.catch((error) => setStatus(error.message));
+  }
+
   function showCard(entry) {
     state.selectedId = String(entry?.id || '');
     state.cardData = entry?.cardData && typeof entry.cardData === 'object' ? entry.cardData : null;
@@ -104,6 +118,7 @@
     element('automation-card-website').value = card.website || '';
     element('automation-card-description').value = card.description || '';
     element('automation-card-steps').value = JSON.stringify(card.steps || [], null, 2);
+    syncWorkflowUpgrade(entry, card);
     window.AppShellAutomationCanvas?.show?.(card);
     renderCards();
   }
@@ -168,10 +183,16 @@
   }
 
   async function saveCard(announce = true) {
-    const data = await invoke({ action: 'write', id: state.selectedId, cardData: cardDraft() });
+    const metadata = window.AppShellAutomationWorkbenchUpgrade?.cardMetadataPayload?.() || {};
+    const data = await invoke({ action: 'write', id: state.selectedId, cardData: cardDraft(), metadata });
     showCard(data.item);
     state.cards = Array.isArray(data.state?.items)
-      ? data.state.items.map((item) => ({ id: item.id, name: item.cardName, updatedAt: item.updatedAt }))
+      ? data.state.items.map((item) => ({
+        ...item,
+        name: item.cardName,
+        description: item.cardData?.description || '',
+        stepCount: Array.isArray(item.cardData?.steps) ? item.cardData.steps.length : 0,
+      }))
       : state.cards;
     renderCards();
     if (announce) setStatus(`卡片已保存：${data.item?.cardName || data.item?.id}`);
@@ -180,6 +201,7 @@
 
   async function runCard() {
     if (state.busy) return;
+    if (window.AppShellAutomationWorkbenchUpgrade?.openRun?.({ id: state.selectedId, cardData: cardDraft() })) return;
     state.busy = true;
     try {
       const connectionId = element('automation-browser-select').value;
@@ -333,6 +355,12 @@
     element('automation-import-file')?.addEventListener('change', (event) => void importCard(event.target.files?.[0]));
     element('automation-save-session')?.addEventListener('click', () => void saveSession());
     element('automation-card-steps')?.addEventListener('change', syncStepsToCanvas);
+    window.AppShellAutomationWorkbenchUpgrade?.bind?.({
+      refresh,
+      saveCard,
+      selectCard: loadCard,
+      setStatus,
+    });
   }
 
   window.AppShellAutomationWorkbench = Object.freeze({ bind, refresh, syncDialogLayout });

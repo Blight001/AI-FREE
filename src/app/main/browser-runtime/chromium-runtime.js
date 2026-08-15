@@ -337,6 +337,12 @@ class ChromiumRuntime extends BrowserRuntime {
 
   async openTabs(profileId, urls = []) { return openChromiumTabs(this, profileId, urls); }
 
+  async listTabs(profileId) {
+    return this.enqueueProfileOperation(profileId, () => (
+      this.getReadyInstance(profileId).commandClient.send('list-tabs')
+    ));
+  }
+
   async dispatchInput(profileId, source) { return dispatchRuntimeInput(this, profileId, source); }
 
   async dispatchInputByProcessId(processId, source) {

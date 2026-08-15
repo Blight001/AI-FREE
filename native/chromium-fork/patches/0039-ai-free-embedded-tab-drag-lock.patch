@@ -1,0 +1,30 @@
+diff --git a/chrome/browser/ui/views/tabs/tab_strip.cc b/chrome/browser/ui/views/tabs/tab_strip.cc
+--- a/chrome/browser/ui/views/tabs/tab_strip.cc
++++ b/chrome/browser/ui/views/tabs/tab_strip.cc
+@@ -17,6 +17,7 @@
+ #include <utility>
+ #include <vector>
+ 
++#include "base/command_line.h"
+ #include "base/check.h"
+ #include "base/compiler_specific.h"
+ #include "base/containers/adapters.h"
+@@ -79,5 +80,6 @@
+ #include "chrome/browser/ui/web_applications/app_browser_controller.h"
+ #include "chrome/browser/ui/web_applications/web_app_tabbed_utils.h"
++#include "chrome/common/chrome_switches.h"
+ #include "chrome/grit/generated_resources.h"
+ #include "chrome/grit/theme_resources.h"
+ #include "components/crash/core/common/crash_key.h"
+@@ -1892,6 +1894,11 @@ void TabStrip::MaybeStartDrag(
+ void TabStrip::MaybeStartDrag(TabSlotView* source,
+                               const ui::LocatedEvent& event,
+                               ui::ListSelectionModel original_selection) {
++  if (base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
++          switches::kHsEmbedMode) == "child-window") {
++    return;
++  }
++
+   // Don't accidentally start any drag operations during animations if the
+   // mouse is down... during an animation tabs are being resized automatically,
+   // so the View system can misinterpret this easily if the mouse is down that

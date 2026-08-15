@@ -1,5 +1,4 @@
 const AppShellUtils = window.RendererControllerUtils || {};
-const AiApi = window.aiFree?.ai || {};
 const BrowserApi = window.aiFree?.browser || {};
 const ShellApi = window.aiFree?.shell || {};
 const UiApi = window.aiFree?.ui || {};
@@ -9,28 +8,17 @@ const showControllerError = AppShellUtils.showUserError
   : (prefix, err) => console.warn(`[标签栏] ${prefix}:`, err && (err.message || String(err)));
 const APP_THEME_STORAGE_KEY = 'ai-free.control-panel.theme';
 const appShellUpdateState = { activated: false, version: '' };
-let aiConnectedBrowserProfileIds = new Set();
-
-function isAiConnectedBrowserProfile(tabId) {
-  return aiConnectedBrowserProfileIds.has(String(tabId));
-}
-
-function syncAiConnectedBrowserHighlight() {
-  for (const [tabId, tabElement] of tabElementById.entries()) {
-    tabElement.classList.toggle('ai-browser-connected', isAiConnectedBrowserProfile(tabId));
-  }
-}
 
 function normalizeAppTheme(theme) {
   const value = String(theme || '').trim();
-  return value === 'light' || value === 'gold' ? value : 'dark';
+  return value === 'dark' || value === 'gold' ? value : 'light';
 }
 
 function getSavedAppTheme() {
   try {
     return normalizeAppTheme(localStorage.getItem(APP_THEME_STORAGE_KEY));
   } catch (_) {
-    return 'dark';
+    return 'light';
   }
 }
 
@@ -80,18 +68,29 @@ if (window.aiFree) {
   });
   UpdatesApi.onError( () => resetAppShellUpdateProgress());
   UpdatesApi.onSkip( () => resetAppShellUpdateProgress());
-  AiApi.onBrowserSelectionChanged( (payload = {}) => {
-    const ids = Array.isArray(payload?.profileIds)
-      ? payload.profileIds
-      : (payload?.profileId ? [payload.profileId] : []);
-    aiConnectedBrowserProfileIds = new Set(ids.map((id) => String(id || '')).filter(Boolean));
-    syncAiConnectedBrowserHighlight();
-  });
+  UiApi.onAppVersion?.((version) => renderAppShellVersion(version));
 }
 
 let tabsContainer = document.getElementById('tabs-container');
 let addTabBtn = document.getElementById('add-tab-btn');
 let newBrowserWindowBtn = document.getElementById('new-browser-window-btn');
+
+function renderAppShellVersion(version) {
+  const element = document.getElementById('shell-app-version');
+  if (!element) return;
+  const normalized = String(version || '').trim().replace(/^v/i, '');
+  element.textContent = normalized ? `v${normalized}` : '';
+  element.hidden = !normalized;
+}
+
+async function syncAppShellVersion() {
+  try {
+    const response = await UpdatesApi.getAppVersion?.();
+    renderAppShellVersion(response?.version || '');
+  } catch (_) {
+    renderAppShellVersion('');
+  }
+}
 
 function setBrowserEmptyStateVisible(tabs = []) {
   window.AppShellHome?.setVisible(tabs);
@@ -99,6 +98,18 @@ function setBrowserEmptyStateVisible(tabs = []) {
 
 function setBrowserEmptyStateSidebarVisible(visible) {
   document.documentElement.classList.toggle('sidebar-collapsed', visible !== true);
+}
+
+function setBrowserEmptyStateSidebarWidth(payload = {}) {
+  const width = payload.visible === false ? 0 : Math.max(0, Number(payload.width) || 0);
+  document.documentElement.style.setProperty('--app-shell-sidebar-width', `${width}px`);
+}
+
+async function syncBrowserEmptyStateSidebarWidth() {
+  try {
+    const result = await UiApi.setSidebarWidth?.({});
+    if (result?.ok) setBrowserEmptyStateSidebarWidth({ width: result.width });
+  } catch (_) {}
 }
 
 function setAppShellUpdateVisible(visible) {

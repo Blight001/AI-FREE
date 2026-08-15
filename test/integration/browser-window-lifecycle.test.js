@@ -80,7 +80,7 @@ test('主窗口最大化后 Chromium 区域保留最大化前的侧栏宽度', a
 
   await manager.addTab('chrome://newtab/', { tabId: 'maximized-browser' });
 
-  assert.deepEqual(launchedBounds, { x: 0, y: 41, width: 1560, height: 999 });
+  assert.deepEqual(launchedBounds, { x: 0, y: 0, width: 1560, height: 999 });
 });
 
 test('浏览器启动解析 Profile 时不再传入出口 IP 探测参数', async () => {
@@ -607,6 +607,58 @@ test('切换到内置首页会隐藏当前 Chromium 并保留浏览器标签', a
   assert.equal(activeTabId, null);
   assert.equal(tabs.size, 1);
   assert.equal(updateCount, 1);
+});
+
+test('底部任务栏图标持续跟随 Chromium 内部当前激活网页', async () => {
+  const chromium = new EventEmitter();
+  const tabs = new Map([['browser-icon', {
+    id: 'browser-icon', runtimeType: 'chromium', runtimeStatus: 'starting',
+  }]]);
+  let updateCount = 0;
+  let activeTab = {
+    active: true, url: 'https://second.example/', faviconUrl: 'https://second.example/live.png',
+  };
+  createTabManager({
+    browserRuntimeManager: {
+      chromium,
+      async listTabs() {
+        return {
+          activeTab,
+          tabs: [
+            { url: 'chrome://new-tab-page/' },
+            { url: 'https://first.example/path', faviconUrl: 'https://cdn.first.example/icon.png' },
+            { url: 'https://second.example/' },
+          ],
+        };
+      },
+    },
+    getTabs: () => tabs,
+    getMainWindow: () => ({ isDestroyed: () => false, emit() {} }),
+    getActiveTabId: () => 'browser-icon',
+    updateTabs() { updateCount += 1; },
+    sendToSide() {},
+    logger: { warn() {} },
+  });
+
+  chromium.emit('state-changed', { profileId: 'browser-icon', status: 'ready' });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  assert.equal(tabs.get('browser-icon').firstWebsiteUrl, 'https://second.example/');
+  assert.equal(tabs.get('browser-icon').firstWebsiteIconUrl, 'https://second.example/live.png');
+  assert.equal(updateCount, 2);
+
+  activeTab = {
+    active: true, url: 'https://third.example/account', faviconUrl: 'data:image/png;base64,AAAA',
+  };
+  chromium.emit('runtime-event', {
+    profileId: 'browser-icon',
+    type: 'url-changed',
+    url: 'https://third.example/account',
+  });
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  assert.equal(tabs.get('browser-icon').firstWebsiteUrl, 'https://third.example/account');
+  assert.equal(tabs.get('browser-icon').firstWebsiteIconUrl, 'data:image/png;base64,AAAA');
+  assert.equal(updateCount, 4);
 });
 
 test('Chromium 意外关闭时保留可恢复的错误栏目', async () => {

@@ -11,6 +11,7 @@ test('浏览器配置内嵌主窗口且只创建侧边栏子视图', () => {
   let sideView = null;
   let maximizeCalls = 0;
   const loadedPages = [];
+  const shellMessages = [];
   class FakeView {
     constructor() {
       this.visible = true;
@@ -29,7 +30,10 @@ test('浏览器配置内嵌主窗口且只创建侧边栏子视图', () => {
   class FakeWindow {
     constructor() {
       this.events = new Map();
-      this.webContents = { on: () => {}, isDestroyed: () => false };
+      this.webContents = {
+        on: () => {}, isDestroyed: () => false,
+        send: (channel, payload) => shellMessages.push({ channel, payload }),
+      };
       this.contentView = { addChildView: () => {} };
     }
     on(name, listener) {
@@ -79,11 +83,17 @@ test('浏览器配置内嵌主窗口且只创建侧边栏子视图', () => {
   window.emit('ready-to-show');
   assert.equal(views.length, 1);
   assert.deepEqual(loadedPages, ['C:/app/sidebar/ai-control.html']);
-  assert.deepEqual(views[0].bounds, { x: 700, y: 41, width: 300, height: 659 });
+  assert.deepEqual(views[0].bounds, { x: 700, y: 0, width: 300, height: 659 });
   assert.equal(views[0].visible, true);
   assert.equal(controller.setSidebarWidth(500), 500);
-  assert.deepEqual(views[0].bounds, { x: 500, y: 41, width: 500, height: 659 });
+  assert.deepEqual(views[0].bounds, { x: 500, y: 0, width: 500, height: 659 });
+  assert.deepEqual(shellMessages.at(-1), {
+    channel: 'sidebar-width-changed', payload: { visible: true, width: 500 },
+  });
   assert.equal(controller.setSidebarWidth(900), 680);
-  assert.deepEqual(views[0].bounds, { x: 320, y: 41, width: 680, height: 659 });
+  assert.deepEqual(views[0].bounds, { x: 320, y: 0, width: 680, height: 659 });
+  assert.deepEqual(shellMessages.at(-1), {
+    channel: 'sidebar-width-changed', payload: { visible: true, width: 680 },
+  });
   window.emit('closed');
 });

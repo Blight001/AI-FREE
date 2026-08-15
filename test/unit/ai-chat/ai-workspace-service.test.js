@@ -59,3 +59,17 @@ test('附件上下文包含文本、图片和 MCP 引用且使用临时标记', 
   assert.equal(messages[1].content[1].type, 'image_url');
   assert.match(messages[1].content[1].image_url.url, /^data:image\/png;base64,/);
 });
+
+test('工作区预览支持视频、JSON 和无扩展名文本识别', (t) => {
+  const { root } = fixture(t);
+  fs.writeFileSync(path.join(root, 'clip.mp4'), Buffer.from('video fixture'));
+  fs.writeFileSync(path.join(root, 'settings.json'), '{"enabled":true}', 'utf8');
+  fs.writeFileSync(path.join(root, 'README'), 'plain text without extension', 'utf8');
+  const service = createAiWorkspaceService({ workspaceDir: root });
+  const video = service.read({ path: 'clip.mp4' }).file;
+  assert.equal(video.kind, 'video');
+  assert.equal(video.mimeType, 'video/mp4');
+  assert.match(video.dataUrl, /^data:video\/mp4;base64,/);
+  assert.equal(service.read({ path: 'settings.json' }).file.mimeType, 'application/json');
+  assert.equal(service.read({ path: 'README' }).file.kind, 'text');
+});

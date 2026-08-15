@@ -41,6 +41,20 @@ const timezonePatch = fs.readFileSync(path.join(
   'patches',
   '0012-ai-free-profile-timezone.patch',
 ), 'utf8');
+const embeddedTabDragPatch = fs.readFileSync(path.join(
+  root,
+  'native',
+  'chromium-fork',
+  'patches',
+  '0039-ai-free-embedded-tab-drag-lock.patch',
+), 'utf8');
+const liveTabFaviconsPatch = fs.readFileSync(path.join(
+  root,
+  'native',
+  'chromium-fork',
+  'patches',
+  '0040-ai-free-live-tab-favicons.patch',
+), 'utf8');
 const series = fs.readFileSync(
   path.join(root, 'native', 'chromium-fork', 'patches', 'series'),
   'utf8',
@@ -63,6 +77,8 @@ assert(series.includes('0008-ai-free-extension-popup-auto-dismiss.patch'));
 assert(series.includes('0010-ai-free-embedded-toolbar-simplification.patch'));
 assert(series.includes('0011-ai-free-embedded-extension-actions-pinned.patch'));
 assert(series.includes('0012-ai-free-profile-timezone.patch'));
+assert(series.includes('0039-ai-free-embedded-tab-drag-lock.patch'));
+assert(series.includes('0040-ai-free-live-tab-favicons.patch'));
 assert(!series.includes('0009-ai-free-embedded-omnibox-read-only.patch'));
 for (const marker of [
   'switches::kHsEmbedMode) == "child-window"',
@@ -176,6 +192,37 @@ for (const marker of [
 ]) {
   assert(timezonePatch.includes(marker), `timezone patch is missing: ${marker}`);
 }
+
+for (const marker of [
+  'void TabStrip::MaybeStartDrag',
+  'switches::kHsEmbedMode',
+  '"child-window"',
+  'return;',
+]) {
+  assert(embeddedTabDragPatch.includes(marker),
+    `embedded tab drag lock patch is missing: ${marker}`);
+}
+const embeddedTabDragPatchedFiles = [
+  ...embeddedTabDragPatch.matchAll(/^diff --git a\/(\S+) /gm),
+].map((match) => match[1]);
+assert.deepEqual(embeddedTabDragPatchedFiles, [
+  'chrome/browser/ui/views/tabs/tab_strip.cc',
+]);
+
+for (const marker of [
+  'GetFaviconURLs()',
+  'faviconUrl',
+  'FaviconIconType::kFavicon',
+]) {
+  assert(liveTabFaviconsPatch.includes(marker),
+    `live tab favicon patch is missing: ${marker}`);
+}
+const liveTabFaviconsPatchedFiles = [
+  ...liveTabFaviconsPatch.matchAll(/^diff --git a\/(\S+) /gm),
+].map((match) => match[1]);
+assert.deepEqual(liveTabFaviconsPatchedFiles, [
+  'chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc',
+]);
 
 for (const style of [
   'WS_POPUP',

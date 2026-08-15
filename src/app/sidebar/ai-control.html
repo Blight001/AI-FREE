@@ -2,13 +2,16 @@
 <html class="ai-control-page">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: http: https:; font-src 'self' data:; connect-src 'self' http: https:; frame-src http: https:; child-src http: https:; object-src 'none'; base-uri 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: http: https:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' http: https:; frame-src http: https:; child-src http: https:; object-src 'none'; base-uri 'self'">
   <title>AI 控制</title>
   <script>
     (function initThemeClass() {
       try {
         const savedTheme = localStorage.getItem('ai-free.control-panel.theme');
-        if (savedTheme === 'light') {
+        if (savedTheme !== 'dark' && savedTheme !== 'gold') {
+          localStorage.setItem('ai-free.control-panel.theme', 'light');
+          document.documentElement.classList.add('theme-light');
+        } else if (savedTheme === 'light') {
           document.documentElement.classList.add('theme-light');
         } else if (savedTheme === 'gold') {
           document.documentElement.classList.add('theme-gold');
@@ -19,8 +22,10 @@
   <link rel="stylesheet" href="./client/styles/control-panel.css" />
   <link rel="stylesheet" href="./client/app/side/styles/side.css" />
   <link rel="stylesheet" href="./client/app/side/styles/modules/ai-control-files.css" />
+  <link rel="stylesheet" href="./client/app/side/styles/modules/website-console-theme.css" />
   <link rel="stylesheet" href="../renderer/styles/app-shell-automation.css" />
   <link rel="stylesheet" href="../renderer/styles/app-shell-automation-canvas.css" />
+  <link rel="stylesheet" href="../renderer/styles/app-shell-automation-workflow.css" />
   <script defer src="./client/scripts/dev-mode-navigation.js"></script>
 </head>
 <body>
@@ -58,14 +63,9 @@
           <div id="ai-chat-messages" class="ai-chat-messages" role="log" aria-live="polite">
             <div class="ai-chat-welcome">
               <div class="ai-chat-welcome-hero">
-                <div class="ai-chat-welcome-brand">
-                  <span class="ai-chat-welcome-logo"><img class="ai-chat-welcome-icon" data-app-logo alt="" aria-hidden="true"></span>
-                  <span>AI-FREE COPILOT</span>
-                  <span class="ai-chat-welcome-status"><i></i> 对话就绪</span>
-                </div>
-                <span class="ai-chat-welcome-kicker">新对话</span>
+                <span class="ai-chat-welcome-logo"><img class="ai-chat-welcome-icon" data-app-logo alt="" aria-hidden="true"></span>
                 <strong>今天想一起完成什么？</strong>
-                <p>直接在下方描述你的目标，我会帮你完成。</p>
+                <p>直接描述你的目标即可。</p>
               </div>
             </div>
           </div>
@@ -85,48 +85,64 @@
               </div>
             </header>
             <div id="ai-chat-workspace-files" class="ai-chat-workspace-files"></div>
-            <section id="ai-chat-workspace-preview" class="ai-chat-workspace-preview" hidden></section>
           </div>
           <div id="ai-chat-mention-menu" class="ai-chat-mention-menu" role="listbox" hidden></div>
-          <button id="ai-chat-attach" class="ai-chat-attach" type="button" aria-label="添加文件" title="上传或选择 AI-Workspace 文件">+</button>
           <textarea id="ai-chat-input" rows="1" maxlength="12000" placeholder="输入消息，@ 引用工具或文件，Enter 发送"></textarea>
-          <button id="ai-chat-send" type="submit" disabled aria-label="发送消息"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"></path><path d="M22 2 11 13"></path></svg></button>
+          <div class="ai-chat-footer-bar">
+            <div class="ai-chat-footer-left">
+              <button id="ai-chat-attach" class="ai-chat-attach" type="button" aria-label="添加文件" title="上传或选择 AI-Workspace 文件">+</button>
+              <div class="ai-chat-browser-gear-field">
+                <div class="ai-select ai-select-sm ai-select-dropup ai-browser-gear-select" data-ai-select="browser">
+                  <select id="ai-chat-browser" class="ai-select-native" tabindex="-1" aria-hidden="true">
+                    <option value="">正在查找可用浏览器...</option>
+                  </select>
+                  <button type="button" class="ai-select-trigger ai-browser-gear-trigger" id="ai-chat-browser-trigger" aria-haspopup="listbox" aria-expanded="false" aria-label="AI 控制设置" title="AI 控制设置">
+                    <svg class="ai-browser-gear-icon" viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M12 8.4a3.6 3.6 0 1 0 0 7.2 3.6 3.6 0 0 0 0-7.2Z"></path>
+                      <path d="M19.2 13.4a7.7 7.7 0 0 0 0-2.8l2-1.5-2-3.4-2.4 1a8 8 0 0 0-2.4-1.4L14 2.8h-4l-.4 2.5a8 8 0 0 0-2.4 1.4l-2.4-1-2 3.4 2 1.5a7.7 7.7 0 0 0 0 2.8l-2 1.5 2 3.4 2.4-1a8 8 0 0 0 2.4 1.4l.4 2.5h4l.4-2.5a8 8 0 0 0 2.4-1.4l2.4 1 2-3.4-2-1.5Z"></path>
+                    </svg>
+                    <span class="ai-select-value ai-browser-gear-value">正在查找可用浏览器...</span>
+                  </button>
+                  <ul class="ai-select-menu" role="listbox" hidden></ul>
+                </div>
+              </div>
+            </div>
+            <div class="ai-chat-footer-right">
+              <div id="ai-chat-quota" class="ai-chat-quota-widget" title="选择模型后即可开始对话">
+                <div class="ai-chat-quota-ring" id="ai-chat-quota-ring" style="--quota-progress: 0%;">
+                  <div class="ai-chat-quota-ring-fill"></div>
+                  <span id="ai-chat-quota-value" class="ai-chat-quota-value">--</span>
+                </div>
+              </div>
+              <div class="ai-chat-select-field ai-chat-model-field">
+                <div class="ai-select ai-select-sm ai-select-dropup ai-model-inline-select" data-ai-select="model">
+                  <select id="ai-chat-model" class="ai-select-native" disabled tabindex="-1" aria-hidden="true">
+                    <option value="">正在读取可用模型...</option>
+                  </select>
+                  <button type="button" class="ai-select-trigger" id="ai-chat-model-trigger" aria-haspopup="listbox" aria-expanded="false" disabled aria-label="选择模型">
+                    <span class="ai-select-value">正在读取可用模型...</span>
+                    <span class="ai-select-chevron" aria-hidden="true"></span>
+                  </button>
+                  <ul class="ai-select-menu" role="listbox" hidden></ul>
+                </div>
+              </div>
+              <button id="ai-chat-send" type="submit" disabled aria-label="发送消息"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"></path><path d="M22 2 11 13"></path></svg></button>
+            </div>
+          </div>
         </form>
-        <div class="ai-chat-footer-bar">
-          <div class="ai-chat-browser-gear-field">
-            <div class="ai-select ai-select-sm ai-select-dropup ai-browser-gear-select" data-ai-select="browser">
-              <select id="ai-chat-browser" class="ai-select-native" tabindex="-1" aria-hidden="true">
-                <option value="">正在查找可用浏览器...</option>
-              </select>
-              <button type="button" class="ai-select-trigger ai-browser-gear-trigger" id="ai-chat-browser-trigger" aria-haspopup="listbox" aria-expanded="false" aria-label="AI 控制设置" title="AI 控制设置">
-                <svg class="ai-browser-gear-icon" viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M12 8.4a3.6 3.6 0 1 0 0 7.2 3.6 3.6 0 0 0 0-7.2Z"></path>
-                  <path d="M19.2 13.4a7.7 7.7 0 0 0 0-2.8l2-1.5-2-3.4-2.4 1a8 8 0 0 0-2.4-1.4L14 2.8h-4l-.4 2.5a8 8 0 0 0-2.4 1.4l-2.4-1-2 3.4 2 1.5a7.7 7.7 0 0 0 0 2.8l-2 1.5 2 3.4 2.4-1a8 8 0 0 0 2.4 1.4l.4 2.5h4l.4-2.5a8 8 0 0 0 2.4-1.4l2.4 1 2-3.4-2-1.5Z"></path>
-                </svg>
-                <span class="ai-select-value ai-browser-gear-value">正在查找可用浏览器...</span>
-              </button>
-              <ul class="ai-select-menu" role="listbox" hidden></ul>
-            </div>
+        <section id="ai-chat-workspace-preview" class="ai-chat-workspace-preview" role="dialog" aria-modal="true" aria-labelledby="ai-chat-workspace-preview-title" hidden>
+          <button class="ai-chat-workspace-preview-backdrop" type="button" data-workspace-preview-close aria-label="关闭文件预览"></button>
+          <div class="ai-chat-workspace-preview-dialog">
+            <header>
+              <div class="ai-chat-workspace-preview-heading">
+                <strong id="ai-chat-workspace-preview-title">文件预览</strong>
+                <span id="ai-chat-workspace-preview-meta"></span>
+              </div>
+              <button id="ai-chat-workspace-preview-close" class="ai-chat-workspace-preview-close" type="button" aria-label="关闭文件预览" title="关闭">×</button>
+            </header>
+            <div id="ai-chat-workspace-preview-body" class="ai-chat-workspace-preview-body"></div>
           </div>
-          <div id="ai-chat-quota" class="ai-chat-quota-widget" title="选择模型后即可开始对话">
-            <div class="ai-chat-quota-ring" id="ai-chat-quota-ring" style="--quota-progress: 0%;">
-              <div class="ai-chat-quota-ring-fill"></div>
-              <span id="ai-chat-quota-value" class="ai-chat-quota-value">--</span>
-            </div>
-          </div>
-          <div class="ai-chat-select-field ai-chat-model-field">
-            <div class="ai-select ai-select-sm ai-select-dropup ai-model-inline-select" data-ai-select="model">
-              <select id="ai-chat-model" class="ai-select-native" disabled tabindex="-1" aria-hidden="true">
-                <option value="">正在读取可用模型...</option>
-              </select>
-              <button type="button" class="ai-select-trigger" id="ai-chat-model-trigger" aria-haspopup="listbox" aria-expanded="false" disabled aria-label="选择模型">
-                <span class="ai-select-value">正在读取可用模型...</span>
-                <span class="ai-select-chevron" aria-hidden="true"></span>
-              </button>
-              <ul class="ai-select-menu" role="listbox" hidden></ul>
-            </div>
-          </div>
-        </div>
+        </section>
       </section>
 
       <section id="ai-custom-api-dialog" class="ai-custom-api-dialog" role="dialog" aria-modal="true" aria-labelledby="ai-custom-api-title" hidden>
@@ -283,6 +299,9 @@
   <script src="./client/app/side/controllers/pages/side-panel/modules/bootstrap.js"></script>
   <script src="./client/app/side/controllers/pages/side-panel/index.js"></script>
   <script src="./client/app/side/controllers/pages/side-panel/dream-opener.js"></script>
+  <script src="../renderer/controllers/pages/app-shell/automation-canvas-history.js"></script>
+  <script src="../renderer/controllers/pages/app-shell/automation-workbench-view-model.js"></script>
+  <script src="../renderer/controllers/pages/app-shell/automation-workbench-upgrade.js"></script>
   <script src="../renderer/controllers/pages/app-shell/shell-automation-canvas.js"></script>
   <script src="../renderer/controllers/pages/app-shell/shell-automation-workbench.js"></script>
 </body>

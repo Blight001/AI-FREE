@@ -1,5 +1,6 @@
 #include "browser_host_window.h"
 #include "dpi_manager.h"
+#include "focus_manager.h"
 #include "native_helpers.h"
 
 namespace {
@@ -132,14 +133,6 @@ napi_value RaiseHostWindow(napi_env env, napi_callback_info info) {
       SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE) != FALSE);
 }
 
-static napi_value SetHostVisibility(napi_env env, napi_callback_info info, int command) {
-  napi_value options = SingleObjectArg(env, info);
-  HWND hwnd = ReadHwnd(env, GetNamed(env, options, "hostHwnd"));
-  if (!IsWindow(hwnd)) return BoolValue(env, false);
-  ShowWindow(hwnd, command);
-  return BoolValue(env, true);
-}
-
 napi_value ShowHostWindow(napi_env env, napi_callback_info info) {
   napi_value options = SingleObjectArg(env, info);
   HWND hwnd = ReadHwnd(env, GetNamed(env, options, "hostHwnd"));
@@ -158,4 +151,11 @@ napi_value ShowHostWindow(napi_env env, napi_callback_info info) {
   }
   return BoolValue(env, ok);
 }
-napi_value HideHostWindow(napi_env env, napi_callback_info info) { return SetHostVisibility(env, info, SW_HIDE); }
+napi_value HideHostWindow(napi_env env, napi_callback_info info) {
+  napi_value options = SingleObjectArg(env, info);
+  HWND hwnd = ReadHwnd(env, GetNamed(env, options, "hostHwnd"));
+  if (!IsWindow(hwnd)) return BoolValue(env, false);
+  DismissBrowserTransientUi(GetWindow(hwnd, GW_CHILD));
+  ShowWindow(hwnd, SW_HIDE);
+  return BoolValue(env, true);
+}

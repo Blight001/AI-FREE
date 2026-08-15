@@ -7,16 +7,22 @@ const { resolveInside } = require('../../services/ai-sandbox-file-tools');
 const MAX_IMPORT_FILES = 32;
 const MAX_PREVIEW_BYTES = 256 * 1024;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 64 * 1024 * 1024;
 const MAX_ATTACHMENT_TEXT_CHARS = 256 * 1024;
 const MAX_ATTACHMENT_FILE_CHARS = 64 * 1024;
 const IMAGE_MIME = Object.freeze({
   '.gif': 'image/gif', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
   '.png': 'image/png', '.webp': 'image/webp',
 });
+const VIDEO_MIME = Object.freeze({
+  '.m4v': 'video/mp4', '.mp4': 'video/mp4', '.ogv': 'video/ogg',
+  '.webm': 'video/webm',
+});
 const TEXT_EXTENSIONS = new Set([
-  '.c', '.cc', '.cpp', '.css', '.csv', '.h', '.hpp', '.html', '.ini', '.java',
-  '.js', '.json', '.jsx', '.kt', '.log', '.md', '.py', '.rs', '.sh', '.sql',
-  '.svg', '.toml', '.ts', '.tsx', '.txt', '.vue', '.xml', '.yaml', '.yml',
+  '.bat', '.c', '.cc', '.cfg', '.cmd', '.conf', '.cpp', '.css', '.csv', '.env',
+  '.h', '.hpp', '.html', '.ini', '.java', '.js', '.json', '.jsonl', '.jsx', '.kt',
+  '.log', '.md', '.mjs', '.properties', '.py', '.rs', '.sh', '.sql', '.svg', '.toml',
+  '.ts', '.tsv', '.tsx', '.txt', '.vue', '.xml', '.yaml', '.yml',
 ]);
 
 function workspaceRoot(directory) {
@@ -68,26 +74,51 @@ function resolveWorkspaceFile(root, relativePath) {
 function fileKind(filePath) {
   const extension = path.extname(filePath).toLowerCase();
   if (IMAGE_MIME[extension]) return { kind: 'image', mimeType: IMAGE_MIME[extension] };
-  if (TEXT_EXTENSIONS.has(extension)) return { kind: 'text', mimeType: 'text/plain' };
+  if (VIDEO_MIME[extension]) return { kind: 'video', mimeType: VIDEO_MIME[extension] };
+  if (TEXT_EXTENSIONS.has(extension)) {
+    const mimeType = extension === '.json' || extension === '.jsonl' ? 'application/json' : 'text/plain';
+    return { kind: 'text', mimeType };
+  }
   return { kind: 'binary', mimeType: 'application/octet-stream' };
 }
 
+function readPrefix(filePath, size) {
+  const buffer = Buffer.alloc(size);
+  const descriptor = fs.openSync(filePath, 'r');
+  try { fs.readSync(descriptor, buffer, 0, size, 0); } finally { fs.closeSync(descriptor); }
+  return buffer;
+}
+
+function looksLikeText(buffer) {
+  if (!buffer.length) return true;
+  if (buffer.includes(0)) return false;
+  const sample = buffer.toString('utf8');
+  const replacements = (sample.match(/\uFFFD/g) || []).length;
+  const controls = (sample.match(/[\u0001-\u0008\u000B\u000C\u000E-\u001F]/g) || []).length;
+  return replacements + controls <= Math.max(2, Math.floor(sample.length * 0.01));
+}
+
 /**
- * @returns {{name:string,path:string,size:number,modifiedAt:number,kind:string,mimeType:string,dataUrl?:string,content?:string,truncated?:boolean}}
+ * @returns {{name:string,path:string,size:number,modifiedAt:number,kind:string,mimeType:string,dataUrl?:string,content?:string,truncated?:boolean,previewTooLarge?:boolean}}
  */
 function readPreview(root, relativePath) {
   const resolved = resolveWorkspaceFile(root, relativePath);
   const metadata = publicFile(root, resolved.path, resolved.stat);
-  const type = fileKind(resolved.path);
+  let type = fileKind(resolved.path);
   if (type.kind === 'image' && resolved.stat.size <= MAX_IMAGE_BYTES) {
     const encoded = fs.readFileSync(resolved.path).toString('base64');
     return { ...metadata, ...type, dataUrl: `data:${type.mimeType};base64,${encoded}` };
   }
-  if (type.kind !== 'text') return { ...metadata, ...type };
+  if (type.kind === 'image') return { ...metadata, ...type, previewTooLarge: true };
+  if (type.kind === 'video' && resolved.stat.size <= MAX_VIDEO_BYTES) {
+    const encoded = fs.readFileSync(resolved.path).toString('base64');
+    return { ...metadata, ...type, dataUrl: `data:${type.mimeType};base64,${encoded}` };
+  }
+  if (type.kind === 'video') return { ...metadata, ...type, previewTooLarge: true };
   const bytes = Math.min(resolved.stat.size, MAX_PREVIEW_BYTES);
-  const buffer = Buffer.alloc(bytes);
-  const descriptor = fs.openSync(resolved.path, 'r');
-  try { fs.readSync(descriptor, buffer, 0, bytes, 0); } finally { fs.closeSync(descriptor); }
+  const buffer = readPrefix(resolved.path, bytes);
+  if (type.kind === 'binary' && looksLikeText(buffer)) type = { kind: 'text', mimeType: 'text/plain' };
+  if (type.kind !== 'text') return { ...metadata, ...type };
   return {
     ...metadata, ...type, content: buffer.toString('utf8'),
     truncated: resolved.stat.size > MAX_PREVIEW_BYTES,

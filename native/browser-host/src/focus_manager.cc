@@ -3,6 +3,27 @@
 
 namespace {
 
+BOOL CALLBACK DismissDescendantHover(HWND hwnd, LPARAM) {
+  PostMessageW(hwnd, WM_MOUSELEAVE, 0, 0);
+  PostMessageW(hwnd, WM_CANCELMODE, 0, 0);
+  return TRUE;
+}
+
+BOOL CALLBACK HideTransientPopup(HWND hwnd, LPARAM context_value) {
+  const HWND child = reinterpret_cast<HWND>(context_value);
+  if (hwnd == child || IsChild(child, hwnd)) return TRUE;
+  const LONG_PTR style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+  const LONG_PTR ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+  const bool transient = (style & WS_POPUP) != 0 &&
+      (ex_style & WS_EX_TOOLWINDOW) != 0 &&
+      (ex_style & WS_EX_NOACTIVATE) != 0;
+  if (transient && IsWindowVisible(hwnd)) {
+    PostMessageW(hwnd, WM_CANCELMODE, 0, 0);
+    ShowWindowAsync(hwnd, SW_HIDE);
+  }
+  return TRUE;
+}
+
 bool IsFocusedWindowOrDescendant(HWND child) {
   const DWORD target_thread = GetWindowThreadProcessId(child, nullptr);
   if (!target_thread) return false;
@@ -14,6 +35,18 @@ bool IsFocusedWindowOrDescendant(HWND child) {
 }
 
 }  // namespace
+
+void DismissBrowserTransientUi(HWND child) {
+  if (!IsWindow(child)) return;
+  PostMessageW(child, WM_MOUSELEAVE, 0, 0);
+  PostMessageW(child, WM_CANCELMODE, 0, 0);
+  EnumChildWindows(child, DismissDescendantHover, 0);
+  const DWORD thread_id = GetWindowThreadProcessId(child, nullptr);
+  if (thread_id) {
+    EnumThreadWindows(thread_id, HideTransientPopup,
+        reinterpret_cast<LPARAM>(child));
+  }
+}
 
 bool FocusBrowserChildWindow(HWND child) {
   if (!IsWindow(child)) return false;
@@ -63,6 +96,7 @@ bool FocusBrowserChildWindow(HWND child) {
 
 bool ReleaseBrowserChildWindowFocus(HWND child) {
   if (!IsWindow(child)) return false;
+  DismissBrowserTransientUi(child);
   HWND root = GetAncestor(child, GA_ROOT);
   if (!root || GetForegroundWindow() != root) return false;
   if (!IsFocusedWindowOrDescendant(child)) return true;

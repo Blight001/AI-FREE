@@ -3,6 +3,7 @@ const { CARD_CACHE_FILE_NAME, createCardCacheStore, normalizeCardCacheState } = 
 const { createBrowserAutomationExternalGateway } = require('./browser-automation-external-gateway');
 const { createAutomationCardMcpRouter } = require('./automation-card-mcp-router');
 const { createNativeAutomationCardService } = require('./native-automation-card-service');
+const { createAutomationRunManager } = require('./automation-run-manager');
 const { createNativeBrowserAutomation } = require('./native-browser-automation');
 const { NATIVE_BROWSER_TOOL_DEFINITIONS } = require('./native-browser-tool-definitions');
 
@@ -28,6 +29,18 @@ class BrowserAutomationBridgeRuntime {
       cardService: this.nativeCardService, getTabs: options.getTabs,
       workspaceDir: options.workspaceDir, getBrowserRecords: options.getBrowserRecords,
       executeCardTool: (...args) => this.cardMcpRouter.execute(...args),
+    });
+    this.runManager = createAutomationRunManager({
+      dataDir: this.cardCacheStore.dataDir,
+      execute: (request, context) => this.withBackgroundLease(
+        () => this.nativeCardService.execute({ ...request, action: 'run' }, {
+          ...context,
+          dispatch: (tool, toolArgs) => this.cardMcpRouter.execute(
+            request.connectionId, tool, toolArgs, { timeoutMs: request.timeoutMs, signal: context.signal },
+          ),
+        }),
+        { timeoutMs: request.timeoutMs },
+      ),
     });
     this.server = null;
     this.externalMcpGateway = createBrowserAutomationExternalGateway({
@@ -108,14 +121,43 @@ class BrowserAutomationBridgeRuntime {
   }
 
   manageCard(connectionId, args = {}, options = {}) {
-    const action = String(args?.action || '').trim().toLowerCase();
+    const input = /** @type {Record<string, any>} */ ({ ...args });
+    if (!input.id && input.card_id) input.id = input.card_id;
+    const action = String(input.action || '').trim().toLowerCase();
+    if (action === 'start_run') return this.startRun(connectionId, input, options);
+    const runHandler = this.runAction(action, input);
+    if (runHandler) return runHandler();
     if (action === 'run') {
-      return this.withBackgroundLease(() => this.nativeCardService.execute(args, {
+      return this.withBackgroundLease(() => this.nativeCardService.execute(input, {
         timeoutMs: options.timeoutMs,
         dispatch: (tool, toolArgs) => this.cardMcpRouter.execute(connectionId, tool, toolArgs, options),
       }), options);
     }
-    return this.nativeCardService.execute(args, { timeoutMs: options.timeoutMs });
+    return this.nativeCardService.execute(input, { timeoutMs: options.timeoutMs });
+  }
+
+  runAction(action, input) {
+    const runId = input.run_id || input.id;
+    return ({
+      list_runs: () => this.runManager.list(input),
+      get_run: () => this.runManager.get(runId),
+      list_run_steps: () => this.runManager.steps(runId),
+      cancel_run: () => this.runManager.cancel(runId, input.reason),
+      retry_run: () => this.runManager.retry(runId),
+    })[action];
+  }
+
+  async startRun(connectionId, args, options) {
+    const item = (await this.nativeCardService.execute({ action: 'get', id: args.id, card_name: args.card_name })).item;
+    const request = {
+      ...args, id: item.id, version_id: args.version_id || item.latestVersionId,
+      connectionId: connectionId || args.connectionId || '',
+      timeoutMs: Math.min(
+        Number(options.timeoutMs || 30 * 60 * 1000),
+        Math.max(1, Number(item.limits?.timeoutSeconds || 900)) * 1000,
+      ),
+    };
+    return { success: true, run: this.runManager.start(request) };
   }
 
   saveBrowserSession(connectionId, args = {}, options = {}) {
@@ -176,6 +218,7 @@ function createBrowserAutomationBridge(options = {}) {
     listAutomationMcpTools: () => runtime.listAutomationMcpTools(),
     listExternalMcpTools: () => runtime.listExternalMcpTools(),
     manageCard: (...args) => runtime.manageCard(...args),
+    onRunProgress: (listener) => runtime.runManager.subscribe(listener),
     saveBrowserSession: (...args) => runtime.saveBrowserSession(...args),
     selectCard: (...args) => runtime.selectCard(...args),
     setCardCacheState: (...args) => runtime.setCardCacheState(...args),
@@ -185,6 +228,7 @@ function createBrowserAutomationBridge(options = {}) {
     host: runtime.host,
     port: runtime.port,
     cardCacheFilePath: runtime.cardCacheStore.filePath,
+    runsFilePath: runtime.runManager.filePath,
   };
 }
 

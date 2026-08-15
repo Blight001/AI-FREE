@@ -6,9 +6,9 @@
   function getSavedTheme() {
     try {
       const value = localStorage.getItem(themeStorageKey);
-      return value === 'light' || value === 'gold' ? value : 'dark';
+      return value === 'dark' || value === 'gold' ? value : 'light';
     } catch (_) {
-      return 'dark';
+      return 'light';
     }
   }
 

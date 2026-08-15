@@ -1,3 +1,5 @@
+  let workspacePreviewRequestId = 0;
+
   function formatWorkspaceFileSize(value) {
     const bytes = Math.max(0, Number(value) || 0);
     if (bytes < 1024) return `${bytes} B`;
@@ -46,15 +48,20 @@
   function workspaceFileRow(file) {
     const row = document.createElement('article');
     row.className = 'ai-chat-workspace-file';
-    const info = document.createElement('button');
-    info.type = 'button';
+    const info = document.createElement('div');
     info.className = 'ai-chat-workspace-file-info';
     const name = document.createElement('strong');
     name.textContent = String(file.name || file.path || '文件');
     const detail = document.createElement('span');
     detail.textContent = `${file.path} · ${formatWorkspaceFileSize(file.size)}`;
     info.append(name, detail);
-    info.addEventListener('click', () => previewWorkspaceFile(file.path));
+    const preview = document.createElement('button');
+    preview.type = 'button';
+    preview.className = 'ai-chat-workspace-file-preview';
+    preview.title = `预览 ${name.textContent}`;
+    preview.setAttribute('aria-label', preview.title);
+    preview.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"></path><circle cx="12" cy="12" r="2.7"></circle></svg>';
+    preview.addEventListener('click', () => previewWorkspaceFile(file.path));
     const attach = document.createElement('button');
     attach.type = 'button';
     attach.className = 'ai-chat-workspace-file-attach';
@@ -62,7 +69,7 @@
     attach.textContent = selected ? '已附加' : '附加';
     attach.classList.toggle('is-selected', selected);
     attach.addEventListener('click', () => toggleChatAttachment(file.path));
-    row.append(info, attach);
+    row.append(info, preview, attach);
     return row;
   }
 
@@ -106,39 +113,86 @@
     }
   }
 
-  function renderWorkspacePreview(file) {
-    const preview = el('ai-chat-workspace-preview');
-    if (!preview) return;
-    preview.innerHTML = '';
-    const title = document.createElement('strong');
-    title.textContent = `${file.name} · ${formatWorkspaceFileSize(file.size)}`;
-    preview.appendChild(title);
+  function workspaceTextPreview(file) {
+    const content = document.createElement('pre');
+    let text = String(file.content || '');
+    if (file.mimeType === 'application/json') {
+      try { text = JSON.stringify(JSON.parse(text), null, 2); } catch (_) {}
+    }
+    content.textContent = `${text}${file.truncated ? '\n\n…预览已截断' : ''}`;
+    return content;
+  }
+
+  function workspacePreviewContent(file) {
     if (file.kind === 'image' && file.dataUrl) {
       const image = document.createElement('img');
       image.src = file.dataUrl;
       image.alt = file.name;
-      preview.appendChild(image);
-    } else if (file.kind === 'text') {
-      const content = document.createElement('pre');
-      content.textContent = `${file.content || ''}${file.truncated ? '\n\n…预览已截断' : ''}`;
-      preview.appendChild(content);
-    } else {
-      const message = document.createElement('p');
-      message.textContent = '该文件不支持文本预览，但可以附加给 AI，并通过 run_command 处理。';
-      preview.appendChild(message);
+      return image;
     }
+    if (file.kind === 'video' && file.dataUrl) {
+      const video = document.createElement('video');
+      video.src = file.dataUrl;
+      video.controls = true;
+      video.preload = 'metadata';
+      return video;
+    }
+    if (file.kind === 'text') return workspaceTextPreview(file);
+    const message = document.createElement('p');
+    message.textContent = file.previewTooLarge
+      ? '文件体积超过应用内预览上限，仍可附加给 AI 或通过 run_command 处理。'
+      : '该文件暂不支持直接预览，但可以附加给 AI，并通过 run_command 处理。';
+    return message;
+  }
+
+  function renderWorkspacePreview(file) {
+    const preview = el('ai-chat-workspace-preview');
+    const body = el('ai-chat-workspace-preview-body');
+    if (!preview || !body) return;
+    body.replaceChildren(workspacePreviewContent(file));
+    el('ai-chat-workspace-preview-title').textContent = file.name || '文件预览';
+    el('ai-chat-workspace-preview-meta').textContent = `${file.path || ''} · ${formatWorkspaceFileSize(file.size)}`;
     preview.hidden = false;
+    el('ai-chat-workspace-preview-close')?.focus();
+  }
+
+  function closeWorkspacePreview() {
+    workspacePreviewRequestId += 1;
+    const preview = el('ai-chat-workspace-preview');
+    if (!preview || preview.hidden) return;
+    preview.querySelector('video')?.pause();
+    const body = el('ai-chat-workspace-preview-body');
+    if (body) body.innerHTML = '';
+    preview.hidden = true;
+  }
+
+  function startWorkspacePreview() {
+    const requestId = ++workspacePreviewRequestId;
+    const preview = el('ai-chat-workspace-preview');
+    const body = el('ai-chat-workspace-preview-body');
+    if (preview) preview.hidden = false;
+    if (body) body.textContent = '正在读取预览…';
+    return { requestId, body };
+  }
+
+  function readWorkspacePreview(filePath) {
+    return window.aiFree?.ai?.workspaceRead?.({ path: filePath });
+  }
+
+  function assertWorkspacePreviewResult(result) {
+    if (!result?.ok) throw new Error(result?.message || '文件预览失败');
+    return result.file || {};
   }
 
   async function previewWorkspaceFile(filePath) {
-    const preview = el('ai-chat-workspace-preview');
-    if (preview) { preview.hidden = false; preview.textContent = '正在读取预览…'; }
+    const { requestId, body } = startWorkspacePreview();
     try {
-      const result = await window.aiFree?.ai?.workspaceRead?.({ path: filePath });
-      if (!result?.ok) throw new Error(result?.message || '文件预览失败');
-      renderWorkspacePreview(result.file || {});
+      const file = assertWorkspacePreviewResult(await readWorkspacePreview(filePath));
+      if (requestId !== workspacePreviewRequestId) return;
+      renderWorkspacePreview(file);
     } catch (error) {
-      if (preview) preview.textContent = error?.message || String(error);
+      if (requestId !== workspacePreviewRequestId) return;
+      if (body) body.textContent = error?.message || String(error);
     }
   }
 
@@ -260,5 +314,10 @@
     el('ai-chat-workspace-close')?.addEventListener('click', () => { el('ai-chat-workspace-panel').hidden = true; });
     el('ai-chat-workspace-refresh')?.addEventListener('click', loadWorkspaceFiles);
     el('ai-chat-workspace-upload')?.addEventListener('click', importWorkspaceFiles);
+    el('ai-chat-workspace-preview-close')?.addEventListener('click', closeWorkspacePreview);
+    document.querySelector('[data-workspace-preview-close]')?.addEventListener('click', closeWorkspacePreview);
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !el('ai-chat-workspace-preview')?.hidden) closeWorkspacePreview();
+    });
     void loadWorkspaceFiles();
   }

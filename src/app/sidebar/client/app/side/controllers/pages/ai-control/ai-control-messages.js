@@ -245,38 +245,23 @@
       || message.trace_events?.length);
   }
 
-  function createWelcomeHero(browserText, browserCount, logoUrl) {
+  function createWelcomeHero() {
     const hero = document.createElement('div');
     hero.className = 'ai-chat-welcome-hero';
-    const brand = document.createElement('div');
-    brand.className = 'ai-chat-welcome-brand';
     const logoFrame = document.createElement('span');
     logoFrame.className = 'ai-chat-welcome-logo';
     const logo = document.createElement('img');
     logo.className = 'ai-chat-welcome-icon';
-    logo.src = logoUrl;
+    logo.src = window.aiFreeLogoAssets?.url || '../../assets/logo.ico';
     logo.alt = '';
     logo.setAttribute('aria-hidden', 'true');
     logo.setAttribute('data-app-logo', '');
     logoFrame.appendChild(logo);
-    const brandName = document.createElement('span');
-    brandName.textContent = 'AI-FREE COPILOT';
-    const status = document.createElement('span');
-    status.className = 'ai-chat-welcome-status';
-    const statusDot = document.createElement('i');
-    const statusText = document.createElement('span');
-    statusText.textContent = browserCount ? `${browserCount} 个浏览器已连接` : '普通对话模式';
-    status.append(statusDot, statusText);
-    brand.append(logoFrame, brandName, status);
-    const kicker = document.createElement('span');
-    kicker.className = 'ai-chat-welcome-kicker';
-    kicker.textContent = '新对话';
     const title = document.createElement('strong');
     title.textContent = '今天想一起完成什么？';
     const summary = document.createElement('p');
-    summary.textContent = browserText;
-    hero.append(brand, kicker, title);
-    hero.appendChild(summary);
+    summary.textContent = '直接描述你的目标即可。';
+    hero.append(logoFrame, title, summary);
     return hero;
   }
 
@@ -286,12 +271,7 @@
     container.innerHTML = '';
     const welcome = document.createElement('div');
     welcome.className = 'ai-chat-welcome';
-    const browserCount = state.availableBrowserIds.length;
-    const browserText = browserCount
-      ? `描述目标即可开始，我会自行选择浏览器并观察、操作、反馈结果${browserCount > 1 ? '，也可按名称切换目标' : ''}。`
-      : '当前未连接浏览器，将进行普通对话。';
-    const logoUrl = window.aiFreeLogoAssets?.url || '../../assets/logo.ico';
-    welcome.appendChild(createWelcomeHero(browserText, browserCount, logoUrl));
+    welcome.appendChild(createWelcomeHero());
     container.appendChild(welcome);
     renderRecentHistory();
     updateSessionTitleUi();

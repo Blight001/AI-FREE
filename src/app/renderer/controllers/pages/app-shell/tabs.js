@@ -1,4 +1,4 @@
-// 顶部标签栏控制（渲染进程）
+// 底部浏览器任务栏控制（渲染进程）
 // 所有主窗口操作均通过 preload 暴露的具名 window.aiFree 能力完成。
 
 function handleNewBrowserPointerDown(event) {
@@ -24,7 +24,7 @@ function handleNewBrowserPointerMove(event) {
     if (!browserHistoryGestureState.active) {
       const deltaX = event.clientX - browserHistoryGestureState.startX;
       const deltaY = event.clientY - browserHistoryGestureState.startY;
-      if (deltaY >= BROWSER_HISTORY_GESTURE_THRESHOLD && deltaY > Math.abs(deltaX)) {
+      if (deltaY <= -BROWSER_HISTORY_GESTURE_THRESHOLD && Math.abs(deltaY) > Math.abs(deltaX)) {
         event.preventDefault();
         showBrowserHistoryGesturePopup();
         void loadBrowserHistoryForGesture(browserHistoryGestureState.loadToken);
@@ -80,7 +80,7 @@ function handleNewBrowserClick(event) {
     event.preventDefault();
     event.stopPropagation();
     if (suppressNewBrowserWindowClick || newBrowserWindowBtn.disabled) return;
-    ShellApi.switchTab(null);
+    void createIndependentBrowserFromShell();
 }
 
 window.AppShellBrowserActions = Object.freeze({
@@ -90,8 +90,8 @@ window.AppShellBrowserActions = Object.freeze({
 function bindNewBrowserWindowBtnOnce() {
   newBrowserWindowBtn = document.getElementById('new-browser-window-btn');
   if (!newBrowserWindowBtn || newBrowserWindowBtn.dataset.bound === '1') return;
-  newBrowserWindowBtn.title = '单击打开空白首页；按住向下拖动可选择浏览器历史';
-  newBrowserWindowBtn.setAttribute('aria-label', '打开空白首页；按住向下拖动可选择浏览器历史');
+  newBrowserWindowBtn.title = '新建浏览器；按住向上拖动可选择浏览器历史';
+  newBrowserWindowBtn.setAttribute('aria-label', '新建浏览器；按住向上拖动可选择浏览器历史');
   newBrowserWindowBtn.addEventListener('pointerdown', handleNewBrowserPointerDown);
   newBrowserWindowBtn.addEventListener('pointermove', handleNewBrowserPointerMove);
   newBrowserWindowBtn.addEventListener('pointerup', handleNewBrowserPointerUp);
@@ -99,6 +99,17 @@ function bindNewBrowserWindowBtnOnce() {
   newBrowserWindowBtn.addEventListener('lostpointercapture', handleNewBrowserPointerCancel);
   newBrowserWindowBtn.addEventListener('click', handleNewBrowserClick);
   newBrowserWindowBtn.dataset.bound = '1';
+}
+
+function bindHomeTabBtnOnce() {
+  const homeTabBtn = document.getElementById('home-tab-btn');
+  if (!homeTabBtn || homeTabBtn.dataset.bound === '1') return;
+  homeTabBtn.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    ShellApi.switchTab(null);
+  });
+  homeTabBtn.dataset.bound = '1';
 }
 
 // 同步/连接：bindAddTabBtnOnce的具体业务逻辑。
@@ -136,9 +147,12 @@ function bindAddTabBtnOnce() {
 onReady(() => {
   tabsContainer = document.getElementById('tabs-container');
   window.AppShellHome?.bind();
+  bindHomeTabBtnOnce();
   bindAddTabBtnOnce();
   bindThemeToggleBtnOnce();
   bindNewBrowserWindowBtnOnce();
+  void syncBrowserEmptyStateSidebarWidth();
+  void syncAppShellVersion();
 
   // 初始化设置按钮动画监听器
   initSettingsBtnAnimation();
@@ -170,6 +184,8 @@ function initSettingsBtnAnimation() {
       addTabBtn.classList.remove('expanding');
     }, 150);
   });
+
+  UiApi.onSidebarWidthChanged?.(setBrowserEmptyStateSidebarWidth);
 }
 function removeStaleTabElements(nextTabIdSet) {
   for (const [tabId, element] of tabElementById.entries()) {

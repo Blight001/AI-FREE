@@ -4,6 +4,7 @@
     ['navigate', '访问网页'], ['click', '点击元素'], ['type', '输入内容'],
     ['wait', '等待条件'], ['condition', '判断分支'], ['get_credits', '获取积分'],
     ['save_cookies', '保存会话'], ['screenshot', '截图'], ['mcp', '调用 MCP'],
+    ['delay', '延迟等待'], ['end', '结束流程'],
   ];
   const CONDITIONS = [
     ['selector_exists', '元素存在'], ['selector_missing', '元素不存在'],
@@ -12,7 +13,8 @@
   const state = {
     card: { steps: [], flow: { start: '', nodes: [], edges: [] } },
     selectedNode: '', selectedEdge: '', scale: 1, x: 0, y: 0,
-    connection: null, onChange: null, bound: false, mcpTools: [],
+    connection: null, onChange: null, bound: false, mcpTools: [], history: null,
+    clipboard: null, execution: {},
   };
 
   function element(id) { return document.getElementById(id); }
@@ -48,6 +50,7 @@
   }
 
   function notify() {
+    state.history?.record(state.card);
     state.onChange?.(clone(state.card));
   }
 
@@ -108,6 +111,8 @@
   }
 
   function nodeMeta(step) {
+    if (step.type === 'delay') return `${Math.max(0, Number(step.timeout) || 0)} 毫秒`;
+    if (step.type === 'end') return '流程终点';
     return [step.tool, step.url, step.selector, step.text, step.variable, step.condition_mode]
       .map(text).find(Boolean) || '未配置参数';
   }
@@ -128,21 +133,26 @@
     const id = step.id;
     const position = nodeFor(id) || defaultPosition(index);
     const node = document.createElement('div');
-    node.className = `automation-flow-node${id === state.selectedNode ? ' is-selected' : ''}`;
+    const executionClass = state.execution[id] ? ` is-${state.execution[id]}` : '';
+    node.className = `automation-flow-node${id === state.selectedNode ? ' is-selected' : ''}${executionClass}${id === state.card.flow.start ? ' is-start' : ''}`;
     node.dataset.nodeId = id;
+    node.dataset.nodeType = step.type;
     node.style.left = `${position.x}px`;
     node.style.top = `${position.y}px`;
     const top = document.createElement('div');
     top.className = 'automation-flow-node-top';
-    top.append(Object.assign(document.createElement('span'), { textContent: `#${index + 1}` }),
+    top.append(Object.assign(document.createElement('span'), { textContent: id === state.card.flow.start ? `入口 · #${index + 1}` : `#${index + 1}` }),
       Object.assign(document.createElement('span'), { textContent: TYPES.find(([type]) => type === step.type)?.[1] || step.type }));
     const title = Object.assign(document.createElement('div'), { className: 'automation-flow-node-title', textContent: text(step.name) || `步骤 ${index + 1}` });
     const meta = Object.assign(document.createElement('div'), { className: 'automation-flow-node-meta', textContent: nodeMeta(step) });
     node.append(top, title, meta, createPort(id, '', true));
     if (step.type === 'condition') node.append(createPort(id, 'true'), createPort(id, 'false'));
-    else node.append(createPort(id, 'next'));
+    else if (step.type !== 'end') node.append(createPort(id, 'next'));
     node.addEventListener('pointerdown', beginNodeDrag);
-    node.addEventListener('click', () => { state.selectedNode = id; state.selectedEdge = ''; render(); });
+    node.addEventListener('click', () => {
+      state.selectedNode = id; state.selectedEdge = ''; element('automation-flow-canvas')?.focus({ preventScroll: true }); render();
+    });
+    node.addEventListener('dblclick', () => { state.card.flow.start = id; notify(); render(); });
     return node;
   }
 
@@ -237,6 +247,7 @@
     const labels = Object.fromEntries(TYPES);
     const step = { id: `step_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`, name: labels[type] || type, type };
     if (type === 'wait') step.timeout = 1000;
+    if (type === 'delay') step.timeout = 1000;
     if (type === 'condition') step.condition_mode = 'selector_exists';
     if (type === 'mcp') {
       step.tool = state.mcpTools[0]?.name || '';
@@ -268,6 +279,46 @@
     state.card.flow.edges = state.card.flow.edges.filter((edge) => edge.from !== id && edge.to !== id);
     if (state.card.flow.start === id) state.card.flow.start = state.card.steps[0]?.id || '';
     state.selectedNode = ''; notify(); render();
+  }
+
+  function copySelection(cut = false) {
+    const index = stepIndex(state.selectedNode);
+    if (index < 0) return false;
+    const id = state.selectedNode;
+    state.clipboard = window.AppShellAutomationCanvasHistory?.createClipboard({
+      step: clone(state.card.steps[index]), node: clone(nodeFor(id) || defaultPosition(index)),
+      edges: cut ? clone(state.card.flow.edges.filter((edge) => edge.from === id || edge.to === id)) : [],
+      start: cut && state.card.flow.start === id, cut,
+    }) || null;
+    if (cut) deleteSelection();
+    return Boolean(state.clipboard);
+  }
+
+  function pasteSelection() {
+    if (!state.clipboard) return false;
+    const result = window.AppShellAutomationCanvasHistory?.pasteClipboard(state.clipboard, state.card);
+    if (!result) return false;
+    state.card = normalizeCard(result.card);
+    state.selectedNode = result.id; state.selectedEdge = ''; notify(); render(); return true;
+  }
+
+  function restoreHistory(direction) {
+    const card = state.history?.[direction]?.();
+    if (!card) return false;
+    state.card = normalizeCard(card);
+    if (stepIndex(state.selectedNode) < 0) state.selectedNode = '';
+    if (state.clipboard?.cut && stepIndex(state.clipboard.step.id) >= 0) state.clipboard.cut = false;
+    state.selectedEdge = ''; state.onChange?.(clone(state.card)); render(); return true;
+  }
+
+  function handleShortcut(event) {
+    if (event.target.matches('input,textarea,select,[contenteditable="true"]')) return;
+    const command = (event.ctrlKey || event.metaKey) && event.key.toLowerCase();
+    const handled = command === 'z' ? restoreHistory(event.shiftKey ? 'redo' : 'undo')
+      : command === 'y' ? restoreHistory('redo') : command === 'c' ? copySelection()
+        : command === 'x' ? copySelection(true) : command === 'v' ? pasteSelection()
+          : ['Delete', 'Backspace'].includes(event.key) ? (deleteSelection(), true) : false;
+    if (handled) event.preventDefault();
   }
 
   function moveSelected(delta) {
@@ -390,6 +441,7 @@
     document.querySelectorAll('[data-node-field]').forEach((control) => control.addEventListener('change', () => updateField(control)));
     document.querySelectorAll('[data-node-command]').forEach((button) => button.addEventListener('click', () => {
       if (button.dataset.nodeCommand === 'delete') deleteSelection();
+      else if (button.dataset.nodeCommand === 'start' && state.selectedNode) { state.card.flow.start = state.selectedNode; notify(); render(); }
       else moveSelected(button.dataset.nodeCommand === 'up' ? -1 : 1);
     }));
     element('automation-flow-canvas').addEventListener('pointerdown', beginPan);
@@ -400,16 +452,18 @@
       const type = event.dataTransfer?.getData('application/x-ai-free-step');
       if (TYPES.some(([value]) => value === type)) addStep(type, canvasPoint(event));
     });
-    element('automation-flow-canvas').addEventListener('keydown', (event) => {
-      if (['Delete', 'Backspace'].includes(event.key) && !event.target.matches('input,textarea,select')) deleteSelection();
-    });
+    element('automation-flow-canvas').addEventListener('keydown', handleShortcut);
     element('automation-canvas-layout').addEventListener('click', autoLayout);
     element('automation-canvas-zoom-out').addEventListener('click', () => zoom(-0.1));
     element('automation-canvas-zoom-in').addEventListener('click', () => zoom(0.1));
     element('automation-canvas-zoom-reset').addEventListener('click', () => { state.scale = 1; state.x = 0; state.y = 0; applyTransform(); });
   }
 
-  function configure(options = {}) { state.onChange = options.onChange; bind(); }
+  function configure(options = {}) {
+    state.onChange = options.onChange;
+    state.history ||= window.AppShellAutomationCanvasHistory?.createTimeline(100) || null;
+    bind();
+  }
   function setMcpTools(tools = []) {
     state.mcpTools = (Array.isArray(tools) ? tools : [])
       .map((tool) => ({ name: text(tool?.name), description: text(tool?.description) }))
@@ -417,15 +471,20 @@
     render();
   }
   function show(card) {
-    state.card = normalizeCard(card); state.selectedNode = ''; state.selectedEdge = ''; notify(); render();
+    state.card = normalizeCard(card); state.selectedNode = ''; state.selectedEdge = ''; state.execution = {};
+    state.history?.reset(state.card); state.onChange?.(clone(state.card)); render();
   }
   function markExecution(execution = []) {
-    document.querySelectorAll('.automation-flow-node').forEach((node) => node.classList.remove('is-running', 'is-success', 'is-error'));
+    state.execution = {};
     for (const item of Array.isArray(execution) ? execution : []) {
-      const step = state.card.steps[Number(item.stepIndex || 0) - 1];
-      const node = step && document.querySelector(`[data-node-id="${step.id}"]`);
-      node?.classList.add(item.success === false ? 'is-error' : 'is-success');
+      const step = state.card.steps.find((candidate) => candidate.id === item.stepId)
+        || state.card.steps[Number(item.stepIndex || 0) - 1];
+      if (!step) continue;
+      const status = text(item.status).toLowerCase();
+      state.execution[step.id] = item.success === false || ['failed', 'error', 'timed_out', 'cancelled'].includes(status)
+        ? 'error' : ['running', 'pending', 'waiting', 'waiting_device', 'waiting_ai'].includes(status) ? 'running' : 'success';
     }
+    render();
   }
 
   window.AppShellAutomationCanvas = Object.freeze({ configure, markExecution, setMcpTools, show });

@@ -3,7 +3,7 @@
 <html class="browser-settings-page">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' http: https:; object-src 'none'; base-uri 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: http: https:; font-src 'self' data:; connect-src 'self' http: https:; object-src 'none'; base-uri 'self'">
   <title>AI-FREE</title>
   <link rel="stylesheet" href="../sidebar/client/styles/control-panel.css" />
   <link rel="stylesheet" href="../sidebar/client/app/side/styles/side.css" />
@@ -11,11 +11,18 @@
   <link rel="stylesheet" href="../renderer/styles/app-shell-home.css" />
   <link rel="stylesheet" href="../renderer/styles/app-shell-automation.css" />
   <link rel="stylesheet" href="../renderer/styles/app-shell-automation-canvas.css" />
+  <link rel="stylesheet" href="../renderer/styles/app-shell-automation-workflow.css" />
 </head>
 <body>
   <div id="app-container">
     <div id="tab-bar">
       <div class="tabs" id="tabs-container">
+        <button id="home-tab-btn" type="button" title="首页" aria-label="返回首页">
+          <svg class="home-tab-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3.5 10.8 12 3.7l8.5 7.1"></path>
+            <path d="M5.8 9.6v10.1h12.4V9.6M9.6 19.7v-6.1h4.8v6.1"></path>
+          </svg>
+        </button>
         <!-- Tabs will be dynamically inserted here -->
         <button id="new-browser-window-btn" type="button" title="新建浏览器窗口" aria-label="新建浏览器窗口">
           <svg class="new-window-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -29,6 +36,7 @@
           <span id="update-widget-percent" class="shell-update-percent">0%</span>
         </div>
       </div>
+      <span id="shell-app-version" class="shell-app-version" aria-label="软件版本" hidden></span>
       <button id="theme-toggle-btn" class="shell-theme-toggle-btn" type="button" aria-pressed="false" aria-label="切换主题" title="切换到白色模式">
         <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" aria-hidden="true">
           <circle cx="12" cy="12" r="4.2"></circle>
@@ -39,11 +47,8 @@
           <path d="M18.8 5.2l.5 1.4 1.4.5-1.4.5-.5 1.4-.5-1.4-1.4-.5 1.4-.5.5-1.4Z"></path>
         </svg>
       </button>
-      <div id="add-tab-btn" title="单击切换侧栏，双击打开网页控制台" role="button" aria-label="切换侧栏">
-        <svg class="settings-icon" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M12 8.25A3.75 3.75 0 1 0 12 15.75 3.75 3.75 0 0 0 12 8.25Z"></path>
-          <path d="M19.1 13.1c.05-.36.08-.72.08-1.1s-.03-.74-.08-1.1l2-1.56-1.9-3.28-2.35.95a8.4 8.4 0 0 0-1.9-1.1L14.6 3.4h-3.8l-.36 2.51a8.4 8.4 0 0 0-1.9 1.1L6.2 6.06 4.3 9.34l2 1.56c-.05.36-.08.72-.08 1.1s.03.74.08 1.1l-2 1.56 1.9 3.28 2.35-.95a8.4 8.4 0 0 0 1.9 1.1l.36 2.51h3.8l.36-2.51a8.4 8.4 0 0 0 1.9-1.1l2.35.95 1.9-3.28-2-1.56Z"></path>
-        </svg>
+      <div id="add-tab-btn" title="单击收起或展开 AI 控制，双击打开网页控制台" role="button" aria-label="收起或展开 AI 控制">
+        <img class="shell-app-logo" data-app-logo alt="AI-FREE">
       </div>
     </div>
     <div id="content-area">
@@ -211,10 +216,25 @@
               </div>
             </div>
           </header>
-          <div class="automation-workbench-grid">
+          <nav class="automation-workbench-tabs" aria-label="自动化工作台视图">
+            <button id="automation-tab-cards" type="button" aria-selected="true">卡片</button>
+            <button id="automation-tab-runs" type="button" aria-selected="false">运行历史</button>
+          </nav>
+          <div id="automation-cards-panel" class="automation-workbench-grid">
             <aside class="automation-library" aria-label="自动化卡片库">
               <div class="automation-section-heading">
                 <h3>自动化卡片</h3>
+                <span id="automation-card-count">0 / 0</span>
+              </div>
+              <div class="automation-workbench-toolbar">
+                <input id="automation-card-search" type="search" placeholder="搜索名称、说明或标签" aria-label="搜索自动化卡片">
+                <select id="automation-card-status-filter" aria-label="筛选卡片状态">
+                  <option value="">全部状态</option>
+                  <option value="active">可执行</option>
+                  <option value="draft">草稿</option>
+                  <option value="validated">已校验</option>
+                  <option value="deprecated">已停用</option>
+                </select>
                 <button id="automation-new" type="button">新建</button>
               </div>
               <div id="automation-card-list" class="automation-card-list"></div>
@@ -240,11 +260,13 @@
                   <button type="button" data-canvas-add="click">点击元素</button>
                   <button type="button" data-canvas-add="type">输入内容</button>
                   <button type="button" data-canvas-add="wait">等待条件</button>
+                  <button type="button" data-canvas-add="delay">延迟等待</button>
                   <button type="button" data-canvas-add="condition">判断分支</button>
                   <button type="button" data-canvas-add="get_credits">获取积分</button>
                   <button type="button" data-canvas-add="save_cookies">保存会话</button>
                   <button type="button" data-canvas-add="screenshot">截图</button>
                   <button type="button" data-canvas-add="mcp">调用 MCP</button>
+                  <button type="button" data-canvas-add="end">结束流程</button>
                 </div>
                 <div class="automation-canvas-shell">
                   <div id="automation-flow-canvas" class="automation-flow-canvas" tabindex="0" aria-label="自动化流程画布">
@@ -259,6 +281,7 @@
                       <div class="automation-node-heading">
                         <strong id="automation-node-title">节点设置</strong>
                         <div>
+                          <button type="button" data-node-command="start">设为入口</button>
                           <button type="button" data-node-command="up">上移</button>
                           <button type="button" data-node-command="down">下移</button>
                           <button type="button" data-node-command="delete" class="automation-danger">删除</button>
@@ -280,6 +303,11 @@
                 </div>
                 <p class="automation-canvas-hint">拖动节点调整位置；从右侧端点拖到目标节点左侧端点建立连线。判断节点提供 true / false 两个分支。点击连线后按 Delete 可移除。</p>
               </section>
+              <details class="automation-version-panel">
+                <summary>版本历史与校验</summary>
+                <div id="automation-version-list" class="automation-version-list"></div>
+                <pre id="automation-version-preview">选择历史版本查看完整定义。</pre>
+              </details>
               <dialog id="automation-basic-info-dialog" class="automation-basic-info-dialog" aria-labelledby="automation-basic-info-title">
                 <header class="automation-basic-info-header">
                   <div>
@@ -294,6 +322,21 @@
                     <label>目标网站<input id="automation-card-website" name="website" type="url" placeholder="https://example.com"></label>
                   </div>
                   <label>说明<textarea id="automation-card-description" name="description" rows="2"></textarea></label>
+                  <div class="automation-metadata-fields">
+                    <label>状态
+                      <select id="automation-card-status"><option value="active">可执行</option><option value="draft">草稿</option><option value="validated">已校验</option><option value="deprecated">已停用</option></select>
+                    </label>
+                    <label>风险等级
+                      <select id="automation-card-risk-level"><option value="read_only">只读</option><option value="normal_change">普通变更</option><option value="high_risk">高风险</option></select>
+                    </label>
+                    <label>访问范围
+                      <select id="automation-card-access-scope"><option value="all">所有成员</option><option value="owner">仅创建者</option><option value="selected">指定成员</option></select>
+                    </label>
+                    <label class="is-wide">标签（逗号分隔）<input id="automation-card-tags" type="text" placeholder="登录, 数据采集"></label>
+                    <label>总超时（秒）<input id="automation-card-timeout-seconds" type="number" min="1" max="86400" value="900"></label>
+                    <label>最大步骤推进<input id="automation-card-max-transitions" type="number" min="1" max="500" value="120"></label>
+                    <label class="is-wide">输入 JSON Schema<textarea id="automation-card-input-schema" rows="6" spellcheck="false">{"type":"object","properties":{}}</textarea></label>
+                  </div>
                   <label class="automation-json-field">
                     <span>步骤 JSON <small>保留 flow、变量和全部扩展字段</small></span>
                     <textarea id="automation-card-steps" name="steps" rows="12" spellcheck="false"></textarea>
@@ -310,6 +353,9 @@
               <div class="automation-editor-actions">
                 <button id="automation-basic-info-open" type="button" aria-haspopup="dialog" aria-controls="automation-basic-info-dialog" aria-expanded="false">基础信息</button>
                 <button id="automation-save" type="submit">保存卡片</button>
+                <button id="automation-validate" type="button">校验</button>
+                <button id="automation-clone" type="button">复制</button>
+                <button id="automation-export-modern" type="button">导出定义</button>
                 <button id="automation-run" class="automation-primary" type="button">运行</button>
                 <button id="automation-save-session" type="button">保存当前会话</button>
                 <button id="automation-delete" class="automation-danger" type="button">删除</button>
@@ -317,6 +363,33 @@
               <pre id="automation-status" class="automation-status" aria-live="polite">正在加载原生自动化工作台…</pre>
             </form>
           </div>
+          <section id="automation-runs-panel" class="automation-runs-layout" hidden aria-label="自动化运行历史">
+            <div id="automation-run-list" class="automation-run-list"></div>
+            <article class="automation-run-detail">
+              <header class="automation-run-detail-header">
+                <div><strong>运行详情</strong><small id="automation-run-detail-id"></small></div>
+                <span id="automation-run-detail-status" class="automation-status-badge is-info">请选择运行</span>
+              </header>
+              <p id="automation-run-detail-time" class="automation-canvas-hint">暂无运行记录</p>
+              <pre id="automation-run-detail-error"></pre>
+              <pre id="automation-run-detail-output">暂无输出</pre>
+              <div class="automation-editor-actions">
+                <button id="automation-run-cancel" class="automation-danger" type="button" hidden>取消运行</button>
+                <button id="automation-run-retry" type="button" hidden>新运行重试</button>
+              </div>
+              <h3>步骤记录</h3>
+              <div id="automation-run-step-list" class="automation-run-step-list"></div>
+            </article>
+          </section>
+          <dialog id="automation-run-dialog" class="automation-run-dialog" aria-labelledby="automation-run-card-name">
+            <div class="automation-run-dialog-body">
+              <header class="automation-run-detail-header"><strong id="automation-run-card-name">运行自动化卡片</strong><button id="automation-run-close" type="button" aria-label="关闭运行设置">×</button></header>
+              <label>运行浏览器<select id="automation-run-target"></select></label>
+              <label>运行版本<select id="automation-run-version"><option value="">最新版本</option></select></label>
+              <label>运行输入<textarea id="automation-run-input" rows="10" spellcheck="false">{}</textarea></label>
+              <div class="automation-run-dialog-actions"><button id="automation-run-start" class="automation-primary" type="button">启动运行</button></div>
+            </div>
+          </dialog>
         </section>
         </dialog>
       </section>
@@ -361,6 +434,9 @@
   <script src="../sidebar/client/app/side/controllers/pages/side-panel/modules/bootstrap.js"></script>
   <script src="../sidebar/client/app/side/controllers/pages/side-panel/index.js"></script>
   <script src="../sidebar/client/app/side/controllers/pages/side-panel/dream-opener.js"></script>
+  <script src="../renderer/controllers/pages/app-shell/automation-canvas-history.js"></script>
+  <script src="../renderer/controllers/pages/app-shell/automation-workbench-view-model.js"></script>
+  <script src="../renderer/controllers/pages/app-shell/automation-workbench-upgrade.js"></script>
   <script src="../renderer/controllers/pages/app-shell/shell-automation-canvas.js"></script>
   <script src="../renderer/controllers/pages/app-shell/shell-automation-workbench.js"></script>
   <script src="../renderer/controllers/pages/app-shell/shell-home.js"></script>

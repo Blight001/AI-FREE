@@ -199,3 +199,67 @@ test('flow node without an outgoing edge is terminal instead of falling through 
   assert.equal(result.success, true);
   assert.deepEqual(calls, ['browser_tab', 'browser_tab', 'browser_screenshot']);
 });
+
+test('card metadata and immutable versions survive updates, validation, cloning and export', async () => {
+  const { service } = fixture();
+  const first = await service.execute({
+    action: 'write', status: 'draft', riskLevel: 'high_risk', tags: ['publish'], accessScope: 'owner',
+    inputSchema: { type: 'object', required: ['title'] }, limits: { timeoutSeconds: 30, maxTransitions: 8 },
+    cardData: { name: '发布', description: 'first', steps: [{ type: 'end' }] },
+  });
+  const second = await service.execute({
+    action: 'write', id: first.item.id,
+    cardData: { name: '发布', description: 'second', steps: [{ type: 'delay', delayMs: 1 }, { type: 'end' }] },
+  });
+  assert.equal(second.item.versions.length, 2);
+  assert.equal(second.item.versions[0].cardData.description, 'first');
+  assert.equal(second.item.riskLevel, 'high_risk');
+  assert.deepEqual(second.item.inputSchema.required, ['title']);
+  const validated = await service.execute({ action: 'validate', id: second.item.id });
+  assert.equal(validated.digest.length, 64);
+  const versions = await service.execute({ action: 'versions', id: second.item.id });
+  assert.equal(versions.items[0].digest === versions.items[1].digest, false);
+  const unchanged = await service.execute({ action: 'write', id: second.item.id, cardData: second.item.cardData });
+  assert.equal(unchanged.item.versions.length, 2);
+  const cloned = await service.execute({ action: 'clone', id: second.item.id, name: '发布副本' });
+  assert.equal(cloned.item.cardName, '发布副本');
+  assert.notEqual(cloned.item.id, second.item.id);
+  const exported = await service.execute({ action: 'export', id: second.item.id });
+  assert.equal(exported.card.latestVersionId, second.item.latestVersionId);
+});
+
+test('delay and end steps support progress, retries and cooperative cancellation', async () => {
+  const { service } = fixture();
+  const written = await service.execute({
+    action: 'write',
+    cardData: {
+      name: '可恢复流程',
+      steps: [
+        { id: 'retry', type: 'mcp', tool: 'unstable', retryPolicy: { maxAttempts: 2, delaySeconds: 0 } },
+        { id: 'pause', type: 'delay', delayMs: 1 },
+        { id: 'done', type: 'end' },
+        { id: 'never', type: 'mcp', tool: 'must_not_run' },
+      ],
+    },
+  });
+  let attempts = 0;
+  const progress = [];
+  const result = await service.execute({ action: 'run', id: written.item.id }, {
+    onProgress: (item) => progress.push(item),
+    dispatch: async () => {
+      attempts += 1;
+      if (attempts === 1) return { success: false, error: 'temporary' };
+      return { success: true };
+    },
+  });
+  assert.equal(result.success, true);
+  assert.equal(attempts, 2);
+  assert.equal(result.execution.at(-1).type, 'end');
+  assert.equal(progress.some((item) => item.stepId === 'retry' && item.attempt === 2), true);
+
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(service.execute({ action: 'run', id: written.item.id }, {
+    signal: controller.signal, dispatch: async () => ({ success: true }),
+  }), (error) => error.errorCode === 'RUN_CANCELLED');
+});

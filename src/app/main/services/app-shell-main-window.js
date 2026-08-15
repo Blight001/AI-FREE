@@ -136,7 +136,7 @@ function resolveLayout(deps, mainWindow, sideView) {
     sideViewWidth,
     activeTab,
     chromiumBounds: activeTab?.runtimeType === 'chromium'
-      ? { x: 0, y: tabBarHeight, width: width - sideViewWidth, height: height - tabBarHeight }
+      ? { x: 0, y: 0, width: width - sideViewWidth, height: height - tabBarHeight }
       : null,
   };
 }
@@ -147,12 +147,18 @@ function updateMainWindowLayout(deps, mainWindow) {
   if (sideView && layout.isSidebarVisible) {
     sideView.setBounds({
       x: layout.width - layout.sideViewWidth,
-      y: layout.tabBarHeight,
+      y: 0,
       width: layout.sideViewWidth,
       height: layout.tabContentHeight,
     });
   }
   sideView?.setVisible?.(layout.isSidebarVisible);
+  if (!mainWindow.webContents?.isDestroyed?.()) {
+    mainWindow.webContents.send?.('sidebar-width-changed', {
+      visible: layout.isSidebarVisible,
+      width: layout.isSidebarVisible ? layout.sideViewWidth : 0,
+    });
+  }
   if (!layout.activeTab || !layout.chromiumBounds) return;
   void deps.browserRuntimeManager?.resize(layout.activeTab.id, 'chromium', layout.chromiumBounds)
     .then(() => deps.updateTabs?.())
@@ -167,6 +173,14 @@ function handleMainWindowClosed(deps) {
   deps.setMainWindow?.(null);
 }
 
+function dismissActiveBrowserTransientUi(deps) {
+  const activeTabId = deps.resolveActiveTabId?.();
+  if (!activeTabId) return;
+  try {
+    deps.browserRuntimeManager?.releaseFocus?.(activeTabId, 'chromium');
+  } catch (_) {}
+}
+
 function bindMainWindowEvents(deps, mainWindow) {
   const updateLayout = () => updateMainWindowLayout(deps, mainWindow);
   mainWindow.webContents.on('did-finish-load', () => {
@@ -175,6 +189,7 @@ function bindMainWindowEvents(deps, mainWindow) {
     deps.logger.log?.('[WindowTitle] did-finish-load, set title:', deps.APP_DISPLAY_NAME);
   });
   mainWindow.on('focus', () => setTimeout(() => deps.updateTabs(true), 0));
+  mainWindow.on('blur', () => dismissActiveBrowserTransientUi(deps));
   mainWindow.on('resize', updateLayout);
   mainWindow.on('ready-to-show', updateLayout);
   mainWindow.on('closed', () => handleMainWindowClosed(deps));

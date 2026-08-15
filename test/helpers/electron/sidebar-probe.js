@@ -126,6 +126,34 @@ app.whenReady().then(async () => {
       const image = await win.webContents.capturePage();
       fs.writeFileSync(process.env.AI_FREE_WELCOME_CAPTURE, image.toPNG());
     }
+    if (process.env.AI_FREE_MODEL_MENU_CAPTURE) {
+      await win.webContents.executeJavaScript(`(() => {
+        const select = document.getElementById('ai-chat-model');
+        select.disabled = false;
+        select.innerHTML = '<option value="fast">AI-FREE 极速模型</option><option value="full">AI-FREE 满血模型</option><option value="pro">AI-FREE 高级模型</option>';
+        syncSelectUi(select);
+        document.getElementById('ai-chat-model-trigger').click();
+      })()`);
+      win.setSize(500, 820);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const image = await win.webContents.capturePage();
+      fs.writeFileSync(process.env.AI_FREE_MODEL_MENU_CAPTURE, image.toPNG());
+    }
+    if (process.env.AI_FREE_WORKSPACE_CAPTURE) {
+      await win.webContents.executeJavaScript(`(() => {
+        state.workspaceFiles = Array.from({ length: 6 }, (_, index) => ({
+          name: 'ChatGPT Image 2026年7月15日 ' + String(10 + index) + '_43_' + String(23 + index) + '.png',
+          path: 'Uploads/ChatGPT Image 2026年7月15日_' + index + '.png',
+          size: 1200000 + index * 170000,
+        }));
+        renderWorkspaceFiles();
+        document.getElementById('ai-chat-workspace-panel').hidden = false;
+      })()`);
+      win.setSize(500, 820);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const image = await win.webContents.capturePage();
+      fs.writeFileSync(process.env.AI_FREE_WORKSPACE_CAPTURE, image.toPNG());
+    }
     const devWin = new BrowserWindow({ show: false, webPreferences: { sandbox: false } });
     const devPage = path.join(__dirname, '..', '..', '..', 'src', 'app', 'sidebar', 'ai-control.html');
     await devWin.webContents.loadFile(devPage, { query: { dev: '1' } });

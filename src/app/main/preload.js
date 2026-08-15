@@ -192,6 +192,7 @@ contextBridge.exposeInMainWorld('aiFree', Object.freeze({
     onServerMessage: subscribeChannel('server-message'),
     onSidebarCollapse: subscribeChannel('sidebar-collapse'),
     onSidebarExpand: subscribeChannel('sidebar-expand'),
+    onSidebarWidthChanged: subscribeChannel('sidebar-width-changed'),
   }),
   diagnostics: Object.freeze({
     getConsoleHistory: invokeChannel('get-app-console-history'),

@@ -1,51 +1,51 @@
 :root {
   color-scheme: dark;
-  --shell-bg: #0f1115;
-  --shell-panel: #151a24;
-  --shell-border: #2a3242;
-  --shell-text: #e6e8ee;
-  --shell-muted: #9aa3b2;
-  --shell-accent: #4da3ff;
-  --shell-accent-hover: #2f7fe6;
+  --shell-bg: #18181b;
+  --shell-panel: #242427;
+  --shell-border: #3f3f46;
+  --shell-text: #f4f4f5;
+  --shell-muted: #a1a1aa;
+  --shell-accent: #818cf8;
+  --shell-accent-hover: #a5b4fc;
   --shell-danger: #d9534f;
-  --shell-scrollbar: #3a4150;
+  --shell-scrollbar: #52525b;
   --shell-back-text: #d9c28a;
   --shell-back-border: rgba(217, 194, 138, 0.22);
   --shell-back-border-hover: rgba(217, 194, 138, 0.30);
   --shell-back-hover: rgba(217, 194, 138, 0.08);
-  --shell-tab-bg: rgba(77, 163, 255, 0.14);
-  --shell-tab-border: rgba(77, 163, 255, 0.24);
-  --shell-tab-text: #8bbcff;
-  --shell-tab-active-bg: rgba(77, 163, 255, 0.24);
-  --shell-tab-active-border: rgba(77, 163, 255, 0.45);
-  --shell-tab-active-text: #d8eaff;
-  --shell-tab-drop-glow: rgba(77, 163, 255, 0.55);
+  --shell-tab-bg: rgba(129, 140, 248, 0.10);
+  --shell-tab-border: rgba(129, 140, 248, 0.20);
+  --shell-tab-text: #c7d2fe;
+  --shell-tab-active-bg: rgba(129, 140, 248, 0.20);
+  --shell-tab-active-border: rgba(129, 140, 248, 0.42);
+  --shell-tab-active-text: #eef2ff;
+  --shell-tab-drop-glow: rgba(129, 140, 248, 0.45);
   --shell-tab-height: 30px;
   --shell-tab-gap: 4px;
 }
 
 html.theme-light {
   color-scheme: light;
-  --shell-bg: #f3f7fc;
+  --shell-bg: #f4f4f5;
   --shell-panel: #ffffff;
-  --shell-border: rgba(84, 120, 165, 0.18);
-  --shell-text: #1f3044;
-  --shell-muted: #6a7c91;
-  --shell-accent: #2f7fe6;
-  --shell-accent-hover: #256cc7;
+  --shell-border: #e4e4e7;
+  --shell-text: #27272a;
+  --shell-muted: #71717a;
+  --shell-accent: #4f46e5;
+  --shell-accent-hover: #4338ca;
   --shell-danger: #c43d3d;
-  --shell-scrollbar: rgba(117, 154, 211, 0.72);
+  --shell-scrollbar: #d4d4d8;
   --shell-back-text: #8a641f;
   --shell-back-border: rgba(138, 100, 31, 0.22);
   --shell-back-border-hover: rgba(138, 100, 31, 0.34);
   --shell-back-hover: rgba(138, 100, 31, 0.08);
-  --shell-tab-bg: rgba(47, 127, 230, 0.09);
-  --shell-tab-border: rgba(47, 127, 230, 0.18);
-  --shell-tab-text: #2f6fc7;
-  --shell-tab-active-bg: rgba(47, 127, 230, 0.16);
-  --shell-tab-active-border: rgba(47, 127, 230, 0.36);
-  --shell-tab-active-text: #1d5a9e;
-  --shell-tab-drop-glow: rgba(47, 127, 230, 0.28);
+  --shell-tab-bg: #fafafa;
+  --shell-tab-border: #e4e4e7;
+  --shell-tab-text: #52525b;
+  --shell-tab-active-bg: #eef2ff;
+  --shell-tab-active-border: #c7d2fe;
+  --shell-tab-active-text: #4338ca;
+  --shell-tab-drop-glow: rgba(79, 70, 229, 0.24);
 }
 
 html.theme-gold {
@@ -91,13 +91,15 @@ body, html {
 }
 
 #tab-bar {
+  order: 2;
   display: flex;
   align-items: center;
   gap: var(--shell-tab-gap);
-  background-color: var(--shell-panel);
+  background: color-mix(in srgb, var(--shell-panel) 94%, transparent);
   padding: 5px 8px;
-  border-bottom: 1px solid var(--shell-border);
+  border-top: 1px solid var(--shell-border);
   flex-shrink: 0;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, .08);
 }
 
 .shell-action-btn {
@@ -132,6 +134,7 @@ body, html {
 }
 
 #add-tab-btn,
+#home-tab-btn,
 #new-browser-window-btn {
   width: var(--shell-tab-height);
   height: var(--shell-tab-height);
@@ -330,26 +333,79 @@ html.theme-light #new-browser-window-btn:hover:not(:disabled) {
   display: grid;
   place-items: center;
   line-height: normal;
+  overflow: hidden;
+  border: 1px solid var(--shell-tab-active-border);
+  background: var(--shell-tab-active-bg);
+  box-sizing: border-box;
 }
 
-#add-tab-btn .settings-icon {
+#home-tab-btn {
+  appearance: none;
+  flex: 0 0 var(--shell-tab-height);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--shell-border);
+  border-radius: 50%;
+  color: var(--shell-tab-text);
+  background: var(--shell-tab-bg);
+  box-shadow: none;
+  transition: transform .16s ease, color .16s ease, background .16s ease, border-color .16s ease;
+}
+
+#home-tab-btn:hover {
+  color: #fff;
+  border-color: var(--shell-tab-active-border);
+  background: var(--shell-accent-hover);
+  transform: translateY(-1px);
+}
+
+#home-tab-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(79, 151, 255, .22);
+}
+
+#home-tab-btn .home-tab-icon {
   width: 18px;
   height: 18px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.55;
+  stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
-  transition: transform 0.2s ease;
 }
 
-#add-tab-btn:hover .settings-icon {
-  transform: rotate(20deg);
+.shell-app-version {
+  flex: 0 0 auto;
+  color: var(--shell-muted);
+  font-size: 11px;
+  line-height: var(--shell-tab-height);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.shell-app-version[hidden] {
+  display: none;
+}
+
+#add-tab-btn .shell-app-logo {
+  width: 23px;
+  height: 23px;
+  object-fit: contain;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .22));
+  transition: transform .16s ease;
+}
+
+#add-tab-btn:hover .shell-app-logo {
+  transform: scale(1.08);
 }
 
 #content-area {
+  order: 1;
   position: relative;
   flex-grow: 1;
+  min-height: 0;
   background: var(--shell-bg);
 }
 
@@ -385,9 +441,9 @@ html.theme-light #new-browser-window-btn:hover:not(:disabled) {
   gap: 10px;
   height: var(--shell-tab-height);
   padding: 0 12px 0 14px;
-  background-color: var(--shell-tab-bg);
-  border: 1px solid var(--shell-tab-border);
-  border-radius: 5px 5px 0 0;
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
   margin-right: 0;
   cursor: pointer;
   position: relative;
@@ -401,6 +457,10 @@ html.theme-light #new-browser-window-btn:hover:not(:disabled) {
   user-select: none;
   -webkit-user-select: none;
   box-sizing: border-box;
+}
+
+.tab:hover:not(.active) {
+  background-color: color-mix(in srgb, var(--shell-tab-bg) 58%, transparent);
 }
 
 .tab-title {
@@ -430,9 +490,11 @@ html.theme-light #new-browser-window-btn:hover:not(:disabled) {
 }
 
 .tab.active {
-  background-color: var(--shell-tab-active-bg);
+  border-width: 2px;
+  background-color: color-mix(in srgb, var(--shell-tab-active-bg) 76%, var(--shell-accent) 24%);
   border-color: var(--shell-tab-active-border);
   color: var(--shell-tab-active-text);
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--shell-accent) 18%, transparent);
 }
 
 /* 当前选中标签统一用放大加粗的标题字体标识（普通/魔法/AI 状态都适用），
@@ -440,72 +502,6 @@ html.theme-light #new-browser-window-btn:hover:not(:disabled) {
 .tab.active .tab-title {
   font-size: 19px;
   font-weight: 700;
-}
-
-.tab.ai-browser-connected {
-  overflow: hidden;
-  border-color: rgba(64, 158, 255, 0.98);
-  background: linear-gradient(105deg, rgba(15, 82, 168, .42), rgba(24, 127, 222, .22));
-  box-shadow: inset 0 0 13px rgba(51, 158, 255, .28), 0 0 9px rgba(64, 158, 255, .34);
-  color: #e1f3ff;
-}
-
-.tab.ai-browser-connected .tab-title,
-.tab.ai-browser-connected .tab-close,
-.tab.ai-browser-connected .tab-runtime-badge {
-  position: relative;
-  z-index: 1;
-}
-
-.ai-browser-particle-layer {
-  display: none;
-  position: absolute;
-  z-index: 0;
-  inset: 0;
-  overflow: hidden;
-  border-radius: inherit;
-  pointer-events: none;
-}
-
-.tab.ai-browser-connected .ai-browser-particle-layer {
-  display: block;
-}
-
-.ai-browser-particle-layer > i {
-  position: absolute;
-  top: var(--particle-top);
-  left: calc(100% + 14px);
-  width: var(--particle-size);
-  height: var(--particle-size);
-  border-radius: var(--particle-radius);
-  background: rgba(116, 207, 255, var(--particle-opacity));
-  box-shadow: 0 0 5px rgba(78, 183, 255, .72), inset 0 0 2px rgba(224, 247, 255, .75);
-  animation: aiBrowserParticleTravel var(--particle-duration) linear var(--particle-delay) infinite;
-  will-change: left, transform, opacity;
-}
-
-.ai-browser-particle-layer > i:nth-child(3n) {
-  background: rgba(42, 151, 255, var(--particle-opacity));
-}
-
-.ai-browser-particle-layer > i:nth-child(4n + 1) {
-  border: 1px solid rgba(180, 230, 255, .7);
-  background: rgba(61, 166, 255, calc(var(--particle-opacity) * .62));
-}
-
-.ai-browser-particle-layer > i.ai-text-particle {
-  width: auto;
-  height: auto;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  color: rgba(151, 220, 255, var(--particle-opacity));
-  font: 800 var(--particle-font-size)/1 "Segoe UI", sans-serif;
-  font-style: normal;
-  letter-spacing: -.7px;
-  text-shadow: 0 0 4px rgba(66, 175, 255, .7);
-  -webkit-text-stroke: .25px rgba(221, 246, 255, .55);
 }
 
 /* 网络魔法已应用的浏览器标签：紫色流动光效背景。 */
@@ -531,24 +527,6 @@ html.theme-light #new-browser-window-btn:hover:not(:disabled) {
   z-index: 1;
 }
 
-/* AI 接管 + 网络魔法同时生效：蓝紫流动渐变叠加，蓝色粒子层继续显示。 */
-.tab.ai-browser-connected.network-magic {
-  border-color: rgba(139, 92, 246, .96);
-  background: linear-gradient(105deg,
-    rgba(15, 82, 168, .46),
-    rgba(88, 28, 135, .42),
-    rgba(24, 127, 222, .3),
-    rgba(147, 51, 234, .34),
-    rgba(15, 82, 168, .46));
-  background-size: 220% 100%;
-  animation: networkMagicFlow 3.4s ease-in-out infinite;
-  box-shadow:
-    inset 0 0 13px rgba(120, 140, 255, .3),
-    0 0 8px rgba(64, 158, 255, .3),
-    0 0 12px rgba(168, 85, 247, .3);
-  color: #e9efff;
-}
-
 @keyframes networkMagicFlow {
   0%, 100% { background-position: 0% 50%; }
   50% { background-position: 100% 50%; }
@@ -567,50 +545,22 @@ html.theme-light .tab.network-magic {
   color: #5b1d96;
 }
 
-html.theme-light .tab.ai-browser-connected.network-magic {
-  border-color: rgba(124, 88, 235, .85);
-  background: linear-gradient(105deg,
-    rgba(74, 161, 248, .26),
-    rgba(192, 132, 252, .3),
-    rgba(95, 183, 255, .14),
-    rgba(216, 180, 254, .26),
-    rgba(74, 161, 248, .26));
-  background-size: 220% 100%;
-  box-shadow:
-    inset 0 0 12px rgba(100, 116, 240, .16),
-    0 0 7px rgba(44, 144, 238, .18),
-    0 0 8px rgba(147, 51, 234, .18);
-  color: #33367f;
+.tab.network-magic:not(.active) {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--shell-tab-text);
+  animation: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tab.network-magic,
-  .tab.ai-browser-connected.network-magic {
+  .tab.network-magic {
     animation: none;
   }
 
   .tab-title {
     transition: none;
   }
-}
-
-html.theme-light .tab.ai-browser-connected {
-  border-color: rgba(43, 137, 235, .95);
-  background: linear-gradient(105deg, rgba(74, 161, 248, .25), rgba(95, 183, 255, .12));
-  box-shadow: inset 0 0 12px rgba(44, 144, 238, .17), 0 0 8px rgba(44, 144, 238, .22);
-  color: #124f94;
-}
-
-html.theme-light .ai-browser-particle-layer > i.ai-text-particle {
-  color: rgba(24, 112, 205, var(--particle-opacity));
-  text-shadow: 0 0 3px rgba(61, 151, 238, .36);
-}
-
-html.theme-gold .tab.ai-browser-connected {
-  border-color: rgba(212, 183, 118, .85);
-  background: linear-gradient(105deg, rgba(120, 95, 45, .38), rgba(180, 148, 82, .16));
-  box-shadow: inset 0 0 13px rgba(212, 183, 118, .22), 0 0 14px rgba(212, 183, 118, .42);
-  color: #f4ead2;
 }
 
 html.theme-gold .tab.active {
@@ -656,46 +606,6 @@ html.theme-gold #new-browser-window-btn:hover:not(:disabled) {
 html.theme-gold #new-browser-window-btn.gesture-active {
   border-color: rgba(240, 224, 180, .58);
   box-shadow: 0 0 0 3px rgba(212, 183, 118, .2), 0 8px 20px rgba(0, 0, 0, .32);
-}
-
-html.theme-gold .ai-browser-particle-layer > i {
-  background: rgba(230, 207, 154, var(--particle-opacity));
-  box-shadow: 0 0 5px rgba(212, 183, 118, .66), inset 0 0 2px rgba(250, 240, 214, .75);
-}
-
-html.theme-gold .ai-browser-particle-layer > i:nth-child(3n) {
-  background: rgba(198, 162, 92, var(--particle-opacity));
-}
-
-html.theme-gold .ai-browser-particle-layer > i:nth-child(4n + 1) {
-  border: 1px solid rgba(240, 224, 180, .65);
-  background: rgba(212, 183, 118, calc(var(--particle-opacity) * .62));
-}
-
-html.theme-gold .ai-browser-particle-layer > i.ai-text-particle {
-  color: rgba(232, 209, 156, var(--particle-opacity));
-  text-shadow: 0 0 4px rgba(199, 164, 92, .65);
-  -webkit-text-stroke: .25px rgba(248, 238, 212, .5);
-}
-
-@keyframes aiBrowserParticleTravel {
-  0% {
-    left: calc(100% + 14px);
-    opacity: 0;
-    transform: translateY(0) rotate(0deg) scale(.72);
-  }
-  10% { opacity: 1; }
-  52% { transform: translateY(var(--particle-drift-mid)) rotate(97deg) scale(1); }
-  88% { opacity: .9; }
-  100% {
-    left: -14px;
-    opacity: 0;
-    transform: translateY(var(--particle-drift-end)) rotate(185deg) scale(.78);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ai-browser-particle-layer { display: none !important; }
 }
 
 .tab-runtime-badge {
@@ -744,11 +654,16 @@ html.theme-gold .ai-browser-particle-layer > i.ai-text-particle {
 }
 
 .tab-close {
-  margin-left: 8px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin: 0 -7px 0 2px;
+  border-radius: 6px;
   cursor: pointer;
   font-weight: bold;
   flex-shrink: 0;
-  line-height: 1;
+  line-height: 26px;
   opacity: 0.72;
   color: var(--shell-muted);
 }
@@ -756,18 +671,60 @@ html.theme-gold .ai-browser-particle-layer > i.ai-text-particle {
 .tab-close:hover {
   opacity: 1;
   color: var(--shell-danger);
+  background: color-mix(in srgb, var(--shell-danger) 14%, transparent);
 }
 
 @keyframes btnCollapse {
-  0% { opacity: 1; transform: rotate(0deg) scale(1); }
-  50% { opacity: 0.5; transform: rotate(90deg) scale(0.5); }
-  100% { opacity: 0; transform: rotate(180deg) scale(0.3); }
+  0% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(0.72); }
+  100% { opacity: 0.35; transform: scale(0.84); }
+}
+
+.tab-site-icon {
+  position: relative;
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 4px;
+  color: var(--shell-muted);
+}
+
+.tab-site-icon svg,
+.tab-site-icon img {
+  position: absolute;
+  inset: 1px;
+  width: 16px;
+  height: 16px;
+}
+
+.tab-site-icon svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.65;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.tab-site-icon img {
+  display: none;
+  object-fit: contain;
+}
+
+.tab-site-icon.has-site-icon img {
+  display: block;
+}
+
+.tab-site-icon.has-site-icon svg {
+  display: none;
 }
 
 @keyframes btnExpand {
-  0% { opacity: 0; transform: rotate(180deg) scale(0.3); }
-  50% { opacity: 0.5; transform: rotate(90deg) scale(0.5); }
-  100% { opacity: 1; transform: rotate(0deg) scale(1); }
+  0% { opacity: 0.35; transform: scale(0.84); }
+  65% { opacity: 1; transform: scale(1.08); }
+  100% { opacity: 1; transform: scale(1); }
 }
 
 #add-tab-btn.collapsing {

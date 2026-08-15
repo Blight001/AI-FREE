@@ -8,6 +8,7 @@
 // explicit focus requests; ordinary browser clicks follow native activation.
 bool FocusBrowserChildWindow(HWND child);
 bool ReleaseBrowserChildWindowFocus(HWND child);
+void DismissBrowserTransientUi(HWND child);
 
 napi_value FocusChildWindow(napi_env env, napi_callback_info info);
 napi_value ReleaseChildWindowFocus(napi_env env, napi_callback_info info);

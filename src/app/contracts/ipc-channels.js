@@ -161,6 +161,7 @@ const PUSH_CHANNELS = [
   { channel: 'server-message', kind: 'push', domain: 'ui' },
   { channel: 'sidebar-collapse', kind: 'push', domain: 'ui' },
   { channel: 'sidebar-expand', kind: 'push', domain: 'ui' },
+  { channel: 'sidebar-width-changed', kind: 'push', domain: 'ui' },
   { channel: 'vip-access-required', kind: 'push', domain: 'license' },
   { channel: 'account-list-updated', kind: 'push', domain: 'account' },
   { channel: 'active-tab-refreshed', kind: 'push', domain: 'browser' },

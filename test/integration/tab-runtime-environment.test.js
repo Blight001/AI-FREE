@@ -19,6 +19,8 @@ test('tab payload reports the applied Chromium snapshot instead of pending setti
     fixedTitle: '测试浏览器',
     runtimeType: 'chromium',
     runtimeStatus: 'ready',
+    firstWebsiteUrl: 'https://workspace.example/path',
+    firstWebsiteIconUrl: 'https://assets.workspace.example/brand/icon.svg',
     networkMagicApplied: false,
     browserProfile: {
       locale: 'ja-JP',
@@ -74,6 +76,8 @@ test('tab payload reports the applied Chromium snapshot instead of pending setti
   assert.equal(payload.browserSettings.cookieCount, 2);
   assert.equal(payload.browserSettings.language.value, 'zh-CN');
   assert.equal(payload.networkMagicEnabled, false);
+  assert.equal(payload.iconUrl, 'https://assets.workspace.example/brand/icon.svg');
+  assert.equal(payload.iconFallbackUrl, 'https://workspace.example/favicon.ico');
   assert.deepEqual(payload.runtimeEnvironment, {
     windowWidth: 1280,
     windowHeight: 720,
@@ -128,4 +132,27 @@ test('update-tabs sends the same applied environment to the shell', () => {
   assert.equal(sink.messages.length, 1);
   assert.equal(sink.messages[0].channel, 'update-tabs');
   assert.equal(sink.messages[0].payload[0].title, '窗口');
+});
+
+test('tab payload ignores non-web URLs when resolving taskbar icons', () => {
+  const helpers = createTabHelpers({
+    getTabs: () => new Map([['internal', {
+      id: 'internal', fixedTitle: '内部页', runtimeUrl: 'chrome://new-tab-page/',
+    }]]),
+    getActiveTabId: () => 'internal',
+  });
+  assert.equal(helpers.buildTabsPayload()[0].iconUrl, '');
+});
+
+test('tab payload accepts bounded Chromium favicon data and preserves origin fallback', () => {
+  const helpers = createTabHelpers({
+    getTabs: () => new Map([['data-icon', {
+      id: 'data-icon', firstWebsiteUrl: 'https://secure.example/account',
+      firstWebsiteIconUrl: 'data:image/png;base64,AAAA',
+    }]]),
+    getActiveTabId: () => 'data-icon',
+  });
+  const [payload] = helpers.buildTabsPayload();
+  assert.equal(payload.iconUrl, 'data:image/png;base64,AAAA');
+  assert.equal(payload.iconFallbackUrl, 'https://secure.example/favicon.ico');
 });

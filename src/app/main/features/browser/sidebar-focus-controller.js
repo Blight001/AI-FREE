@@ -8,6 +8,11 @@ function resolveSidebarFocusTarget(ui, event) {
   return isUsableContents(event?.sender) ? event.sender : null;
 }
 
+function isForegroundWindow(mainWindow) {
+  if (!mainWindow || mainWindow.isDestroyed?.()) return false;
+  return mainWindow.isFocused?.() === true;
+}
+
 function focusMainWindow(mainWindow) {
   if (!mainWindow || mainWindow.isDestroyed?.()) return;
   if (mainWindow.isMinimized?.()) {
@@ -47,6 +52,9 @@ function createSidebarFocusHandler(ui) {
     try {
       const textInput = request?.interaction === 'text-input';
       const mainWindow = ui?.getMainWindow?.();
+      if (!isForegroundWindow(mainWindow)) {
+        return { ok: true, skipped: true, reason: 'window-background' };
+      }
       const sideContents = resolveSidebarFocusTarget(ui, event);
       releaseActiveBrowserFocus(ui);
       focusMainWindow(mainWindow);

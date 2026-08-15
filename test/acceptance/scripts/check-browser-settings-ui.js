@@ -22,6 +22,7 @@ ipcMain.handle('create-independent-browser', () => {
   independentBrowserCreateRequests += 1;
   return { ok: true, pending: false, tabId: 'acceptance-browser', historyId: 'acceptance-history' };
 });
+ipcMain.handle('get-app-version', () => ({ ok: true, version: '2.6.38' }));
 ipcMain.handle('account-get-session', () => {
   accountSessionRequests += 1;
   return { authenticated: false };
@@ -522,15 +523,15 @@ app.whenReady().then(async () => {
       const active = panel.classList.contains('active')
         && document.querySelector('[data-tab="account-center-panel"]')?.classList.contains('active');
       const profileVisible = !!panel.querySelector('#sidebar-account-session')
-        && !!panel.querySelector('#announcement-bar')
-        && !!panel.querySelector('.personal-footer');
+        && !!panel.querySelector('#announcement-bar');
       const accountCard = panel.querySelector('#sidebar-account-session');
-      const footer = panel.querySelector('.personal-footer');
       const sameColumn = panel.querySelector('#announcement-bar')?.parentElement === accountCard;
-      const footerParentIsPanel = footer?.parentElement === panel;
-      const footerAtPanelBottom = Math.abs(
-        footer?.getBoundingClientRect().bottom - panel.getBoundingClientRect().bottom,
-      ) <= 1;
+      const legacyFooterRemoved = !panel.querySelector('.personal-footer')
+        && !panel.querySelector('#tutorial-link')
+        && !panel.querySelector('#app-version');
+      const profileStyle = getComputedStyle(panel.querySelector('.account-profile-shell'));
+      const profileBackgroundRemoved = profileStyle.backgroundColor === 'rgba(0, 0, 0, 0)'
+        && profileStyle.boxShadow === 'none';
       const accountContentScrolls = getComputedStyle(panel.querySelector(':scope > .container')).overflowY === 'auto';
       const woolResource = panel.querySelector('.account-wool-resource');
       const woolResourceBelowRedeem = panel.querySelector('.sidebar-quota-redeem')?.nextElementSibling === woolResource
@@ -561,6 +562,11 @@ app.whenReady().then(async () => {
         && panel.querySelector('.sidebar-auth-mode-arrow')?.textContent === '→';
       const closeBehaviorAsk = panel.querySelector('input[name="window-close-behavior"][value="ask"]');
       const closeBehaviorHide = panel.querySelector('input[name="window-close-behavior"][value="hide"]');
+      const generalSettings = panel.querySelector('.account-general-settings');
+      const settingsBelowAnnouncement = panel.querySelector('#announcement-bar')?.nextElementSibling === generalSettings;
+      const generalSettingsCollapsed = generalSettings?.open === false
+        && generalSettings.querySelector('summary')?.textContent.includes('常规设置');
+      generalSettings.open = true;
       const closeBehaviorLabels = Array.from(panel.querySelectorAll('.account-close-behavior-options label'));
       const compactCloseBehaviorUi = closeBehaviorLabels.length === 3
         && new Set(closeBehaviorLabels.map((label) => Math.round(label.getBoundingClientRect().top))).size === 1
@@ -578,8 +584,8 @@ app.whenReady().then(async () => {
         active,
         profileVisible,
         sameColumn,
-        footerParentIsPanel,
-        footerAtPanelBottom,
+        legacyFooterRemoved,
+        profileBackgroundRemoved,
         accountContentScrolls,
         woolResourceBelowRedeem: !!woolResourceBelowRedeem,
         dialogShellRemoved,
@@ -588,6 +594,8 @@ app.whenReady().then(async () => {
         registerModeWorks,
         loginModeWorks,
         closeBehaviorLoaded,
+        settingsBelowAnnouncement,
+        generalSettingsCollapsed,
         compactCloseBehaviorUi,
         nativeSelectRemoved,
         closeBehaviorSaved,
@@ -617,20 +625,28 @@ app.whenReady().then(async () => {
   const shellAccountResult = await win.webContents.executeJavaScript(`(async () => {
     const updateWidget = document.getElementById('update-widget');
     const theme = document.getElementById('theme-toggle-btn');
-    const gear = document.getElementById('add-tab-btn');
+    const version = document.getElementById('shell-app-version');
+    const appLauncher = document.getElementById('add-tab-btn');
     const createButton = document.getElementById('new-browser-window-btn');
+    const homeButton = document.getElementById('home-tab-btn');
     const homeCreateButton = document.getElementById('browser-settings-create-browser');
     const wasLight = document.documentElement.classList.contains('theme-light');
     theme?.click();
     createButton?.click();
+    homeButton?.click();
     homeCreateButton?.click();
     await new Promise((resolve) => setTimeout(resolve, 20));
     return {
-      controlsOrdered: updateWidget?.nextElementSibling === theme && theme?.nextElementSibling === gear,
+      controlsOrdered: updateWidget?.nextElementSibling === version
+        && version?.nextElementSibling === theme
+        && theme?.nextElementSibling === appLauncher,
+      versionVisible: version?.hidden === false && version.textContent === 'v2.6.38',
+      homeButtonFirst: document.getElementById('tabs-container')?.firstElementChild === homeButton,
       avatarRemoved: !document.getElementById('account-center-btn'),
       themeToggled: document.documentElement.classList.contains('theme-light') !== wasLight,
-      modernGearIcon: !!gear?.querySelector('svg.settings-icon') && !gear.textContent.includes('⚙'),
+      appLogoLauncher: !!appLauncher?.querySelector('img.shell-app-logo[data-app-logo]'),
       modernCreateIcon: !!createButton?.querySelector('svg.new-window-icon') && createButton.textContent.trim() === '',
+      taskbarAtBottom: document.getElementById('tab-bar')?.getBoundingClientRect().bottom === window.innerHeight,
       homeVisible: document.getElementById('browser-empty-state')?.hidden === false,
       homeLogoVisible: !!document.querySelector('#browser-empty-state img[data-app-logo]'),
       recentBrowserVisible: document.getElementById('browser-history-list')?.textContent.includes('平台 A') === true,
@@ -638,8 +654,8 @@ app.whenReady().then(async () => {
       settingsEmbeddedInShell: !!document.querySelector('#browser-empty-state > #ai-free-settings-panel'),
     };
   })()`);
-  shellAccountResult.topPlusOpenedHome = homeSwitchRequests === 1;
-  shellAccountResult.homeCreateRequestedBrowser = independentBrowserCreateRequests === 1;
+  shellAccountResult.taskbarAndHomeCreateRequestedBrowsers = independentBrowserCreateRequests === 2;
+  shellAccountResult.homeButtonOpenedHomeOnly = homeSwitchRequests === 1;
   await new Promise((resolve) => setTimeout(resolve, 30));
   if (Object.values(shellAccountResult).some((value) => value !== true)) {
     throw new Error(`主窗口内置首页与控件校验失败: ${JSON.stringify(shellAccountResult)}`);
@@ -668,7 +684,7 @@ app.whenReady().then(async () => {
   if (process.env.AI_FREE_SHELL_UI_CAPTURE) {
     win.setSize(1000, 700);
     await new Promise((resolve) => setTimeout(resolve, 60));
-    const image = await win.webContents.capturePage({ x: 0, y: 0, width: 1000, height: 42 });
+    const image = await win.webContents.capturePage({ x: 0, y: 658, width: 1000, height: 42 });
     fs.writeFileSync(process.env.AI_FREE_SHELL_UI_CAPTURE, image.toPNG());
   }
   const workingSetMb = app.getAppMetrics().reduce((sum, metric) => (

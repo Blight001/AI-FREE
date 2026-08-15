@@ -265,7 +265,7 @@ class BrowserTabLauncher {
       normalWindowWidth: mainWindow.getNormalBounds?.().width,
       retainCurrentWidth: true,
     });
-    return { x: 0, y: 41, width: contentWidth - sidebarWidth, height: Math.max(0, contentHeight - 41) };
+    return { x: 0, y: 0, width: contentWidth - sidebarWidth, height: Math.max(0, contentHeight - 41) };
   }
 
   createStartingTab(id, url, options, identity, browserSettings, proxy, urls) {
@@ -279,6 +279,7 @@ class BrowserTabLauncher {
       runtimeTitle: identity.fixedTitle || 'AI-FREE',
       requestedUrl: String(url || '').trim(),
       runtimeUrl: urls.target && urls.target !== 'about:blank' ? urls.target : '',
+      firstWebsiteUrl: /^https?:\/\//i.test(urls.target) ? urls.target : '',
       runtimeType: 'chromium',
       runtimeStatus: 'starting',
       hideBrowserToolbar: options.hideBrowserToolbar === true,

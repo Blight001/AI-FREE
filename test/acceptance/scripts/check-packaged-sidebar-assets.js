@@ -60,7 +60,9 @@ async function main() {
     return {
       active: !!panel && panel.classList.contains('active'),
       sameColumn: document.getElementById('announcement-bar')?.parentElement === card,
-      footerPinnedToBottom: document.querySelector('.personal-footer')?.parentElement === panel,
+      legacyFooterRemoved: !document.querySelector('.personal-footer')
+        && !document.getElementById('tutorial-link')
+        && !document.getElementById('app-version'),
       woolResourceBelowRedeem: document.querySelector('.sidebar-quota-redeem')?.nextElementSibling
         === document.querySelector('.account-wool-resource'),
       dialogShellRemoved: !document.getElementById('account-center-dialog')
@@ -72,20 +74,25 @@ async function main() {
   }
   await window.loadFile(appShellPath);
   const shellControls = await window.webContents.executeJavaScript(`(() => {
-    const gear = document.getElementById('add-tab-btn');
+    const appLauncher = document.getElementById('add-tab-btn');
     const theme = document.getElementById('theme-toggle-btn');
+    const version = document.getElementById('shell-app-version');
     const updateWidget = document.getElementById('update-widget');
     const createButton = document.getElementById('new-browser-window-btn');
     return {
       avatarRemoved: !document.getElementById('account-center-btn'),
-      controlsOrdered: updateWidget?.nextElementSibling === theme && theme?.nextElementSibling === gear,
-      modernGearIcon: !!gear?.querySelector('svg.settings-icon') && !gear.textContent.includes('⚙'),
+      controlsOrdered: updateWidget?.nextElementSibling === version
+        && version?.nextElementSibling === theme
+        && theme?.nextElementSibling === appLauncher,
+      homeButtonFirst: document.getElementById('tabs-container')?.firstElementChild?.id === 'home-tab-btn',
+      appLogoLauncher: !!appLauncher?.querySelector('img.shell-app-logo[data-app-logo]'),
       modernCreateIcon: !!createButton?.querySelector('svg.new-window-icon') && createButton.textContent.trim() === '',
+      taskbarAtBottom: document.getElementById('tab-bar')?.getBoundingClientRect().bottom === window.innerHeight,
     };
   })()`);
   console.log(JSON.stringify({ sidebarPath, accountPath, logos, accountPanel, appShellPath, shellControls }));
   if (Object.values(shellControls).some((value) => value !== true)) {
-    throw new Error('主窗口顶部控件顺序、图标或个人中心头像移除异常');
+    throw new Error('主窗口底部任务栏控件顺序、图标或个人中心头像移除异常');
   }
   window.destroy();
 }

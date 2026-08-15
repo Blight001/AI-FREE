@@ -13,7 +13,7 @@ function uiIpcError(error) {
 
 function normalizeAppTheme(theme) {
   const value = String(theme || '').trim();
-  return value === 'light' || value === 'gold' ? value : 'dark';
+  return value === 'dark' || value === 'gold' ? value : 'light';
 }
 
 function sendThemeToContents(webContents, theme) {
@@ -23,7 +23,7 @@ function sendThemeToContents(webContents, theme) {
 }
 
 function createThemeController(ui) {
-  let currentTheme = 'dark';
+  let currentTheme = 'light';
   return {
     current: () => currentTheme,
     broadcast(theme) {

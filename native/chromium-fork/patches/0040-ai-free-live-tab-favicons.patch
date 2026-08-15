@@ -1,0 +1,53 @@
+diff --git a/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc b/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
+--- a/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
++++ b/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
+@@ -60,6 +60,7 @@
+ #include "services/network/public/mojom/cookie_manager.mojom.h"
+ #include "third_party/blink/public/common/input/web_input_event.h"
+ #include "third_party/blink/public/common/input/web_mouse_event.h"
++#include "third_party/blink/public/mojom/favicon/favicon_url.mojom.h"
+ #include "ui/base/page_transition_types.h"
+ #include "ui/events/event_utils.h"
+ #include "ui/gfx/geometry/rect.h"
+@@ -800,18 +801,41 @@ void HandleCommandOnUi(scoped_refptr<BridgeConnection> connection,
+       item.Set("active", index == active_index);
+       item.Set("title", base::UTF16ToUTF8(contents->GetTitle()));
+       item.Set("url", contents->GetVisibleURL().spec());
++      GURL fallback_favicon_url;
++      for (const auto& favicon : contents->GetFaviconURLs()) {
++        if (!favicon || !favicon->icon_url.is_valid()) continue;
++        if (fallback_favicon_url.is_empty()) {
++          fallback_favicon_url = favicon->icon_url;
++        }
++        if (favicon->icon_type == blink::mojom::FaviconIconType::kFavicon) {
++          item.Set("faviconUrl", favicon->icon_url.spec());
++          fallback_favicon_url = GURL();
++          break;
++        }
++      }
++      if (!fallback_favicon_url.is_empty()) {
++        item.Set("faviconUrl", fallback_favicon_url.spec());
++      }
+       tabs.Append(std::move(item));
+     }
+     base::DictValue result;
+     result.Set("success", true);
+     result.Set("action", "list");
+     result.Set("count", static_cast<int>(tabs.size()));
+     result.Set("activeTabId", base::NumberToString(active_index));
+     base::DictValue active_tab;
+     active_tab.Set("id", base::NumberToString(active_index));
+     active_tab.Set("index", active_index);
+     active_tab.Set("active", true);
+     active_tab.Set("title", base::UTF16ToUTF8(web_contents->GetTitle()));
+     active_tab.Set("url", web_contents->GetVisibleURL().spec());
++    for (const auto& favicon : web_contents->GetFaviconURLs()) {
++      if (favicon && favicon->icon_url.is_valid()) {
++        active_tab.Set("faviconUrl", favicon->icon_url.spec());
++        if (favicon->icon_type == blink::mojom::FaviconIconType::kFavicon) {
++          break;
++        }
++      }
++    }
+     result.Set("activeTab", std::move(active_tab));
+     result.Set("tabs", std::move(tabs));
