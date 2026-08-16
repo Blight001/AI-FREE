@@ -10,6 +10,17 @@ const ACTIONS = new Set([
   'click', 'double_click', 'right_click', 'drag', 'upload_file', 'scroll',
   'type', 'insert_text', 'set_selection', 'press_key', 'wait',
 ]);
+const OBSERVE_FILTERS = new Set([
+  'interactive', 'media', 'text', 'input', 'form',
+  'button', 'link', 'checkbox', 'radio', 'switch', 'textbox', 'searchbox',
+  'combobox', 'listbox', 'option', 'slider', 'spinbutton', 'tab', 'menuitem',
+  'menuitemcheckbox', 'menuitemradio', 'treeitem', 'select', 'clickable',
+  'text-input', 'number-input', 'date-time-input', 'file-input', 'color-input',
+  'rich-text-input', 'icon-button', 'disclosure',
+]);
+const WAIT_CONDITIONS = new Set([
+  'attached', 'visible', 'hidden', 'text_contains', 'text_changed', 'url_matches',
+]);
 
 function automationError(code, message) {
   const error = /** @type {Error & {code?: string}} */ (new Error(message));
@@ -34,6 +45,63 @@ function optionalText(value, maxLength = 8192) {
     throw automationError('AUTOMATION_PAYLOAD_INVALID', `文本参数超过 ${maxLength} 字符限制`);
   }
   return result;
+}
+
+function optionalTextList(value, maxItems = 32, maxLength = 64) {
+  const values = Array.isArray(value) ? value : (isProvided(value) ? [value] : []);
+  if (values.length > maxItems) {
+    throw automationError('AUTOMATION_PAYLOAD_INVALID', `筛选项不能超过 ${maxItems} 个`);
+  }
+  return [...new Set(values.map((item) => optionalText(item, maxLength).trim().toLowerCase()).filter(Boolean))];
+}
+
+function normalizeLegacyObserveFilter(value) {
+  const filter = optionalText(value, 64).trim().toLowerCase();
+  if (!filter || OBSERVE_FILTERS.has(filter)) return filter;
+  throw automationError(
+    'INVALID_FILTER',
+    `filter=${filter} 不受支持；请使用 kinds、tags、roles、control_types，或受支持的兼容 filter`,
+  );
+}
+
+function normalizeRegion(value) {
+  const region = asObject(value);
+  if (!Object.keys(region).length) return {};
+  const role = optionalText(region.role, 64).trim().toLowerCase();
+  const label = optionalText(region.label, 256).trim();
+  if (role || label) return { role, label, match: region.match === 'all' ? 'all' : 'best' };
+  const point = normalizedPoint(region.x, region.y, 'region 必须提供有效的非负 x/y');
+  const width = boundedInteger(region.width, 0, 1, 1_000_000);
+  const height = boundedInteger(region.height, 0, 1, 1_000_000);
+  if (!width || !height) throw automationError('AUTOMATION_PAYLOAD_INVALID', 'region 必须提供正数 width/height');
+  return { ...point, width, height };
+}
+
+function normalizeRegionOptions(source) {
+  const mode = optionalText(source.mode || 'elements', 32).toLowerCase();
+  if (!['elements', 'overview'].includes(mode)) {
+    throw automationError('AUTOMATION_PAYLOAD_INVALID', `不支持的观察 mode: ${mode}`);
+  }
+  const regionMode = optionalText(source.region_mode ?? source.regionMode ?? 'centerInside', 32);
+  if (!['centerInside', 'fullyInside', 'intersecting'].includes(regionMode)) {
+    throw automationError('AUTOMATION_PAYLOAD_INVALID', `不支持的 regionMode: ${regionMode}`);
+  }
+  return {
+    mode,
+    includeRegions: source.include_regions === true || source.includeRegions === true || mode === 'overview',
+    maxDepth: boundedInteger(source.max_depth ?? source.maxDepth, 2, 1, 6),
+    regionRef: optionalText(source.region_ref ?? source.regionRef, 128),
+    region: normalizeRegion(source.region),
+    regionMode,
+    regionPadding: boundedInteger(source.padding, 10, 0, 100),
+    includeAncestorContext: boundedInteger(
+      source.include_ancestor_context ?? source.includeAncestorContext, 2, 0, 6,
+    ),
+    includePortals: source.include_portals !== false && source.includePortals !== false,
+    expectedRegionLayoutHash: optionalText(
+      source.region_layout_hash ?? source.regionLayoutHash, 128,
+    ),
+  };
 }
 
 function isProvided(value) {
@@ -90,11 +158,16 @@ function normalizeSelection(source) {
 
 function normalizeObservePayload(source) {
   return {
+    ...normalizeRegionOptions(source),
     limit: boundedInteger(source.limit ?? source.max_items, 200, 1, 1000),
     textLimit: boundedInteger(source.text_limit ?? source.textLimit, 120, 20, 500),
     keyword: optionalText(source.keyword, 512),
     tag: optionalText(source.tag, 64).toLowerCase(),
-    filter: optionalText(source.filter, 64).toLowerCase(),
+    tags: optionalTextList(source.tags),
+    kinds: optionalTextList(source.kinds ?? source.kind),
+    roles: optionalTextList(source.roles ?? source.role),
+    controlTypes: optionalTextList(source.control_types ?? source.controlTypes),
+    filter: normalizeLegacyObserveFilter(source.filter),
     includeText: source.include_text !== false,
     includeMedia: source.include_media !== false,
     showHighlights: source.mark !== false
@@ -123,6 +196,23 @@ function normalizeScreenshotPayload(source) {
   };
 }
 
+function normalizeWaitOptions(source, action) {
+  if (action !== 'wait') return {};
+  const condition = optionalText(source.condition, 32).trim().toLowerCase();
+  if (condition && !WAIT_CONDITIONS.has(condition)) {
+    throw automationError('AUTOMATION_WAIT_CONDITION_INVALID', `不支持的等待条件: ${condition}`);
+  }
+  const options = {};
+  if (condition) options.condition = condition;
+  if (isProvided(source.value ?? source.expected)) {
+    options.expectedValue = optionalText(source.value ?? source.expected, 8192);
+  }
+  if (isProvided(source.initial_value ?? source.initialValue)) {
+    options.initialValue = optionalText(source.initial_value ?? source.initialValue, 8192);
+  }
+  return options;
+}
+
 function normalizeActionPayload(source) {
   const action = optionalText(source.action, 32).trim();
   if (!ACTIONS.has(action)) {
@@ -143,6 +233,7 @@ function normalizeActionPayload(source) {
     direction: optionalText(source.direction || 'down', 16),
     amount: boundedInteger(source.amount ?? source.delta_y, 600, -100000, 100000),
     timeoutMs: boundedInteger(source.timeout_ms ?? source.timeout, 10000, 100, 120000),
+    ...normalizeWaitOptions(source, action),
   };
 }
 

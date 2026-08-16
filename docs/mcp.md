@@ -26,7 +26,7 @@ AI-FREE 本地 AI 对话使用下表中的“内部名称”。连接 HeySure �
 | `browser_observe` | `aifree.browser+observe` | 获取页面中可交互或可见的元素 |
 | `browser_screenshot` | `aifree.browser+screenshot` | 截取页面可视区或指定坐标区域 |
 | `browser_action` | `aifree.browser+action` | 点击、输入、滚动和发送按键 |
-| `browser_wait` | `aifree.browser+wait` | 等待元素出现或等待指定时间 |
+| `browser_wait` | `aifree.browser+wait` | 等待元素、文本或 URL 条件成立，或等待指定时间 |
 
 ## 外部软件栏目工具
 
@@ -120,17 +120,23 @@ Cookie 属于登录会话数据，不属于 `browser_environment.settings` 的�
 ### `browser_observe`
 
 - 作用：读取当前页面中可见的交互元素、文本、媒体和框架信息，为后续操作生成元素引用。
+- 推荐流程：先用 `mode=overview` 获取 `regions`，再把其中的 `regionRef` 传给元素观察。区域引用按当前 DOM 重新解析，失效时返回 `REGION_STALE`；区域只缩小观察结果，不限制后续页面交互。
+- 区域参数：`region_ref` 是首选；也可用 `region={role,label,match}` 进行语义匹配，或用 viewport CSS 像素矩形 `{x,y,width,height}` 兜底。`region_mode` 默认 `centerInside`，`padding` 默认 10，默认保留两层 `include_ancestor_context`，并通过 `aria-controls`/`aria-owns` 纳入关联 portal。
+- 区域响应：返回坐标系、设备像素比、区域当前 bounds、`layoutHash`、`layoutChanged`、祖先上下文和交叠比例。页面布局变化后可把旧 `region_layout_hash` 传回进行校验。
+- 旧内核兼容：如果当前 Chromium 尚未包含区域补丁，应用层会根据旧观察结果的坐标真正执行矩形裁剪，并从可见大容器和 viewport 布局生成稳定区域引用。返回的 `query.appliedLayer` 会标明 `chromium-native`、`application-fallback` 或组合执行层；`appliedFilters`、`ignoredFilters` 和 `regionApplied` 用于确认参数没有被静默忽略。语义区域无法解析时返回 `REGION_NOT_FOUND`，区域引用或布局哈希失效时返回 `REGION_STALE`，均不会回退为全页结果。
 - 数量参数：`limit`、`max_items`。
-- 筛选参数：`filter`、`tag`、`tags`、`keyword`、`query`、`text_filter`。
+- 筛选参数：优先使用 `kinds`、`tags`、`roles`、`control_types` 分维度组合筛选；`filter`、`tag` 保留兼容。无法识别的兼容 `filter` 返回 `INVALID_FILTER`，不再静默返回空结果。
 - 框架参数：`frame`、`frame_path`。
-- 文本与标记参数：`include_text`、`text_limit`（默认 120，范围 20–500）、`mark`、`highlight_duration_ms`。超长文本会截断并返回 `textTruncated=true`。
+- 文本与标记参数：`include_text`、`text_limit`（默认 120，范围 20–500）、`mark`、`highlight_duration_ms`。响应会同时给出 `requestedTextLimit`、`appliedTextLimit`、`limitCapped`、`returnedCount`、`totalMatched` 和 `itemsTruncated`，避免调用方误判参数或传输截断。
 - 顶层可点击筛选：交互元素必须在当前视口的至少一个候选点通过 Chromium 命中测试；被遮罩完全覆盖、`pointer-events:none`或禁用的元素不返回。按钮内部的 `span/svg/path` 会归并到最近的按钮或链接。
 - 控件语义：保留 `kind=interactive` 的兼容分类，同时返回 `role`、`controlType`、`editable`、`multiline`、`label`、`readOnly`、`required` 以及选中/展开/按下状态。可区分文本、密码、搜索、数字、日期时间、文件和富文本输入，以及按钮、链接、复选/单选、开关、滑块、下拉/列表、标签页和菜单项。`select` 还会返回最多 50 个选项及其选中状态；密码框的当前值不会进入 `text`、`value` 或关键字匹配。
 - 语义筛选：`filter` 除原有 `interactive`、`media`、`text` 外，还可传 `input`、`form` 或具体 `role`/`controlType`，例如 `checkbox`、`combobox`、`text-input`。关键字匹配同时覆盖可见文本、`label`、`placeholder` 和 `aria-label`。
+- 快照与定位：每次结果返回新的 `observationId`，item 同时返回 `stableRef`、selector 唯一性、推荐 locator、容器归属和关联文本。`browser_action` 可同时传 `observation_id` 与 `ref`；若快照不一致会返回 `OBSERVATION_MISMATCH`，不执行页面操作。
+- 图标控件：名称依次来自 ARIA、关联 label、title、SVG title、alt 和受限图标提示；同时返回 `labelSource`、`labelConfidence`。仍无法命名时明确给出 `unresolvedReason`；疑似删除/移除操作返回 `destructiveHint=true`。
 - Closed Shadow DOM：隔离世界无法访问的 closed shadowRoot 会由 Chromium Accessibility Tree 补充其中可见、可用的交互控件，并返回 `accessibilityFallback=true` 与真实 `clickX/clickY`；这类 item 不伪造 selector，后续应直接使用其 `ref` 点击。
 - Fork 原生 Observe 默认在 Chromium UI 层绘制与元素 `id` 对应的边框标签，不写入网页 DOM、不接收鼠标事件；导航、滚动、窗口隐藏或超时后自动清除。最多绘制 120 个标记。
 - 路由参数：`tab_id`。
-- 下载链接：可见 HTTP/HTTPS 链接会在对应 item 中提供 `downloadUrl`，并汇总到顶层 `downloadLinks`；其中的 `url` 可直接交给 `browser_file`。
+- 下载链接：item 可保留可直接读取的 `downloadUrl`，但顶层 `downloadLinks` 只汇总显式下载或常见文件 URL。普通图片进入 `mediaResources`，不再计入 `downloadLinkCount`。
 - 图片识别：可见 `img`（含 `picture/srcset`）、`video`、`audio`、`canvas` 和 CSS `background-image` 统一返回 `kind=media`；即使图片被网页包装成可点击元素，也保留 `interactive=true`，不会再被误报成普通按钮。
 - 图片链接：媒体 item 返回 `mediaType`、`mediaUrl`、`mediaUrls`，HTTP(S) 原图候选同时写入 `downloadUrl`；`downloadLinks` 会携带对应 `ref`、`kind`、`mediaType` 和可选 `linkedUrl`，可直接按四张生成图筛选并下载。
 
@@ -144,7 +150,7 @@ Cookie 属于登录会话数据，不属于 `browser_environment.settings` 的�
 
 - 作用：操作网页中的元素或坐标位置。
 - `action`：必填，可用值为 `click`、`double_click`、`right_click`、`drag`、`scroll`、`type`、`insert_text`、`set_selection`、`press_key`。
-- 元素定位：优先使用 `browser_observe` 返回的 `ref`。原生连接会保存该元素的视口中心坐标，后续点击直接在该坐标注入鼠标事件，由 Chromium 命中测试选择坐标处最上层元素；selector 用于字符选区和坐标缺失时回退。显式传入的 `x`、`y` 会覆盖 `ref` 默认中心。
+- 元素定位：优先同时传入 `browser_observe` 返回的 `observationId` 与 `ref`。原生连接会保存该元素的视口中心坐标，后续点击直接在该坐标注入鼠标事件，由 Chromium 命中测试选择坐标处最上层元素；selector 用于字符选区和坐标缺失时回退。显式传入的 `x`、`y` 会覆盖 `ref` 默认中心。应用短期保留最近 3 次观察（最长 30 秒）；旧 ref 只有在页面 URL 未变化、selector 唯一且稳定、当前元素的标签/角色/名称一致时才会重新定位，成功响应包含 `refRecovered=true`。导航、歧义或语义变化仍返回 `OBSERVED_REF_EXPIRED`，不会复用旧坐标。
 - 点击实现：Runtime Bridge 与 AI-FREE 建立连接后，Chromium Views 层的虚拟指针会默认悬浮在网页视口中央，并在连接期间常驻；`click`、`double_click`、`right_click` 复用该指针完成平滑移动、按下、抬起和点击反馈，点击结束后停留在最后位置。覆盖层不进入页面 DOM、不接收事件，也不移动 Windows 全局鼠标；RenderWidgetHost 正常执行坐标命中测试，不会穿透遮挡元素。断开 Runtime Bridge 或页面销毁时指针会清除。
 - 鼠标选文：`drag` 使用 `x`、`y` 作为起点，`to_x`、`to_y` 作为终点，真实发送移动、按下、拖动和抬起事件；虚拟指针同步显示拖动过程。
 - 字符级编辑：`set_selection` 使用 UTF-16 `start`、`end` 精确放置光标或选择 input、textarea、contenteditable 文本；`start=end` 表示光标。`type` 保持整段覆盖，`insert_text` 仅替换当前选区或从光标位置插入。
@@ -154,8 +160,10 @@ Cookie 属于登录会话数据，不属于 `browser_environment.settings` 的�
 
 ### `browser_wait`
 
-- 作用：等待指定选择器对应的元素出现，或固定等待一段时间。
-- 参数：`selector`、`ms`、`tab_id`。
+- 作用：等待指定页面条件成立后立即返回，或固定等待一段时间。条件轮询在 Chromium 隔离世界执行，页面导航期间由应用层有界重试。
+- 条件：`attached`、`visible`、`hidden`、`text_contains`、`text_changed`、`url_matches`。省略 `condition` 时兼容为等待 `selector/ref` 存在。
+- 参数：`condition`、`selector`、`ref`、`observation_id`、`value`、`initial_value`、`timeout_ms`、`ms`、`tab_id`。`text_changed` 省略 `initial_value` 时会自动记录首次读取值；`url_matches` 不需要元素定位参数。
+- 旧内核不会被静默兼容：若 Chromium 忽略 `condition`，应用返回 `BROWSER_RUNTIME_UPDATE_REQUIRED`，必须重新构建并替换 `resources/chromium` 后重启。
 
 ## 多浏览器路由
 

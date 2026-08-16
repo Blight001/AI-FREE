@@ -97,6 +97,11 @@ test('native automation publishes ready managed Chromium as the browser connecti
   assert.equal(actionProperties.action.enum.includes('drag'), true);
   assert.equal(actionProperties.action.enum.includes('insert_text'), true);
   assert.equal(actionProperties.action.enum.includes('set_selection'), true);
+  const waitProperties = tools.find((tool) => tool.name === 'browser_wait').input_schema.properties;
+  assert.deepEqual(waitProperties.condition.enum, [
+    'attached', 'visible', 'hidden', 'text_contains', 'text_changed', 'url_matches',
+  ]);
+  assert.equal(waitProperties.observation_id.type, 'string');
 });
 
 test('browser_file download uses the active page as the trusted relative URL context', async () => {
@@ -188,11 +193,150 @@ test('observed refs click the validated exposed point instead of re-querying a g
       clickX: 126, clickY: 46,
     }],
   } : { success: true } }));
-  await service.dispatch('native:profile-a', 'browser_observe', { limit: 5 });
-  await service.dispatch('native:profile-a', 'browser_action', { action: 'click', ref: 'e1' });
+  const observed = await service.dispatch('native:profile-a', 'browser_observe', { limit: 5, text_limit: 5000 });
+  assert.match(observed.observationId, /^obs-/);
+  assert.equal(observed.items[0].observationId, observed.observationId);
+  assert.equal(observed.requestedTextLimit, 5000);
+  assert.equal(observed.appliedTextLimit, 500);
+  assert.equal(observed.limitCapped, true);
+  await service.dispatch('native:profile-a', 'browser_action', {
+    action: 'click', ref: 'e1', observation_id: observed.observationId,
+  });
   assert.deepEqual(calls[1], ['automation', 42, 'perform-action', {
-    action: 'click', ref: 'e1', selector: 'button', x: 126, y: 46,
+    action: 'click', ref: 'e1', observation_id: observed.observationId,
+    selector: 'button', x: 126, y: 46,
   }]);
+});
+
+test('observed refs reject an explicitly stale observation snapshot', async () => {
+  const { calls, service, setAutomationHandler } = fixture();
+  setAutomationHandler(async (_pid, command) => ({ result: command === 'observe-page' ? {
+    success: true, items: [{ id: 'e1', selector: '#save', x: 1, y: 2, width: 20, height: 10 }],
+  } : { success: true } }));
+  const observed = await service.dispatch('native:profile-a', 'browser_observe', {});
+  const result = await service.dispatch('native:profile-a', 'browser_action', {
+    action: 'click', ref: 'e1', observation_id: `${observed.observationId}-stale`,
+  });
+  assert.equal(result.errorCode, 'OBSERVATION_MISMATCH');
+  assert.equal(result.suggestedTool, 'browser_observe');
+  assert.equal(calls.filter((call) => call[2] === 'perform-action').length, 0);
+});
+
+test('an older observed ref safely recovers through one unique unchanged locator', async () => {
+  const { calls, service, setAutomationHandler } = fixture();
+  let observations = 0;
+  setAutomationHandler(async (_pid, command) => {
+    if (command === 'perform-action') return { result: { success: true, action: 'click' } };
+    observations += 1;
+    if (observations === 2) return { result: {
+      success: true, url: 'https://example.test/editor',
+      items: [{
+        id: 'e2', tag: 'button', role: 'button', label: '取消', selector: '#cancel',
+        stableRef: 'node-cancel', selectorUnique: true, selectorStability: 'high',
+        x: 10, y: 10, width: 40, height: 20,
+      }],
+    } };
+    return { result: {
+      success: true, url: 'https://example.test/editor',
+      items: [{
+        id: 'e1', tag: 'button', role: 'button', label: '保存', selector: '#save',
+        stableRef: 'node-save', selectorUnique: true, selectorStability: 'high',
+        x: observations === 1 ? 10 : 50, y: 20, width: 60, height: 30,
+      }],
+    } };
+  });
+
+  const old = await service.dispatch('native:profile-a', 'browser_observe', {});
+  await service.dispatch('native:profile-a', 'browser_observe', {});
+  const result = await service.dispatch('native:profile-a', 'browser_action', {
+    action: 'click', ref: 'e1', observation_id: old.observationId,
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.refRecovered, true);
+  assert.equal(result.recoveryStrategy, 'unique-observed-selector');
+  assert.equal(observations, 3);
+  assert.deepEqual(calls.at(-1), ['automation', 42, 'perform-action', {
+    action: 'click', ref: 'e1', observation_id: old.observationId,
+    selector: '#save', x: 80, y: 35,
+  }]);
+});
+
+test('legacy Chromium overview returns inferred regions without leaking flat page items', async () => {
+  const { service, setAutomationHandler } = fixture();
+  setAutomationHandler(async () => ({ result: {
+    success: true, viewport: { width: 1000, height: 700 },
+    items: [
+      { id: 'e1', kind: 'interactive', tag: 'div', text: '首页 笔记管理 数据看板', x: 0, y: 80, width: 200, height: 620 },
+      { id: 'e2', kind: 'text', tag: 'div', text: '笔记标题', x: 260, y: 160, width: 400, height: 40 },
+    ],
+  } }));
+
+  const result = await service.dispatch('native:profile-a', 'browser_observe', {
+    mode: 'overview', include_regions: true, max_depth: 3,
+  });
+
+  assert.equal(result.mode, 'overview');
+  assert.deepEqual(result.items, []);
+  assert.equal(result.returnedCount, 0);
+  assert(result.regions.some((region) => region.role === 'navigation'));
+  assert(result.regions.some((region) => region.role === 'main'));
+  assert.equal(result.regionDetection.source, 'application-item-layout-fallback');
+  assert.equal(result.query.appliedLayer, 'application-fallback');
+});
+
+test('legacy Chromium rectangle region actually removes out-of-region items', async () => {
+  const { service, setAutomationHandler } = fixture();
+  setAutomationHandler(async () => ({ result: {
+    success: true, viewport: { width: 1000, height: 700 },
+    items: [
+      { id: 'left', kind: 'interactive', tag: 'div', text: '笔记管理', x: 20, y: 160, width: 160, height: 40 },
+      { id: 'top', kind: 'interactive', tag: 'button', text: '发布笔记', x: 24, y: 80, width: 160, height: 40 },
+      { id: 'main', kind: 'text', tag: 'div', text: '主内容', x: 300, y: 160, width: 200, height: 40 },
+    ],
+  } }));
+
+  const result = await service.dispatch('native:profile-a', 'browser_observe', {
+    mode: 'elements', region: { x: 0, y: 140, width: 208, height: 648 },
+    region_mode: 'centerInside', padding: 8, kinds: ['interactive'],
+  });
+
+  assert.deepEqual(result.items.map((item) => item.id), ['left']);
+  assert.equal(result.regionApplied, true);
+  assert.equal(result.matchedCount, 1);
+  assert.equal(result.items[0].insideRegion, true);
+  assert.equal(result.query.regionApplied, true);
+  assert.deepEqual(result.query.appliedFilters.sort(), ['kinds', 'region']);
+  assert.equal(result.query.appliedLayer, 'application-fallback');
+});
+
+test('legacy Chromium semantic region resolves overview refs and never falls back globally', async () => {
+  const { service, setAutomationHandler } = fixture();
+  setAutomationHandler(async () => ({ result: {
+    success: true, viewport: { width: 1000, height: 700 },
+    items: [
+      { id: 'sidebar', kind: 'interactive', tag: 'div', text: '首页 笔记管理 数据看板', x: 0, y: 80, width: 200, height: 620 },
+      { id: 'menu', kind: 'interactive', tag: 'div', text: '笔记管理', x: 20, y: 160, width: 160, height: 40 },
+      { id: 'main', kind: 'text', tag: 'div', text: '主内容', x: 300, y: 160, width: 200, height: 40 },
+    ],
+  } }));
+
+  const result = await service.dispatch('native:profile-a', 'browser_observe', {
+    mode: 'elements', region: { role: 'navigation', label: '侧边栏', match: 'best' },
+  });
+  assert.equal(result.success, true);
+  assert.equal(result.region.role, 'navigation');
+  assert(result.items.every((item) => item.x < 210));
+  assert.equal(result.items.find((item) => item.id === 'sidebar').role, 'navigation');
+  assert.equal(result.items.find((item) => item.id === 'menu').role, 'menuitem');
+  assert.equal(result.items.find((item) => item.id === 'menu').containerRef, result.region.ref);
+
+  const missing = await service.dispatch('native:profile-a', 'browser_observe', {
+    mode: 'elements', region: { role: 'dialog', label: '不存在' },
+  });
+  assert.equal(missing.success, false);
+  assert.equal(missing.errorCode, 'REGION_NOT_FOUND');
+  assert.deepEqual(missing.items, []);
 });
 
 test('accessibility fallback refs use observed coordinates and stale refs fail with recovery guidance', async () => {
@@ -421,4 +565,56 @@ test('browser_wait reports selector and total timeout after all attempts expire'
     selector: '#missing',
     timeout_ms: 100,
   });
+});
+
+test('browser_wait forwards text conditions and captures the first value for text_changed', async () => {
+  const { calls, service, setAutomationHandler } = fixture();
+  let attempts = 0;
+  setAutomationHandler(async () => {
+    attempts += 1;
+    return { result: attempts === 1
+      ? { success: false, errorCode: 'WAIT_TIMEOUT', currentValue: '处理中' }
+      : { success: true, action: 'wait', condition: 'text_changed', currentValue: '处理完成' } };
+  });
+
+  const result = await service.dispatch('native:profile-a', 'browser_wait', {
+    selector: '.status', condition: 'text_changed', timeout_ms: 5000,
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(attempts, 2);
+  assert.equal(calls[0][3].condition, 'text_changed');
+  assert.equal(calls[0][3].initial_value, undefined);
+  assert.equal(calls[1][3].initial_value, '处理中');
+});
+
+test('browser_wait supports URL conditions without an element selector', async () => {
+  const { calls, service, setAutomationHandler } = fixture();
+  setAutomationHandler(async () => ({ result: {
+    success: true, action: 'wait', condition: 'url_matches',
+    currentValue: 'https://example.test/dashboard',
+  } }));
+
+  const result = await service.dispatch('native:profile-a', 'browser_wait', {
+    condition: 'url_matches', value: '/dashboard', timeout_ms: 1000,
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(calls[0][2], 'perform-action');
+  assert.equal(calls[0][3].value, '/dashboard');
+});
+
+test('browser_wait rejects an old runtime that silently ignores conditions', async () => {
+  const { service, setAutomationHandler } = fixture();
+  setAutomationHandler(async () => ({ result: {
+    success: true, action: 'wait', found: true,
+  } }));
+
+  const result = await service.dispatch('native:profile-a', 'browser_wait', {
+    selector: '#save', condition: 'visible', timeout_ms: 1000,
+  });
+
+  assert.equal(result.success, false);
+  assert.equal(result.errorCode, 'BROWSER_RUNTIME_UPDATE_REQUIRED');
+  assert.equal(result.retryable, false);
 });

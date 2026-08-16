@@ -13,6 +13,8 @@ let executable = null;
 let configResult = null;
 let controlReady = true;
 let ruleResult = { ok: true, changed: false };
+const requestedModes = [];
+const systemProxyChanges = [];
 let spawnImpl = null;
 const purges = [];
 const debugLogs = [];
@@ -22,6 +24,7 @@ const assetsPath = require.resolve('../../../src/app/main/features/network/clash
 const controlPath = require.resolve('../../../src/app/main/features/network/clash-mini-control');
 const configPath = require.resolve('../../../src/app/main/features/network/clash-mini-config');
 const debugPath = require.resolve('../../../src/app/main/runtime/debug-console-log');
+const systemProxyPath = require.resolve('../../../src/app/main/features/network/windows-system-proxy');
 const targetPath = require.resolve('../../../src/app/main/features/network/clash-mini-process');
 
 require.cache[contextPath] = { exports: { appContext: { isShuttingDown: () => shuttingDown } } };
@@ -33,7 +36,12 @@ require.cache[assetsPath] = { exports: {
 } };
 require.cache[controlPath] = { exports: {
   waitForClashMiniControlApi: async () => controlReady,
-  ensureClashMiniRuleMode: async () => ruleResult,
+  ensureClashMiniMode: async (_coreDir, mode) => { requestedModes.push(mode); return ruleResult; },
+  getClashMiniProxyEndpoint: () => ({ host: '127.0.0.1', port: 17890 }),
+} };
+require.cache[systemProxyPath] = { exports: {
+  enableSystemProxy: async (host, port) => { systemProxyChanges.push(['enable', host, port]); return { ok: true }; },
+  disableSystemProxy: async () => { systemProxyChanges.push(['disable']); return { ok: true }; },
 } };
 require.cache[configPath] = { exports: { ensureClashMiniRuntimeConfig: () => configResult } };
 require.cache[debugPath] = { exports: { writeDebugConsoleOnly: (...args) => debugLogs.push(args) } };
@@ -83,6 +91,8 @@ test.beforeEach(async () => {
   purges.length = 0;
   debugLogs.length = 0;
   await processService.stopClashMiniProcess(null, { waitForPendingStart: false });
+  requestedModes.length = 0;
+  systemProxyChanges.length = 0;
 });
 
 test('process state helpers and exit waiter handle already-exited and event-driven children', async () => {
@@ -156,6 +166,18 @@ test('successful start streams logs, reuses running core and stops cleanly', asy
   assert.equal(child.killed, true);
   assert.deepEqual(runtimeConfigs, [{ systemProxyEnabled: false }]);
   assert.ok(ui.proxyChanges.includes(false));
+});
+
+test('global proxy mode switches Mihomo and owns the Windows system proxy until stop', async () => {
+  const ui = createUi();
+  spawnImpl = () => new FakeProcess(9877);
+  const started = await processService.startClashMiniProcess(ui, { proxyMode: 'global' });
+  assert.equal(started.ok, true);
+  assert.equal(started.proxyMode, 'global');
+  assert.deepEqual(requestedModes, ['global']);
+  assert.deepEqual(systemProxyChanges, [['enable', '127.0.0.1', 17890]]);
+  await processService.stopClashMiniProcess(ui);
+  assert.deepEqual(systemProxyChanges.at(-1), ['disable']);
 });
 
 test('control and rule-mode failures stop unhealthy spawned processes', async () => {

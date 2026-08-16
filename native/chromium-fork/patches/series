@@ -36,3 +36,6 @@
 0038-ai-free-observe-control-semantics.patch
 0039-ai-free-embedded-tab-drag-lock.patch
 0040-ai-free-live-tab-favicons.patch
+0041-ai-free-observe-structured-semantics.patch
+0042-ai-free-observe-semantic-regions.patch
+0043-ai-free-conditional-waits.patch

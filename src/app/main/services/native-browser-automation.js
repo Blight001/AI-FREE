@@ -1,14 +1,20 @@
 'use strict';
 
 const path = require('path');
+const { randomUUID } = require('crypto');
 const { fileURLToPath } = require('url');
 const { createBrowserOverview } = require('./browser-overview-service');
 const { NATIVE_BROWSER_TOOL_DEFINITIONS } = require('./native-browser-tool-definitions');
+const {
+  expiredObservedRefResult, mismatchedObservationResult, observedTarget, processObservationResult,
+} = require('./native-browser-observation');
+const { waitForBrowserCondition } = require('./native-browser-wait');
 
 const CONNECTION_PREFIX = 'native:';
 const READY_STATUSES = new Set(['ready', 'hidden']);
-const RETRYABLE_WAIT_ERRORS = new Set(['INPUT_TARGET_UNAVAILABLE', 'WEB_CONTENTS_UNAVAILABLE']);
 const FILE_CHOOSER_ACTIONS = new Set(['click', 'double_click']);
+const OBSERVATION_HISTORY_LIMIT = 3;
+const OBSERVATION_HISTORY_TTL_MS = 30000;
 
 function text(value) { return String(value == null ? '' : value).trim(); }
 
@@ -18,61 +24,46 @@ function nonNegativePoint(x, y) {
   return Math.min(point.x, point.y) >= 0 ? point : null;
 }
 
-function observedCenter(item) {
-  const source = item || {};
-  const explicit = nonNegativePoint(source.clickX, source.clickY);
-  if (explicit) return explicit;
-  const [x, y, width, height] = [source.x, source.y, source.width, source.height].map(Number);
-  if (![x, y, width, height].every(Number.isFinite)) return null;
-  if (Math.min(width, height) <= 0) return null;
-  return nonNegativePoint(x + (width / 2), y + (height / 2));
-}
-
-function observedMetadata(item) {
-  const tag = text(item?.tag).toLowerCase();
-  const inputType = text(item?.inputType).toLowerCase();
-  const requiresFileUpload = item?.requiresFileUpload === true
-    || (tag === 'input' && inputType === 'file');
-  return {
-    ...(tag ? { observedTag: tag } : {}),
-    ...(inputType ? { observedInputType: inputType } : {}),
-    ...(requiresFileUpload ? { requiresFileUpload: true } : {}),
-  };
-}
-
-function observedTarget(item) {
-  const id = text(item?.id);
-  if (!id) return null;
-  const selector = text(item?.selector);
-  const point = observedCenter(item);
-  if (!selector && !point) return null;
-  return [id, {
-    ...(selector ? { selector } : {}), ...(point || {}),
-    ...observedMetadata(item),
-  }];
-}
-
 function runtimeTarget(target) {
   const {
     observedTag: _observedTag,
     observedInputType: _observedInputType,
     requiresFileUpload: _requiresFileUpload,
     observedRefExpired: _observedRefExpired,
+    observedRefRecoveryCandidate: _observedRefRecoveryCandidate,
+    observedRefRecoveryError: _observedRefRecoveryError,
+    observedRefRecoveryReason: _observedRefRecoveryReason,
+    observedRefRecovered: _observedRefRecovered,
+    observationId: _observationId,
+    stableRef: _stableRef,
+    observedRole: _observedRole,
+    observedLabel: _observedLabel,
+    observedUrl: _observedUrl,
+    selectorUnique: _selectorUnique,
+    selectorStability: _selectorStability,
     ...input
   } = target;
   return input;
 }
 
-function expiredObservedRefResult(input) {
-  if (input.observedRefExpired !== true) return null;
-  return {
-    success: false,
-    action: text(input.action).toLowerCase(),
-    errorCode: 'OBSERVED_REF_EXPIRED',
-    error: '该元素 ref 不属于最近一次 browser_observe 结果。请重新观察并立即使用最新 ref，或改用稳定 selector。',
-    ref: text(input.ref),
-    suggestedTool: 'browser_observe',
-  };
+function normalizedComparable(value) {
+  return text(value).toLowerCase().replace(/\s+/g, ' ');
+}
+
+function recoveryMatches(previous, item) {
+  const selectorMatches = text(previous.selector) && text(previous.selector) === text(item.selector);
+  const stableRefMatches = text(previous.stableRef) && text(previous.stableRef) === text(item.stableRef);
+  if (!selectorMatches && !stableRefMatches) return false;
+  if (previous.observedTag && previous.observedTag !== normalizedComparable(item.tag)) return false;
+  if (previous.observedRole && previous.observedRole !== normalizedComparable(item.role)) return false;
+  const nextLabel = normalizedComparable(item.label || item.ariaLabel || item.placeholder || item.text);
+  return !previous.observedLabel || normalizedComparable(previous.observedLabel) === nextLabel;
+}
+
+function recoverableLocator(target) {
+  return target?.selectorUnique === true
+    && ['high', 'medium'].includes(text(target.selectorStability).toLowerCase())
+    && !!text(target.selector);
 }
 
 function selectorTargetsFileInput(value) {
@@ -138,21 +129,6 @@ function normalizeToolName(value) {
   return value === 'browser_download' ? 'browser_file' : value;
 }
 
-function boundedWaitTimeout(args) {
-  return Math.min(120000, Math.max(100, Number(args.timeout_ms ?? args.ms) || 10000));
-}
-
-function retryDelay(timeoutMs) {
-  return new Promise((resolve) => setTimeout(resolve, Math.min(100, timeoutMs)));
-}
-
-function waitTimeoutResult(selector, timeoutMs, result = {}) {
-  return {
-    ...result, success: false, action: 'wait', selector,
-    error: `等待元素超时: ${selector}`, errorCode: 'WAIT_TIMEOUT', timeout_ms: timeoutMs,
-  };
-}
-
 function normalizeUrl(value) {
   const raw = text(value);
   if (!raw) throw new Error('缺少要打开的网址');
@@ -215,6 +191,7 @@ class NativeBrowserAutomation {
     this.workspaceDir = options.workspaceDir;
     this.getBrowserRecords = options.getBrowserRecords;
     this.observeTargets = new Map();
+    this.observationHistory = new Map();
     this.takeoverConnections = new Set();
   }
 
@@ -283,13 +260,19 @@ class NativeBrowserAutomation {
   }
 
   async browserAction(connection, args) {
-    const input = this.resolveObservedTarget(connection, args);
+    let input = this.resolveObservedTarget(connection, args);
+    if (input.observedRefRecoveryCandidate) input = await this.recoverObservedTarget(connection, input);
+    const mismatch = mismatchedObservationResult(input);
+    if (mismatch) return mismatch;
     const expired = expiredObservedRefResult(input);
     if (expired) return expired;
     if (text(input.action) === 'upload_file') throw new Error('文件上传请使用 browser_file action=upload');
     const blocked = fileUploadRequired(input);
     if (blocked) return blocked;
-    return this.runtimeCommand(connection, 'perform-action', runtimeTarget(input));
+    const result = await this.runtimeCommand(connection, 'perform-action', runtimeTarget(input));
+    return input.observedRefRecovered === true
+      ? { ...result, refRecovered: true, recoveryStrategy: 'unique-observed-selector' }
+      : result;
   }
 
   async browserControl(connection, args) {
@@ -353,7 +336,19 @@ class NativeBrowserAutomation {
   resolveObservedTarget(connection, args) {
     if (text(args.selector) || !text(args.ref)) return args;
     const target = this.observeTargets.get(connection.id)?.get(text(args.ref));
-    if (!target) return { ...args, observedRefExpired: true };
+    const requestedObservationId = text(args.observation_id ?? args.observationId);
+    if (target && (!requestedObservationId || requestedObservationId === target.observationId)) {
+      return this.mergeObservedTarget(target, args);
+    }
+    if (requestedObservationId) {
+      const historic = this.findHistoricTarget(connection.id, requestedObservationId, text(args.ref));
+      if (historic) return { ...args, observedRefRecoveryCandidate: historic };
+      return { ...args, observationMismatch: true };
+    }
+    return { ...args, observedRefExpired: true };
+  }
+
+  mergeObservedTarget(target, args) {
     const resolved = { ...target, ...args };
     if (!text(args.selector) && target.selector) resolved.selector = target.selector;
     const explicitPoint = nonNegativePoint(args.x, args.y);
@@ -365,38 +360,91 @@ class NativeBrowserAutomation {
     return resolved;
   }
 
+  findHistoricTarget(connectionId, observationId, ref) {
+    this.pruneObservationHistory(connectionId);
+    return this.observationHistory.get(connectionId)?.find((snapshot) => (
+      snapshot.observationId === observationId
+    ))?.targets.get(ref) || null;
+  }
+
+  pruneObservationHistory(connectionId) {
+    const now = Date.now();
+    const history = (this.observationHistory.get(connectionId) || [])
+      .filter((snapshot) => now - snapshot.createdAt <= OBSERVATION_HISTORY_TTL_MS)
+      .slice(-OBSERVATION_HISTORY_LIMIT);
+    if (history.length) this.observationHistory.set(connectionId, history);
+    else this.observationHistory.delete(connectionId);
+  }
+
+  rememberObservation(connectionId, observationId, targets) {
+    const history = this.observationHistory.get(connectionId) || [];
+    history.push({ observationId, createdAt: Date.now(), targets });
+    this.observationHistory.set(connectionId, history.slice(-OBSERVATION_HISTORY_LIMIT));
+  }
+
+  async recoverObservedTarget(connection, input) {
+    const previous = input.observedRefRecoveryCandidate;
+    if (!recoverableLocator(previous)) {
+      return {
+        ...input, observedRefExpired: true, observedRefRecoveryCandidate: null,
+        observedRefRecoveryReason: 'LOCATOR_NOT_STABLE',
+        observedRefRecoveryError: '旧 ref 没有唯一且稳定的 selector，无法安全恢复；请重新执行 browser_observe。',
+      };
+    }
+    const current = await this.runtimeCommand(connection, 'observe-page', {
+      limit: 1000, includeText: true, includeMedia: true, showHighlights: false,
+    });
+    if (!previous.observedUrl || !text(current?.url) || text(current.url) !== previous.observedUrl) {
+      return {
+        ...input, observedRefExpired: true, observedRefRecoveryCandidate: null,
+        observedRefRecoveryReason: 'DOCUMENT_CHANGED',
+        observedRefRecoveryError: '页面身份无法确认或已发生导航，旧 ref 不再可信；请重新执行 browser_observe。',
+      };
+    }
+    const matches = (Array.isArray(current?.items) ? current.items : [])
+      .filter((item) => recoveryMatches(previous, item));
+    if (matches.length !== 1 || matches[0].selectorUnique !== true) {
+      return {
+        ...input, observedRefExpired: true, observedRefRecoveryCandidate: null,
+        observedRefRecoveryReason: matches.length > 1 ? 'LOCATOR_AMBIGUOUS' : 'TARGET_CHANGED',
+        observedRefRecoveryError: matches.length > 1
+          ? '旧 ref 在当前页面匹配到多个元素，已拒绝自动操作；请重新执行 browser_observe。'
+          : '旧 ref 对应元素已消失或语义发生变化；请重新执行 browser_observe。',
+      };
+    }
+    const recovered = observedTarget(matches[0], previous.observationId, { url: current.url });
+    if (!recovered) return { ...input, observedRefExpired: true, observedRefRecoveryCandidate: null };
+    return {
+      ...this.mergeObservedTarget(recovered[1], input),
+      observedRefRecoveryCandidate: null, observedRefRecovered: true,
+    };
+  }
+
   async browserObserve(connection, input) {
     const result = await this.runtimeCommand(connection, 'observe-page', input);
-    const targets = new Map((Array.isArray(result?.items) ? result.items : [])
-      .map(observedTarget).filter(Boolean));
+    const observationId = `obs-${randomUUID()}`;
+    const decorated = processObservationResult(result, input, observationId);
+    const targets = new Map(decorated.items
+      .map((item) => observedTarget(item, observationId, { url: decorated.url })).filter(Boolean));
     this.observeTargets.set(connection.id, targets);
-    return result;
+    this.rememberObservation(connection.id, observationId, targets);
+    return decorated;
   }
 
   async browserWait(connection, args) {
-    const input = this.resolveObservedTarget(connection, args);
+    let input = this.resolveObservedTarget(connection, args);
+    if (input.observedRefRecoveryCandidate) input = await this.recoverObservedTarget(connection, input);
+    const mismatch = mismatchedObservationResult(input);
+    if (mismatch) return mismatch;
+    const expired = expiredObservedRefResult(input);
+    if (expired) return expired;
     const selector = text(input.selector);
-    if (selector) {
-      const timeoutMs = boundedWaitTimeout(input);
-      const deadline = Date.now() + timeoutMs;
-      let result = null;
-      do {
-        const remaining = Math.max(100, deadline - Date.now());
-        let retryableFailure = false;
-        try {
-          result = await this.runtimeCommand(connection, 'perform-action', {
-            ...input, selector, action: 'wait', timeout_ms: Math.min(750, remaining),
-          });
-          retryableFailure = result?.success === false && result?.errorCode === 'WAIT_TIMEOUT';
-        } catch (error) {
-          if (!RETRYABLE_WAIT_ERRORS.has(String(error?.code || ''))) throw error;
-          result = null;
-          retryableFailure = true;
-        }
-        if (!retryableFailure) return result;
-        if (Date.now() < deadline) await retryDelay(deadline - Date.now());
-      } while (Date.now() < deadline);
-      return waitTimeoutResult(selector, timeoutMs, result || {});
+    const condition = text(input.condition).toLowerCase();
+    if (selector || condition === 'url_matches') {
+      return waitForBrowserCondition({
+        input, selector, condition,
+        runtimeCommand: (payload) => this.runtimeCommand(connection, 'perform-action', payload),
+      });
     }
     const waitedMs = Math.min(120000, Math.max(0, Number(args.ms) || 1000));
     await new Promise((resolve) => setTimeout(resolve, waitedMs));

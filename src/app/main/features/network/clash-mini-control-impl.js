@@ -400,21 +400,26 @@ async function invokeClashMiniControl(coreDir, method, pathname, { data = null, 
 
 // Mihomo 的运行模式可以通过控制接口被其他客户端临时切换。每次接管核心时
 // 都重新确认 rule，避免磁盘配置正确但当前进程仍停留在 global/direct。
-async function ensureClashMiniRuleMode(coreDir) {
+async function ensureClashMiniMode(coreDir, requestedMode = CLASH_MINI_RULE_MODE) {
   try {
+    const targetMode = String(requestedMode).trim().toLowerCase() === 'global' ? 'global' : CLASH_MINI_RULE_MODE;
     const current = await invokeClashMiniControl(coreDir, 'get', '/configs', { timeoutMs: 5000 });
     const currentMode = String(current?.mode || '').trim().toLowerCase();
-    if (currentMode === CLASH_MINI_RULE_MODE) {
-      return { ok: true, changed: false, mode: CLASH_MINI_RULE_MODE };
+    if (currentMode === targetMode) {
+      return { ok: true, changed: false, mode: targetMode };
     }
     await invokeClashMiniControl(coreDir, 'patch', '/configs', {
-      data: { mode: CLASH_MINI_RULE_MODE },
+      data: { mode: targetMode },
       timeoutMs: 5000,
     });
-    return { ok: true, changed: true, mode: CLASH_MINI_RULE_MODE, previousMode: currentMode };
+    return { ok: true, changed: true, mode: targetMode, previousMode: currentMode };
   } catch (error) {
     return { ok: false, error: error?.message || String(error) };
   }
+}
+
+function ensureClashMiniRuleMode(coreDir) {
+  return ensureClashMiniMode(coreDir, CLASH_MINI_RULE_MODE);
 }
 
 module.exports = {
@@ -443,5 +448,6 @@ module.exports = {
   probeLatencyUrl,
   waitForClashMiniControlApi,
   invokeClashMiniControl,
+  ensureClashMiniMode,
   ensureClashMiniRuleMode,
 };

@@ -54,6 +54,25 @@ function setNetworkMagicAutoStartEnabledSafe(enabled) {
   }
 }
 
+function normalizeNetworkMagicProxyMode(value) {
+  const mode = String(value || '').trim();
+  return ['port', 'system', 'global'].includes(mode) ? mode : 'port';
+}
+
+function getNetworkMagicProxyModeSafe() {
+  try { return normalizeNetworkMagicProxyMode(readStoreConfigSafe()?.networkMagicProxyMode); } catch (_) { return 'port'; }
+}
+
+function setNetworkMagicProxyModeSafe(mode) {
+  const normalized = normalizeNetworkMagicProxyMode(mode);
+  const currentStore = readStoreConfigSafe();
+  const wrote = writeStoreConfigSafe({
+    ...(currentStore && typeof currentStore === 'object' ? currentStore : {}),
+    networkMagicProxyMode: normalized,
+  });
+  return { wrote, mode: normalized };
+}
+
 function getPluginSettings(ui, extensionManager) {
   const pluginState = ui?.statePluginGetter?.() || {};
   const managedTranslate = typeof extensionManager?.isPluginEnabled === 'function';
@@ -142,6 +161,7 @@ function registerNetworkSettingsIpc(ipc, licenseCache) {
   ipc.handle('get-network-magic-auto-start-enabled', async () => ({
     ok: true, enabled: getNetworkMagicAutoStartEnabledSafe(),
   }));
+  ipc.handle('get-network-magic-proxy-mode', async () => ({ ok: true, mode: getNetworkMagicProxyModeSafe() }));
   ipc.handle('set-network-magic-auto-start-enabled', async (_event, payload = {}) => {
     const enabled = payload.enabled !== false;
     try {
@@ -150,6 +170,14 @@ function registerNetworkSettingsIpc(ipc, licenseCache) {
     } catch (error) {
       console.error('[IPC] 更新网络魔法自动开启状态失败:', error);
       return { ok: false, error: error.message, enabled };
+    }
+  });
+  ipc.handle('set-network-magic-proxy-mode', async (_event, payload = {}) => {
+    try {
+      const result = setNetworkMagicProxyModeSafe(payload.mode);
+      return result.wrote ? { ok: true, mode: result.mode } : { ok: false, error: '保存网络魔法代理模式失败' };
+    } catch (error) {
+      return { ok: false, error: error.message };
     }
   });
 }

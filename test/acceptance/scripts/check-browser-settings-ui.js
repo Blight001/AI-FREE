@@ -69,6 +69,7 @@ for (const [channel, response] of /** @type {Array<[string, any]>} */ ([
   ['get-tutorial-url', 'https://www.baidu.com/'],
   ['consume-auto-validate-flag', { pending: false }],
   ['get-network-magic-auto-start-enabled', { ok: true, enabled: false }],
+  ['get-network-magic-proxy-mode', { ok: true, mode: 'port' }],
   ['get-browser-history', {
     ok: true,
     history: [{
@@ -271,6 +272,9 @@ app.whenReady().then(async () => {
       networkToolsUnboxed: getComputedStyle(document.querySelector('.settings-network-tools')).borderTopWidth === '0px'
         && getComputedStyle(document.querySelector('.settings-network-tools')).boxShadow === 'none',
       vpnAutoStartBusyAppearance,
+      proxyModes: Array.from(document.querySelectorAll('input[name="network-magic-proxy-mode"]')).map((input) => ({
+        value: input.value, checked: input.checked,
+      })),
       nodeToggleVisible: nodeToggle?.getBoundingClientRect().width > 0,
       nodePanelCollapsedByDefault,
       nodePanelVisible: nodePanelOpenedByToggle,
@@ -374,6 +378,11 @@ app.whenReady().then(async () => {
     || !result.canvasInspectorEdited
     || !result.canvasMcpConfigured
     || !result.nodeToggleVisible
+    || JSON.stringify(result.proxyModes) !== JSON.stringify([
+      { value: 'port', checked: true },
+      { value: 'system', checked: false },
+      { value: 'global', checked: false },
+    ])
     || !result.nodePanelCollapsedByDefault
     || !result.nodePanelVisible
     || !result.nodePanelStatic
@@ -403,8 +412,8 @@ app.whenReady().then(async () => {
   if (independentBrowserCreateRequests !== 1) {
     throw new Error('浏览器配置首页的新建按钮未创建浏览器');
   }
-  if (accountSessionRequests !== 1) {
-    throw new Error(`浏览器配置首页仅应在登录门禁触发时读取账号会话，实际请求 ${accountSessionRequests} 次`);
+  if (accountSessionRequests !== 2) {
+    throw new Error(`浏览器配置首页应分别为魔法状态同步和登录门禁读取账号会话，实际请求 ${accountSessionRequests} 次`);
   }
   if (accountCenterRequests !== 1) {
     throw new Error(`未登录操作应请求侧边栏个人中心，实际请求 ${accountCenterRequests} 次`);

@@ -88,6 +88,12 @@
 
             <div class="settings-network-tools-subtitle settings-network-tools-proxy-title">内置代理</div>
             <div class="vpn-node-selector-shell">
+              <fieldset id="network-magic-proxy-mode" class="network-magic-proxy-mode" aria-label="网络魔法代理模式">
+                <legend>代理模式</legend>
+                <label><input type="radio" name="network-magic-proxy-mode" value="port" checked><span>端口代理</span></label>
+                <label><input type="radio" name="network-magic-proxy-mode" value="system"><span>系统代理</span></label>
+                <label><input type="radio" name="network-magic-proxy-mode" value="global"><span>全局代理</span></label>
+              </fieldset>
               <div class="vpn-node-selector-row">
                 <button id="VPN-switch" class="main-button btn-large-purple VPN-btn" type="button" disabled>关闭网络魔法</button>
                 <button id="vpn-node-selector-toggle-btn" class="vpn-node-selector-btn vpn-node-selector-btn-toggle" type="button" aria-expanded="false" aria-controls="vpn-node-selector-panel" disabled>

@@ -10,11 +10,13 @@ function fixture(overrides = {}) {
   const writes = [];
   const events = [];
   const timers = [];
+  const recoveryTimers = [];
   const runtime = { tutorialUrl: 'https://old.example/tutorial' };
   const credentials = {
     authType: 'account',
     username: 'alice',
     sessionToken: 'afs_license-key',
+    key: 'afs_license-key',
     deviceId: 'trusted-device',
     serverBase: 'https://service.example',
     serverMode: 'remote',
@@ -49,10 +51,16 @@ function fixture(overrides = {}) {
       timers.push(timer);
       return timer;
     },
+    setTimeoutFn: (callback, interval) => {
+      const timer = { callback, interval, unref() {} };
+      recoveryTimers.push(timer);
+      return timer;
+    },
+    clearTimeoutFn() {},
     logger: { log() {}, warn() {} },
     ...overrides,
   };
-  return { context, credentials, events, runtime, timers, writes };
+  return { context, credentials, events, recoveryTimers, runtime, timers, writes };
 }
 
 test('启动恢复先在线验证会员、持久化服务端状态并安排五分钟刷新', async () => {
@@ -100,6 +108,33 @@ test('在线验证失败时关闭本地 VIP，周期刷新向渲染层发布安�
   assert.equal(result.validation.vip_server_verified, false);
   assert.equal(result.validation.is_vip, false);
   assert.equal(data.events.some(([channel]) => channel === 'account-session-updated'), true);
+});
+
+test('临时网络故障保留最近确认的 VIP，并在三十秒后主动恢复验证', async () => {
+  let online = false;
+  const data = fixture({
+    getGlobalHttpClient: () => ({
+      runtimeServerBase: '',
+      validateSession: async () => online
+        ? { valid: true, is_vip: true, vip_active: true }
+        : { ok: false, status: 0, error: 'ECONNRESET' },
+    }),
+  });
+  const service = createMembershipService(data.context);
+  const offline = await service.refresh(data.credentials, 'periodic');
+  assert.equal(offline.transientFailure, true);
+  assert.equal(offline.validation.is_vip, true);
+  assert.equal(data.context.licenseCache.validation.validated, true);
+  assert.ok(data.writes[0].userCredentials.validation);
+  assert.equal(data.recoveryTimers[0].interval, 30 * 1000);
+
+  online = true;
+  data.recoveryTimers[0].callback();
+  for (let index = 0; index < 10 && data.writes.length < 2; index += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.equal(data.writes.at(-1).userCredentials.validation.vip_server_verified, true);
+  assert.equal(data.writes.at(-1).userCredentials.validation.is_vip, true);
 });
 
 test('并发会员刷新复用同一个服务器请求并在完成后允许重试', async () => {

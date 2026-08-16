@@ -90,6 +90,7 @@ contextBridge.exposeInMainWorld('aiFree', Object.freeze({
   }),
   network: Object.freeze({
     getAutoStartEnabled: invokeChannel('get-network-magic-auto-start-enabled'),
+    getProxyMode: invokeChannel('get-network-magic-proxy-mode'),
     getClashConfig: invokeChannel('get-clash-config'),
     getClashProxyOptions: invokeChannel('get-clash-mini-proxy-options'),
     getClashStatus: invokeChannel('get-clash-mini-status'),
@@ -97,6 +98,7 @@ contextBridge.exposeInMainWorld('aiFree', Object.freeze({
     redeemProxyTrafficGiftCode: invokeChannel('redeem-proxy-traffic-gift-code'),
     saveClashConfig: invokeChannel('save-clash-config'),
     setAutoStartEnabled: invokeChannel('set-network-magic-auto-start-enabled'),
+    setProxyMode: invokeChannel('set-network-magic-proxy-mode'),
     startClash: invokeChannel('start-clash-mini'),
     stopClash: invokeChannel('stop-clash-mini'),
     switchClashProxy: invokeChannel('switch-clash-mini-proxy'),

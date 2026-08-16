@@ -13,8 +13,10 @@ const {
 } = require('./clash-mini-assets');
 const {
   waitForClashMiniControlApi,
-  ensureClashMiniRuleMode,
+  ensureClashMiniMode,
+  getClashMiniProxyEndpoint,
 } = require('./clash-mini-control');
+const { disableSystemProxy, enableSystemProxy } = require('./windows-system-proxy');
 const {
   ensureClashMiniRuntimeConfig,
 } = require('./clash-mini-config');
@@ -30,6 +32,8 @@ let runtimeLicenseCache = null;
 let clashMiniStartPromise = null;
 let clashMiniStopPromise = null;
 let clashMiniStartGeneration = 0;
+let clashMiniProxyMode = 'port';
+let clashMiniSystemProxyApplied = false;
 const intentionallyStoppedClashProcesses = new WeakSet();
 
 function isClashMiniStartCancelled(startGeneration) {
@@ -121,6 +125,8 @@ function getClashMiniStatus() {
     configPath: clashMiniConfigPath || '',
     startedByApp: clashStartedByApp === true,
     proxyAppliedByApp: actualEnabled,
+    proxyMode: clashMiniProxyMode,
+    systemProxyApplied: clashMiniSystemProxyApplied,
   };
 }
 
@@ -187,16 +193,35 @@ function formatBrowserProxyMessage(result) {
   return `，浏览器代理已同步${Number.isFinite(count) ? `(${count} 个标签页)` : ''}`;
 }
 
-async function validateRuleMode(ui, coreDir, stopOnFailure = false) {
-  const result = await ensureClashMiniRuleMode(coreDir);
+function normalizeProxyMode(value) {
+  return ['port', 'system', 'global'].includes(String(value || '').trim()) ? String(value).trim() : 'port';
+}
+
+async function applyProxyMode(ui, coreDir, proxyMode, stopOnFailure = false) {
+  const normalizedMode = normalizeProxyMode(proxyMode);
+  const clashMode = normalizedMode === 'global' ? 'global' : 'rule';
+  const result = await ensureClashMiniMode(coreDir, clashMode);
   if (result.ok) return null;
-  const message = `Mihomo 无法切换到规则模式：${result.error || '未知错误'}`;
+  const message = `Mihomo 无法切换到${clashMode === 'global' ? '全局' : '规则'}模式：${result.error || '未知错误'}`;
   emitClashMiniLog(ui, 'error', message);
   if (stopOnFailure) await stopClashMiniProcess(ui, { waitForPendingStart: false });
   return { ok: false, error: message, controlApiReady: true };
 }
 
-async function reuseRunningProcess(ui, startCancelled) {
+async function syncSystemProxy(coreDir, proxyMode) {
+  const normalizedMode = normalizeProxyMode(proxyMode);
+  if (normalizedMode === 'port') {
+    await disableSystemProxy();
+    clashMiniSystemProxyApplied = false;
+    return;
+  }
+  const endpoint = getClashMiniProxyEndpoint(coreDir);
+  const result = await enableSystemProxy(endpoint.host, endpoint.port);
+  if (!result?.ok) throw new Error(result?.error || '启用 Windows 系统代理失败');
+  clashMiniSystemProxyApplied = true;
+}
+
+async function reuseRunningProcess(ui, startCancelled, options = {}) {
   if (!isClashMiniProcessRunning()) return null;
   const coreDir = clashMiniCoreDir || getClashMiniRuntimeRoot();
   const controlApiReady = await waitForClashMiniControlApi(coreDir, 10000, startCancelled);
@@ -207,10 +232,12 @@ async function reuseRunningProcess(ui, startCancelled) {
     await stopClashMiniProcess(ui, { waitForPendingStart: false });
     return { ok: false, error: message, controlApiReady: false };
   }
-  const ruleFailure = await validateRuleMode(ui, coreDir);
+  clashMiniProxyMode = normalizeProxyMode(options.proxyMode || clashMiniProxyMode);
+  const ruleFailure = await applyProxyMode(ui, coreDir, clashMiniProxyMode);
   if (startCancelled()) return buildClashMiniStartCancelledResult();
   if (ruleFailure) return ruleFailure;
   const proxyResult = await syncBrowserProxy(ui, true);
+  await syncSystemProxy(coreDir, clashMiniProxyMode);
   if (startCancelled()) return buildClashMiniStartCancelledResult();
   clashMiniProxyAppliedByApp = proxyResult?.ok === true;
   emitClashMiniLog(ui, 'info', `Clash Mini 已重新运行${formatBrowserProxyMessage(proxyResult)}`);
@@ -259,6 +286,7 @@ function handleClashMiniExit(ui, processRef, code, signal) {
   intentionallyStoppedClashProcesses.delete(processRef);
   resetClashMiniProcessState(processRef);
   if (!intentional && !isClashMiniProcessRunning()) void syncBrowserProxy(ui, false);
+  if (!intentional && !isClashMiniProcessRunning()) void disableSystemProxy().finally(() => { clashMiniSystemProxyApplied = false; });
   const level = intentional || code === 0 ? 'info' : 'warn';
   const reason = intentional ? '已按请求停止' : '进程已退出';
   emitClashMiniLog(ui, level, `Clash Mini ${reason}，退出码: ${code}${signal ? `, 信号: ${signal}` : ''}`);
@@ -270,6 +298,7 @@ function handleClashMiniError(ui, processRef, error) {
   intentionallyStoppedClashProcesses.add(processRef);
   resetClashMiniProcessState(processRef);
   if (!intentional && !isClashMiniProcessRunning()) void syncBrowserProxy(ui, false);
+  if (!intentional && !isClashMiniProcessRunning()) void disableSystemProxy().finally(() => { clashMiniSystemProxyApplied = false; });
   emitClashMiniLog(ui, 'error', `Clash Mini 启动失败: ${error?.message || error}`);
 }
 
@@ -291,7 +320,7 @@ function spawnClashMiniCore(ui, prepared) {
   return processRef;
 }
 
-async function finishClashMiniStart(ui, runtimeDir, startCancelled) {
+async function finishClashMiniStart(ui, runtimeDir, startCancelled, options = {}) {
   const ready = await waitForClashMiniControlApi(runtimeDir, 30000, startCancelled);
   if (startCancelled()) return buildClashMiniStartCancelledResult();
   if (!ready || !isClashMiniProcessRunning()) {
@@ -300,10 +329,19 @@ async function finishClashMiniStart(ui, runtimeDir, startCancelled) {
     await stopClashMiniProcess(ui, { waitForPendingStart: false });
     return { ok: false, error: message, controlApiReady: false };
   }
-  const ruleFailure = await validateRuleMode(ui, runtimeDir, true);
+  clashMiniProxyMode = normalizeProxyMode(options.proxyMode);
+  const ruleFailure = await applyProxyMode(ui, runtimeDir, clashMiniProxyMode, true);
   if (ruleFailure) return ruleFailure;
   if (startCancelled()) return buildClashMiniStartCancelledResult();
   const proxyResult = await syncBrowserProxy(ui, true);
+  try {
+    await syncSystemProxy(runtimeDir, clashMiniProxyMode);
+  } catch (error) {
+    const message = error?.message || String(error);
+    emitClashMiniLog(ui, 'error', message);
+    await stopClashMiniProcess(ui, { waitForPendingStart: false });
+    return { ok: false, error: message, controlApiReady: true };
+  }
   if (startCancelled()) return buildClashMiniStartCancelledResult();
   clashMiniProxyAppliedByApp = proxyResult?.ok === true;
   const proxyMessage = formatBrowserProxyMessage(proxyResult) || '，浏览器代理已切换到本地混合端口';
@@ -314,14 +352,14 @@ async function finishClashMiniStart(ui, runtimeDir, startCancelled) {
 async function startClashMiniProcessOnce(ui, options = {}, startGeneration = clashMiniStartGeneration) {
   const startCancelled = () => isClashMiniStartCancelled(startGeneration);
   if (startCancelled()) return buildClashMiniStartCancelledResult();
-  const existing = await reuseRunningProcess(ui, startCancelled);
+  const existing = await reuseRunningProcess(ui, startCancelled, options);
   if (existing) return existing;
   const prepared = await prepareRuntime(ui, startCancelled);
   if (prepared.result) return prepared.result;
   try {
     if (startCancelled()) return buildClashMiniStartCancelledResult();
     spawnClashMiniCore(ui, prepared);
-    return finishClashMiniStart(ui, prepared.runtimePrep.runtimeDir, startCancelled);
+    return finishClashMiniStart(ui, prepared.runtimePrep.runtimeDir, startCancelled, options);
   } catch (error) {
     if (startCancelled()) return buildClashMiniStartCancelledResult();
     emitClashMiniLog(ui, 'error', `启动 Clash Mini 失败: ${error?.message || error}`);
@@ -388,6 +426,10 @@ async function stopClashMiniProcessOnce(ui, pendingStartPromise = null) {
   // 先让浏览器脱离本地代理，再结束 Mihomo。反过来会让所有仍在传输的
   // Chromium socket 同时收到 ECONNRESET，并可能在退出期形成未处理异常。
   await syncBrowserProxy(ui, false);
+  await disableSystemProxy().catch((error) => {
+    emitClashMiniLog(ui, 'warn', `恢复 Windows 系统代理失败: ${error?.message || error}`);
+  });
+  clashMiniSystemProxyApplied = false;
   clashMiniProxyAppliedByApp = false;
   const exited = await terminateClashMiniProcess(ui, processRef, pid);
 

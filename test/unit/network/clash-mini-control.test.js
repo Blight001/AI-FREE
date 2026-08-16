@@ -93,6 +93,12 @@ test('control requests validate status and rule mode changes only when needed', 
 
     responder = async () => ({ status: 200, data: { mode: 'rule' } });
     assert.deepEqual(await clash.ensureClashMiniRuleMode(root), { ok: true, changed: false, mode: 'rule' });
+    requests.length = 0;
+    responder = async (options) => ({ status: 200, data: options.method === 'get' ? { mode: 'rule' } : { ok: true } });
+    assert.deepEqual(await clash.ensureClashMiniMode(root, 'global'), {
+      ok: true, changed: true, mode: 'global', previousMode: 'rule',
+    });
+    assert.deepEqual(requests[1].data, { mode: 'global' });
     responder = async () => ({ status: 403, data: { error: 'denied' } });
     await assert.rejects(clash.invokeClashMiniControl(root, 'get', '/configs'), /denied/);
     const failure = await clash.ensureClashMiniRuleMode(root);

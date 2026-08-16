@@ -14,10 +14,40 @@ test('normalizes bounded native observe and action payloads', () => {
   assert.deepEqual(normalizeRuntimeAutomation('observe-page', {
     max_items: 5000, keyword: '登录', include_media: false,
   }), {
-    limit: 1000, textLimit: 120, keyword: '登录', tag: '', filter: '', includeText: true, includeMedia: false,
+    mode: 'elements', includeRegions: false, maxDepth: 2, regionRef: '', region: {},
+    regionMode: 'centerInside', regionPadding: 10, includeAncestorContext: 2,
+    includePortals: true, expectedRegionLayoutHash: '',
+    limit: 1000, textLimit: 120, keyword: '登录', tag: '', tags: [], kinds: [], roles: [],
+    controlTypes: [], filter: '', includeText: true, includeMedia: false,
     showHighlights: true, highlightDurationMs: 5000,
   });
   assert.equal(normalizeRuntimeAutomation('observe-page', { text_limit: 5000 }).textLimit, 500);
+  assert.deepEqual(normalizeRuntimeAutomation('observe-page', {
+    kinds: ['interactive'], tags: ['INPUT', 'button'], roles: ['textbox'],
+    control_types: ['text-input'], filter: 'button',
+  }), {
+    mode: 'elements', includeRegions: false, maxDepth: 2, regionRef: '', region: {},
+    regionMode: 'centerInside', regionPadding: 10, includeAncestorContext: 2,
+    includePortals: true, expectedRegionLayoutHash: '',
+    limit: 200, textLimit: 120, keyword: '', tag: '', tags: ['input', 'button'],
+    kinds: ['interactive'], roles: ['textbox'], controlTypes: ['text-input'], filter: 'button',
+    includeText: true, includeMedia: true, showHighlights: true, highlightDurationMs: 5000,
+  });
+  assert.throws(
+    () => normalizeRuntimeAutomation('observe-page', { filter: 'definitely-unknown' }),
+    (error) => error.code === 'INVALID_FILTER',
+  );
+  const region = normalizeRuntimeAutomation('observe-page', {
+    mode: 'overview', includeRegions: true, maxDepth: 9,
+    region: { role: 'Navigation', label: '侧边栏', match: 'best' },
+    region_mode: 'intersecting', padding: 12, include_ancestor_context: 3,
+  });
+  assert.deepEqual(region.region, { role: 'navigation', label: '侧边栏', match: 'best' });
+  assert.equal(region.mode, 'overview');
+  assert.equal(region.maxDepth, 6);
+  assert.equal(region.regionMode, 'intersecting');
+  assert.equal(region.regionPadding, 12);
+  assert.equal(region.includeAncestorContext, 3);
   const hiddenMarks = normalizeRuntimeAutomation('observe-page', {
     mark: false, highlight_duration_ms: 999999,
   });
@@ -26,6 +56,14 @@ test('normalizes bounded native observe and action payloads', () => {
   assert.equal(normalizeRuntimeAutomation('perform-action', {
     action: 'type', selector: '#email', text: 'a@example.com', timeout: 1,
   }).timeoutMs, 100);
+  assert.deepEqual(normalizeRuntimeAutomation('perform-action', {
+    action: 'wait', selector: '.status', condition: 'text_contains',
+    value: '保存成功', initial_value: '正在保存', timeout_ms: 15000,
+  }), {
+    action: 'wait', selector: '.status', text: '保存成功', key: '', ref: '', direction: 'down', amount: 600,
+    timeoutMs: 15000, ctrl: false, shift: false, alt: false, meta: false,
+    condition: 'text_contains', expectedValue: '保存成功', initialValue: '正在保存',
+  });
   assert.deepEqual(normalizeRuntimeAutomation('perform-action', {
     action: 'click', ref: 'e1', selector: 'button', x: 160.5, y: 55.25,
   }), {
@@ -68,6 +106,10 @@ test('normalizes bounded native observe and action payloads', () => {
 test('rejects unknown native commands and actions', () => {
   assert.throws(() => normalizeRuntimeAutomation('execute-script', {}), /不支持的 Chromium 自动化命令/);
   assert.throws(() => normalizeRuntimeAutomation('perform-action', { action: 'eval' }), /不支持的原生页面动作/);
+  assert.throws(
+    () => normalizeRuntimeAutomation('perform-action', { action: 'wait', condition: 'network_idle' }),
+    (error) => error.code === 'AUTOMATION_WAIT_CONDITION_INVALID',
+  );
   assert.throws(() => normalizeRuntimeAutomation('perform-action', { action: 'click', x: 10 }), /必须同时提供/);
   assert.throws(() => normalizeRuntimeAutomation('perform-action', { action: 'drag', x: 10, y: 10 }), /终点坐标/);
   assert.throws(() => normalizeRuntimeAutomation('perform-action', { action: 'set_selection' }), /start\/end/);
@@ -325,6 +367,52 @@ test('fork observe exposes semantic control types and form state', () => {
   assert.match(patch, /filter==='input'/);
   assert.match(patch, /inputType==='password'\?'':rawText/);
   assert.match(patch, /kEditable/);
+});
+
+test('fork observe exposes structured filters, safe locators and container semantics', () => {
+  const patchDirectory = path.join(__dirname, '../../../native/chromium-fork/patches');
+  const series = fs.readFileSync(path.join(patchDirectory, 'series'), 'utf8');
+  const patch = fs.readFileSync(
+    path.join(patchDirectory, '0041-ai-free-observe-structured-semantics.patch'), 'utf8',
+  );
+  assert.match(series, /0040-ai-free-live-tab-favicons\.patch\s+0041-ai-free-observe-structured-semantics\.patch/);
+  assert.match(patch, /INVALID_FILTER/);
+  assert.match(patch, /selectorMatchCount/);
+  assert.match(patch, /stableRef/);
+  assert.match(patch, /containerRef/);
+  assert.match(patch, /labelSource/);
+  assert.match(patch, /destructiveHint/);
+  assert.match(patch, /mediaResources/);
+});
+
+test('fork observe supports semantic region overview and stale-region diagnostics', () => {
+  const patchDirectory = path.join(__dirname, '../../../native/chromium-fork/patches');
+  const series = fs.readFileSync(path.join(patchDirectory, 'series'), 'utf8');
+  const patch = fs.readFileSync(
+    path.join(patchDirectory, '0042-ai-free-observe-semantic-regions.patch'), 'utf8',
+  );
+  assert.match(series, /0041-ai-free-observe-structured-semantics\.patch\s+0042-ai-free-observe-semantic-regions\.patch/);
+  assert.match(patch, /mode:'overview'/);
+  assert.match(patch, /REGION_STALE/);
+  assert.match(patch, /centerInside/);
+  assert.match(patch, /ancestorContext/);
+  assert.match(patch, /relatedPortal/);
+  assert.match(patch, /viewport-css-px/);
+  assert.match(patch, /layoutChanged/);
+});
+
+test('fork wait evaluates page conditions without repeated observe calls', () => {
+  const patchDirectory = path.join(__dirname, '../../../native/chromium-fork/patches');
+  const series = fs.readFileSync(path.join(patchDirectory, 'series'), 'utf8');
+  const waitPatch = fs.readFileSync(
+    path.join(patchDirectory, '0043-ai-free-conditional-waits.patch'), 'utf8',
+  );
+  assert.match(series, /0042-ai-free-observe-semantic-regions\.patch\s+0043-ai-free-conditional-waits\.patch/);
+  for (const condition of [
+    'visible', 'hidden', 'text_contains', 'text_changed', 'url_matches',
+  ]) assert.match(waitPatch, new RegExp(condition));
+  assert.match(waitPatch, /currentValue/);
+  assert.match(waitPatch, /WAIT_PENDING/);
 });
 
 test('fork observe highlights stay in the native event-transparent UI layer', () => {

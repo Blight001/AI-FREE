@@ -12,6 +12,35 @@
   align-items: stretch;
 }
 
+.network-magic-proxy-mode {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid rgba(124, 135, 184, 0.25);
+  border-radius: 10px;
+  background: rgba(12, 18, 31, 0.58);
+}
+
+.network-magic-proxy-mode legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+.network-magic-proxy-mode label { min-width: 0; cursor: pointer; }
+.network-magic-proxy-mode input { position: absolute; opacity: 0; pointer-events: none; }
+.network-magic-proxy-mode span {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  color: #aeb8cd;
+  font-size: 13px;
+  font-weight: 700;
+  transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+.network-magic-proxy-mode input:checked + span { background: var(--brand-grad); color: #fff; box-shadow: var(--brand-shadow); }
+.network-magic-proxy-mode input:focus-visible + span { outline: 2px solid #a5b4fc; outline-offset: 1px; }
+.network-magic-proxy-mode input:disabled + span { cursor: wait; opacity: 0.58; }
+
 .vpn-node-selector-row > .main-button,
 .vpn-node-selector-row > .vpn-node-selector-btn-toggle {
   flex: 1 1 0;

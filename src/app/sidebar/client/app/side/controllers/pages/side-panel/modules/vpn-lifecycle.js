@@ -20,6 +20,63 @@ async function persistNetworkMagicAutoStartEnabled(enabled) {
   return window.aiFree.network.setAutoStartEnabled( { enabled: !!enabled });
 }
 
+let networkMagicProxyModeReady = null;
+
+function normalizeNetworkMagicProxyMode(value) {
+  const mode = String(value || '').trim();
+  return ['port', 'system', 'global'].includes(mode) ? mode : 'port';
+}
+
+function proxyModeInputs() {
+  return Array.from(document.querySelectorAll('input[name="network-magic-proxy-mode"]'));
+}
+
+function selectedNetworkMagicProxyMode() {
+  return normalizeNetworkMagicProxyMode(proxyModeInputs().find((input) => input.checked)?.value);
+}
+
+async function loadNetworkMagicProxyMode() {
+  const result = await window.aiFree?.network?.getProxyMode?.().catch(() => null);
+  const mode = normalizeNetworkMagicProxyMode(result?.mode);
+  proxyModeInputs().forEach((input) => { input.checked = input.value === mode; });
+  return mode;
+}
+
+function setProxyModeInputsDisabled(disabled) {
+  proxyModeInputs().forEach((input) => { input.disabled = disabled; });
+}
+
+async function restartNetworkMagicForProxyMode(mode, controls) {
+  const status = await window.aiFree.network.getClashStatus?.().catch(() => null);
+  if (status?.running !== true) return;
+  const stopped = await window.aiFree.network.stopClash();
+  if (!stopped?.ok) throw new Error(stopped?.error || '切换代理模式前停止网络魔法失败');
+  await startClashMiniFlow({ ...controls, fetchConfig: false, proxyMode: mode });
+}
+
+function bindNetworkMagicProxyMode(controls) {
+  networkMagicProxyModeReady ||= loadNetworkMagicProxyMode();
+  proxyModeInputs().forEach((input) => {
+    if (input.dataset.bound === '1') return;
+    input.addEventListener('change', async () => {
+      if (!input.checked) return;
+      const mode = normalizeNetworkMagicProxyMode(input.value);
+      setProxyModeInputsDisabled(true);
+      try {
+        const saved = await window.aiFree.network.setProxyMode({ mode });
+        if (!saved?.ok) throw new Error(saved?.error || '保存代理模式失败');
+        await restartNetworkMagicForProxyMode(mode, controls);
+      } catch (error) {
+        networkMagicProxyModeReady = loadNetworkMagicProxyMode();
+        showNetworkMagicOperationError(error);
+      } finally {
+        setProxyModeInputsDisabled(false);
+      }
+    });
+    input.dataset.bound = '1';
+  });
+}
+
 // 停止/关闭/清理：stopClashMiniFlow的具体业务逻辑。
 async function stopClashMiniFlow({ startBtn, vpnBtn } = {}) {
   if (typeof window.aiFree.network.stopClash !== 'function') {
@@ -41,7 +98,7 @@ async function stopClashMiniFlow({ startBtn, vpnBtn } = {}) {
 //  4. 记忆“自动启动”偏好；
 //  5. 获取节点；主进程复用已有测速记录，只补测没有记录的节点；
 //  6. 把最终状态应用到按钮 UI。
-async function startClashMiniFlowOnce({ startBtn, vpnBtn, fetchConfig = true, key = '', deviceId = '' } = {}) {
+async function startClashMiniFlowOnce({ startBtn, vpnBtn, fetchConfig = true, key = '', deviceId = '', proxyMode = '' } = {}) {
   if (typeof window.aiFree.network.startClash !== 'function') {
     throw new Error('当前环境不支持启动 Clash Mini');
   }
@@ -52,7 +109,10 @@ async function startClashMiniFlowOnce({ startBtn, vpnBtn, fetchConfig = true, ke
     console.log('[侧边栏][Clash] 开启网络魔法，获取最新 YAML 并覆盖旧配置...');
     await ensureClashMiniConfigPreheated({ force: true, key, deviceId });
   }
-  const result = await window.aiFree.network.startClash();
+  if (networkMagicProxyModeReady) await networkMagicProxyModeReady.catch(() => {});
+  const result = await window.aiFree.network.startClash({
+    proxyMode: normalizeNetworkMagicProxyMode(proxyMode || selectedNetworkMagicProxyMode()),
+  });
   assertClashStarted(result);
 
   await persistNetworkMagicAutoStartEnabled(true).catch(() => {});
@@ -276,6 +336,7 @@ function bindNetworkMagicAccountSession() {
 function bindClashMiniControls() {
   const controls = resolveClashMiniControls();
   bindNetworkMagicAccountSession();
+  bindNetworkMagicProxyMode(controls);
   bindClashToggleButtons(controls);
   bindVpnNodeSelectorToggle();
   bindClashLatencyButton();

@@ -6,6 +6,8 @@ const { clearVipServerVerification, markVipServerVerified } = require('../../uti
 const { setLicenseRuntimeConfig } = require('../../utils/runtime-config');
 const { callOptional, firstText } = require('../../../shared/safe-values');
 
+const MEMBERSHIP_RECOVERY_RETRY_MS = 30 * 1000;
+
 function getTutorialUrl(licenseCache) {
   const runtimeConfig = callOptional(licenseCache, 'getRuntimeConfig') || {};
   return firstText(runtimeConfig.tutorialUrl).trim();
@@ -22,6 +24,18 @@ async function validateMembership(deps, credentials) {
 
 function resolveMembershipState(credentials, response) {
   const verified = response?.valid === true;
+  const transientFailure = !response
+    || Number(response?.status) === 0
+    || Number(response?.status) >= 500
+    || response?.retryable === true;
+  if (!verified && transientFailure) {
+    return {
+      verified: false,
+      transientFailure: true,
+      validation: markVipServerVerified(credentials.validation),
+      account: markVipServerVerified(credentials.account),
+    };
+  }
   const validation = verified
     ? markVipServerVerified(response)
     : clearVipServerVerification(credentials.validation);
@@ -34,7 +48,7 @@ function resolveMembershipState(credentials, response) {
       vip_expiry_date: response.vip_expiry_date || null,
     })
     : clearVipServerVerification(credentials.account);
-  return { verified, validation, account };
+  return { verified, transientFailure: false, validation, account };
 }
 
 function persistMembership(deps, credentials, state) {
@@ -53,14 +67,17 @@ function persistMembership(deps, credentials, state) {
   });
   deps.writeStoreConfigSafe({ ...currentStore, userCredentials: storedSession });
   deps.licenseCache?.setCredentials?.({ key: credentials.key, deviceId: credentials.deviceId });
+  const accessTrusted = state.verified || state.transientFailure;
   deps.licenseCache?.setValidationState?.({
     key: credentials.key,
     deviceId: credentials.deviceId,
-    validated: state.verified,
-    bound: state.verified,
-    licenseValidated: state.verified,
+    validated: accessTrusted,
+    bound: accessTrusted,
+    licenseValidated: accessTrusted,
     result: state.validation,
-    message: state.verified ? '会员状态已由服务器验证' : '会员状态在线验证失败，已安全降级',
+    message: state.verified
+      ? '会员状态已由服务器验证'
+      : (state.transientFailure ? '网络暂时不可用，已保留最近确认的会员状态' : '会员状态已由服务器拒绝'),
   });
   setLicenseRuntimeConfig(deps.licenseCache, state.validation);
   deps.licenseCache?.setRuntimeConfig?.({ autoValidatePending: false });
@@ -76,20 +93,53 @@ function notifyMembershipResult(deps, credentials, state, reason, response) {
       validation: state.validation,
     });
   }
-  if (!state.verified) {
+  if (state.transientFailure) {
+    deps.logger.warn?.('[会员] 在线验证遇到临时网络故障，保留最近确认状态并等待重试:', response?.message || response?.error || '服务不可用');
+  } else if (!state.verified) {
     deps.logger.warn?.('[会员] 在线验证失败，本地 VIP 权限已关闭:', response?.message || response?.error || '服务不可用');
   }
 }
 
+function createMembershipRecoveryScheduler(deps, retry) {
+  let timer = null;
+  return {
+    clear() {
+      if (!timer) return;
+      deps.clearTimeoutFn(timer);
+      timer = null;
+    },
+    schedule(credentials) {
+      if (timer) return;
+      timer = deps.setTimeoutFn(() => {
+        timer = null;
+        void retry(credentials).catch((error) => {
+          deps.logger.warn?.('[会员] 网络恢复重试失败:', error?.message || error);
+          this.schedule(credentials);
+        });
+      }, MEMBERSHIP_RECOVERY_RETRY_MS);
+      timer?.unref?.();
+    },
+  };
+}
+
 function createMembershipService(deps = {}) {
   /** @type {Record<string, any>} */
-  const normalized = { ...deps, logger: deps.logger || console, setIntervalFn: deps.setIntervalFn || setInterval };
+  const normalized = {
+    ...deps,
+    logger: deps.logger || console,
+    setIntervalFn: deps.setIntervalFn || setInterval,
+    setTimeoutFn: deps.setTimeoutFn || setTimeout,
+    clearTimeoutFn: deps.clearTimeoutFn || clearTimeout,
+  };
   let refreshInFlight = null;
+  const recovery = createMembershipRecoveryScheduler(normalized, (credentials) => refresh(credentials, 'recovery'));
 
   async function performRefresh(credentials, reason) {
     const previousTutorialUrl = getTutorialUrl(normalized.licenseCache);
     const response = await validateMembership(normalized, credentials);
     const state = resolveMembershipState(credentials, response);
+    if (state.transientFailure) recovery.schedule(credentials);
+    else recovery.clear();
     persistMembership(normalized, credentials, state);
     const nextTutorialUrl = getTutorialUrl(normalized.licenseCache);
     if (state.verified && nextTutorialUrl && nextTutorialUrl !== previousTutorialUrl) {
@@ -138,7 +188,9 @@ function createMembershipService(deps = {}) {
       },
     });
     const state = await refresh(credentials, 'startup');
-    normalized.logger.log?.('[账号] 已恢复账号登录状态:', credentials.username, state.verified ? '(会员已在线验证)' : '(会员安全降级)');
+    const restoreLabel = state.verified ? '(会员已在线验证)'
+      : (state.transientFailure ? '(网络异常，已保留最近会员状态)' : '(会员状态已失效)');
+    normalized.logger.log?.('[账号] 已恢复账号登录状态:', credentials.username, restoreLabel);
     return { restored: true, state, timer: scheduleRefresh() };
   }
 
@@ -146,6 +198,7 @@ function createMembershipService(deps = {}) {
 }
 
 module.exports = {
+  MEMBERSHIP_RECOVERY_RETRY_MS,
   createMembershipService,
   notifyMembershipResult,
   persistMembership,
