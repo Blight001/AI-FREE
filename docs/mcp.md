@@ -2,7 +2,7 @@
 
 更新时间：2026-08-10
 
-本文档记录当前软件实际向 AI 提供的 MCP 工具。常规浏览器对话提供 9 个工具；只有最近用户消息明确涉及环境、指纹、代理、时区等配置时，才额外注入体积较大的 `browser_environment` schema，避免每轮重复传输。
+本文档记录当前软件实际向 AI 提供的 MCP 工具。常规浏览器对话提供 19 个工具（含 10 个 OpenCut 剪辑工具）；只有最近用户消息明确涉及环境、指纹、代理、时区等配置时，才额外注入体积较大的 `browser_environment` schema，避免每轮重复传输。
 
 ## 总览
 
@@ -11,6 +11,7 @@
 | 外部软件栏目 | 1 | 软件运行期间始终可用 | [`ai-browser-window-tools.js`](../src/app/main/services/ai-browser-window-tools.js) |
 | 浏览器高级环境 | 1 | 用户消息命中环境/指纹/代理等配置意图 | [`ai-browser-window-tools.js`](../src/app/main/services/ai-browser-window-tools.js) |
 | AI 工作区命令 | 1 | 软件运行期间始终可用 | [`ai-sandbox-file-tools.js`](../src/app/main/services/ai-sandbox-file-tools.js) |
+| OpenCut 剪辑 | 10 | 软件启动后始终可用；界面默认 `http://127.0.0.1:5173` | [`opencut-tools.js`](../src/app/main/features/opencut/opencut-tools.js) |
 | 浏览器自动化 | 7 | 至少有一个已完成 Runtime Bridge 握手的内置 Chromium | [`native-browser-tool-definitions.js`](../src/app/main/services/native-browser-tool-definitions.js) |
 
 AI-FREE 本地 AI 对话使用下表中的“内部名称”。连接 HeySure 后，设备向服务器注册时会统一添加 `aifree.` 前缀。
@@ -20,6 +21,16 @@ AI-FREE 本地 AI 对话使用下表中的“内部名称”。连接 HeySure �
 | `windows_tab` | `aifree.windows+tab` | 查询、显示、新建、编辑和关闭外部软件栏目 |
 | `browser_environment` | `aifree.browser+environment` | 按需读取或增量修改栏目的浏览器环境与指纹 |
 | `run_command` | `aifree.run+command` | 在 AI-Workspace 工作目录中执行有界命令行 |
+| `opencut.status` | `aifree.opencut+status` | 查看 OpenCut 端口、ffmpeg 和当前工程 |
+| `opencut.project.list` | `aifree.opencut+project+list` | 列出本机 OpenCut 工程 |
+| `opencut.project.create` | `aifree.opencut+project+create` | 新建并打开工程 |
+| `opencut.project.open` | `aifree.opencut+project+open` | 打开已有工程 |
+| `opencut.media.import` | `aifree.opencut+media+import` | 导入本机或 AI-Workspace 素材 |
+| `opencut.timeline.get` | `aifree.opencut+timeline+get` | 读取轨道和片段 |
+| `opencut.timeline.edit` | `aifree.opencut+timeline+edit` | add / trim / move / split / delete |
+| `opencut.preview` | `aifree.opencut+preview` | 抽取时间线预览帧（需 ffmpeg） |
+| `opencut.export` | `aifree.opencut+export` | 导出第一条视频轨道为 MP4（需 ffmpeg） |
+| `opencut.app.control` | `aifree.opencut+app+control` | 启动/停止/查看本地 OpenCut Web |
 | `manage_card` | `aifree.manage+card` | 管理和运行浏览器自动化卡片 |
 | `browser_file` | `aifree.browser+file` | 下载文件、上传本地文件，或保存当前页面 Cookie/Storage |
 | `browser_tab` | `aifree.browser+tab` | 查询、切换、导航、刷新标签页和聚焦浏览器 |
@@ -79,6 +90,25 @@ Cookie 属于登录会话数据，不属于 `browser_environment.settings` 的�
 - 限制：默认超时 30 秒，最长 120 秒；标准输出和错误输出各最多返回 64 KiB，超出部分标记为截断。
 - 隔离说明：进程使用精简环境变量，并把 HOME/USERPROFILE 指向 `AI-Workspace`；这是工作目录隔离，不是虚拟机或 Windows AppContainer 级系统隔离。
 
+## OpenCut 剪辑工具
+
+软件启动后会自动在 `127.0.0.1:5173` 拉起 OpenCut 本地界面。工程库在 `userData/opencut/projects`，与本机面板、本地 AI 和 HeySure 共用。官方 OpenCut 编辑器仍在重写，打包的是可离线服务的本地宿主，不依赖用户安装 Python / bun。
+
+| 工具 | 作用 | 危险 |
+| --- | --- | --- |
+| `opencut.status` | 连接、ffmpeg、当前工程、OpenCut 界面 | 只读 |
+| `opencut.project.list` | 列出本机工程 | 只读 |
+| `opencut.project.create` | 新建并打开工程 | 写 |
+| `opencut.project.open` | 打开已有工程 | 只读 |
+| `opencut.media.import` | 把本机或 AI-Workspace 素材复制进工程 | 写 |
+| `opencut.timeline.get` | 读轨道和片段 | 只读 |
+| `opencut.timeline.edit` | add / trim / move / split / delete | 写 |
+| `opencut.preview` | 抽一帧预览（需 ffmpeg） | 只读 |
+| `opencut.export` | 把第一条视频轨道导出为 MP4（需 ffmpeg） | 写 |
+| `opencut.app.control` | 启动/停止官方 OpenCut Web 端口 | 写 |
+
+`opencut.media.import` 的 `path` 可以是本机绝对路径，也可以是 `AI-Workspace` 相对路径。HeySure 远程调用还可传成员工作区 `file_ref`。同一轨道上的片段不能重叠。导出默认写到 `AI-Workspace`，经 HeySure 调用时会回传 `file_ref`；长导出请传 `timeout_seconds`（上限 300）。
+
 ## 浏览器自动化工具
 
 以下 7 个工具由受认证的 Chromium Runtime Bridge 提供。没有浏览器 MCP 连接时，它们不会出现在 AI 或 HeySure 的可用工具目录中。
@@ -102,7 +132,9 @@ Cookie 属于登录会话数据，不属于 `browser_environment.settings` 的�
 - 作用：`download` 下载 HTTP/HTTPS 文件；`upload` 把 AI 工作区中的本地文件上传到当前页面；`save_session` 保存当前标签页 Cookie、`localStorage` 和 `sessionStorage`；`info` 返回 AI 工作区路径。
 - 默认目录：`download` 写入安装目录下的 `AI-Workspace` 根目录；`save_session` 默认写入 `AI-Workspace/sessions`。
 - 子目录：`directory` 只接受 AI 工作区内相对路径，例如 `downloads/models`；拒绝绝对路径、`..` 逃逸和指向工作区外的链接目录。
-- 下载参数：`url`、`filename`、`media_type`、`transport`、`use_cookies`、`overwrite`、`timeout_ms`、`max_bytes`、`tab_id`。媒体下载应将 `browser_observe` 返回的 `category` 传给 `media_type`；`transport` 可取 `auto`、`browser`、`software`。
+- 下载参数：`url`、`filename`、`media_type`、`transport`、`use_cookies`、`overwrite`、`timeout_ms`、`max_bytes`、`tab_id`、`ref`/`element`、`x`/`y`。媒体下载应将 `browser_observe` 返回的 `category` 传给 `media_type`；`transport` 可取 `auto`、`browser`、`software`。
+- 元素下载：`action=download_element` 接受最近一次 `browser_observe` 的 `ref`（也接受 `element` 别名）或视口 `x`/`y`。旧 Chromium 若未实现 `download-element`，会回退为对 `mediaUrl`/`downloadUrl` 的软件下载。
+- 软件下载网络：`action=download` 使用当前 Chromium 的 Cookie、页面 Referer，以及该 Profile 的代理（Clash/网络魔法）。不要绕过代理直连 `assets.grok.com` 等外网 CDN。没有 `url` 但带了 `ref` 或坐标时，按 `download_element` 处理。
 - 上传参数：本机调用使用 `path` 或 `paths` 指定 AI 工作区文件；HeySure 远程调用还可使用当前数字成员服务器工作区的 `file_ref` 或 `file_refs`。AI-FREE 会通过 HeySure 创建默认 5 分钟临时链接，下载并校验后物化到本机 `AI-Workspace/Incoming/<task_id>/`。两类参数不能混用。使用 `selector` 或 `ref` 定位页面文件输入控件；多文件可设置 `mode=open-multiple`。
 - 上传目标：`action=upload` 把工作区文件放入当前网页文件控件；`action=upload_to_server` 直接把 `path` 指定的 AI 工作区文件上传到 HeySure 成员工作区并返回 `file_ref`，不经过网页。兼容旧调用：`action=download`、`url=file:///...` 且 `save_to_server=true` 时按 `upload_to_server` 处理。
 - 会话参数：`filename`、`directory`、`overwrite`、`tab_id`。保存结果只返回路径和 Cookie 数量，不把 Cookie 原文放入聊天结果。
@@ -188,10 +220,10 @@ AI 对话和 HeySure 设备端都会发现当前所有已连接浏览器的工�
 ## HeySure 注册与可用性
 
 - HeySure 设备工具注册由 [`ai-server-device-service.js`](../src/app/main/features/ai-chat/ai-server-device-service.js) 负责，内部名称会转换为 `aifree.<工具名>`。
-- 注册同时上报 AI 用途说明“用于连接 AI-FREE，调用其中已启用的软件窗口、浏览器与自动化 MCP 工具”和 `catalogProtocolVersion=2`，让 HeySure AI 能把该设备与普通浏览器、桌面或 Android 执行器区分开；该说明仅是能力元数据，不是执行指令。
+- 注册同时上报 AI 用途说明“用于连接 AI-FREE，调用其中已启用的软件窗口、浏览器、OpenCut 剪辑与自动化 MCP 工具”和 `catalogProtocolVersion=2`，让 HeySure AI 能把该设备与普通浏览器、桌面或 Android 执行器区分开；该说明仅是能力元数据，不是执行指令。
 - 外部调用目录由 [`browser-automation-external-gateway.js`](../src/app/main/services/browser-automation-external-gateway.js) 汇总，并执行会员权限、浏览器路由和敏感参数限制。
 - 只有服务器实时校验为有效会员时，软件才会向 HeySure 注册为在线设备并接受调用。
-- 浏览器连接建立或断开后，设备会自动刷新工具目录。因此 HeySure 端可见工具数量可能在 2 个和 9 个之间变化。
+- 浏览器连接建立或断开后，设备会自动刷新工具目录。因此 HeySure 端可见工具数量可能在 12 个和 19 个之间变化（始终包含 OpenCut）。
 - 本地 AI、Codex Bridge 和 HeySure adapter 共用
   [`automation-tool-contract.js`](../src/app/main/services/automation-tool-contract.js)
   中的 Schema、浏览器路由、超时、路由参数清理和错误规范化规则；三端仅保留各自的传输与鉴权适配。

@@ -212,3 +212,27 @@ test('browser element download atomically commits Chromium bytes inside AI-Works
   assert.equal(fs.existsSync(nativeTarget), false);
   assert.equal(result.sha256.length, 64);
 });
+
+test('browser download forwards proxyUrl to the network fetch', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-proxy-download-'));
+  const requests = [];
+  const service = createBrowserDownloadService({
+    sandboxDir: root,
+    resolveHost: async () => [{ address: '93.184.216.34', family: 4 }],
+    fetchImpl: async (url, options) => {
+      requests.push({ url: url.href, proxyUrl: options.proxyUrl });
+      return new Response('proxied', { status: 200, headers: { 'content-type': 'image/jpeg' } });
+    },
+  });
+  try {
+    await service.execute({
+      action: 'download', url: 'https://assets.grok.com/generated/image.jpg',
+      proxy_url: 'http://127.0.0.1:7890', filename: 'image.jpg',
+    });
+    assert.deepEqual(requests, [{
+      url: 'https://assets.grok.com/generated/image.jpg', proxyUrl: 'http://127.0.0.1:7890',
+    }]);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

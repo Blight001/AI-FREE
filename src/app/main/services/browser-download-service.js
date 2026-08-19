@@ -109,8 +109,10 @@ async function fetchWithRedirects(fetchImpl, sourceUrl, input, signal, resolveHo
     if (fetchImpl) await resolvePublicDownloadHost(current, resolveHost, trustedPageUrl);
     const headers = downloadRequestHeaders(input, current);
     const response = fetchImpl
-      ? await fetchImpl(current, { headers, redirect: 'manual', signal })
-      : await secureDownloadFetch(current, { headers, signal, trustedPageUrl }, resolveHost);
+      ? await fetchImpl(current, { headers, redirect: 'manual', signal, proxyUrl: input.proxy_url })
+      : await secureDownloadFetch(current, {
+        headers, signal, trustedPageUrl, proxyUrl: input.proxy_url,
+      }, resolveHost);
     if (response.status < 300 || response.status >= 400) return { response, finalUrl: current };
     const location = response.headers.get('location');
     if (!location || redirects === MAX_REDIRECTS) throw new Error('下载重定向次数过多或缺少目标地址');

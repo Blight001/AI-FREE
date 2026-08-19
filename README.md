@@ -191,7 +191,8 @@ app2.1/
 │  └─ chromium-fork/             # Chromium version lock, patches, and build scripts
 ├─ resources/
 │  ├─ chromium/                  # Staged AI-FREE Chromium runtime
-│  └─ clash-mini/core/           # Mihomo core and local Geo/rule assets
+│  ├─ clash-mini/core/           # Mihomo core and local Geo/rule assets
+│  └─ opencut/web/               # OpenCut local UI started automatically on launch
 ├─ scripts/                      # Launch, build, smoke-test, and acceptance helpers
 ├─ src/
 │  ├─ app/

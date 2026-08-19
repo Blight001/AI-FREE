@@ -234,6 +234,14 @@ function verifyPackagedRuntime(options = {}) {
     throw new Error(`不是有效的 ICO 文件: ${logoPath}`);
   }
 
+  for (const relativePath of [
+    'web/index.html',
+    'web/app.js',
+    'web/styles.css',
+  ]) {
+    assertFile(path.join(resourcesDir, 'opencut', relativePath), 64);
+  }
+
   for (const relativePath of REQUIRED_CLASH_ASSETS) {
     const minimumSize = /^(?:geoip\.metadb|geosite\.dat)$/.test(relativePath)
       ? 1024 * 1024

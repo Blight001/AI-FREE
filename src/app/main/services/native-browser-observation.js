@@ -54,9 +54,13 @@ function observedTarget(item, observationId, context = {}) {
   if (!id) return null;
   const selector = text(item?.selector);
   const point = observedCenter(item);
-  if (!selector && !point) return null;
+  const mediaUrl = text(item?.mediaUrl || item?.downloadUrl);
+  if (!selector && !point && !mediaUrl) return null;
   return [id, {
     ...(selector ? { selector } : {}), ...(point || {}), observationId,
+    ...(mediaUrl ? {
+      mediaUrl, downloadUrl: text(item.downloadUrl || mediaUrl), mediaType: text(item.mediaType),
+    } : {}),
     ...observedMetadata(item, context),
   }];
 }

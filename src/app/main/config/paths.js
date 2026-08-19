@@ -60,10 +60,40 @@ function resolveLegacyAiSandboxDir(app, options = {}) {
   return path.join(resolveInstallDirectory(app, options), 'AI-Workspace');
 }
 
+function resolveOpenCutResourcesPath(app, options = {}) {
+  const fileSystem = options.fs || fs;
+  if (app?.isPackaged) return path.join(process.resourcesPath || '', 'opencut');
+  const workingDirectory = path.resolve(options.workingDirectory || process.cwd());
+  const moduleDirectory = path.resolve(options.moduleDirectory || __dirname);
+  const appPath = typeof app?.getAppPath === 'function' ? path.resolve(app.getAppPath()) : '';
+  const candidates = [...new Set([
+    path.join(workingDirectory, 'resources', 'opencut'),
+    appPath && path.join(appPath, 'resources', 'opencut'),
+    appPath && path.resolve(appPath, '..', '..', 'resources', 'opencut'),
+    path.resolve(moduleDirectory, '../../../..', 'resources', 'opencut'),
+  ].filter(Boolean))];
+  return candidates.find((candidate) => (
+    fileSystem.existsSync(path.join(candidate, 'web', 'index.html'))
+  )) || candidates[0];
+}
+
+function resolveOpenCutWebRoot(app, options = {}) {
+  return path.join(resolveOpenCutResourcesPath(app, options), 'web');
+}
+
+function resolveOpenCutDataDir(app, options = {}) {
+  const userData = typeof app?.getPath === 'function' ? app.getPath('userData') : '';
+  const root = String(options.userDataDir || userData || '').trim();
+  return path.join(root || resolveInstallDirectory(app, options), 'opencut', 'projects');
+}
+
 module.exports = {
   resolveAiSandboxDir,
   resolveLegacyAiSandboxDir,
   resolveAutomationCardCacheDir,
   resolveChromiumResourcesPath,
   resolveInstallDirectory,
+  resolveOpenCutDataDir,
+  resolveOpenCutResourcesPath,
+  resolveOpenCutWebRoot,
 };

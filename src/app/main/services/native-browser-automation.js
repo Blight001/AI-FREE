@@ -1,14 +1,13 @@
 'use strict';
 
-const path = require('path');
 const { randomUUID } = require('crypto');
-const { fileURLToPath } = require('url');
 const { createBrowserOverview } = require('./browser-overview-service');
 const { NATIVE_BROWSER_TOOL_DEFINITIONS } = require('./native-browser-tool-definitions');
 const {
   expiredObservedRefResult, mismatchedObservationResult, observedTarget, processObservationResult,
 } = require('./native-browser-observation');
 const { waitForBrowserCondition } = require('./native-browser-wait');
+const { browserFile, observedRef } = require('./native-browser-file');
 
 const CONNECTION_PREFIX = 'native:';
 const READY_STATUSES = new Set(['ready', 'hidden']);
@@ -136,21 +135,6 @@ function normalizeUrl(value) {
   const parsed = new URL(candidate);
   if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('浏览器导航只支持 HTTP/HTTPS 地址');
   return parsed.href;
-}
-
-function localServerUploadPath(args = {}) {
-  const direct = text(args.path);
-  if (direct) return direct;
-  const rawUrl = text(args.url);
-  if (!/^file:/i.test(rawUrl)) throw new Error('upload_to_server 缺少 AI 工作区文件 path');
-  try { return fileURLToPath(new URL(rawUrl)); } catch (_) {
-    throw new Error('本地文件 URL 无效');
-  }
-}
-
-function isDirectServerUpload(action, args = {}) {
-  if (action === 'upload_to_server') return true;
-  return action === 'download' && args.save_to_server === true && /^file:/i.test(text(args.url));
 }
 
 function tabItems(getTabs) {
@@ -316,36 +300,23 @@ class NativeBrowserAutomation {
     return null;
   }
 
-  async browserUpload(connection, args) {
-    const input = runtimeTarget(this.resolveObservedTarget(
-      connection, { ...args, action: 'upload_file' },
-    ));
-    if (!this.downloadService?.resolveUploadPaths) throw new Error('AI 工作区文件服务不可用');
-    const requested = Array.isArray(args.paths) ? args.paths : [args.path].filter(Boolean);
-    const paths = this.downloadService.resolveUploadPaths(requested);
-    const mode = text(args.mode) || (paths.length > 1 ? 'open-multiple' : 'open');
-    const session = text(args.page_url || args.pageUrl)
-      ? null
-      : await this.runtimeCommand(connection, 'get-session-data', {});
-    await this.runtime.selectFilesByProcessId(connection.browserProcessId, {
-      pageUrl: text(args.page_url || args.pageUrl || session?.url), paths, mode, ttlMs: 5000,
-    });
-    return this.runtimeCommand(connection, 'perform-action', input);
-  }
+  runtimeTarget(target) { return runtimeTarget(target); }
 
   resolveObservedTarget(connection, args) {
-    if (text(args.selector) || !text(args.ref)) return args;
-    const target = this.observeTargets.get(connection.id)?.get(text(args.ref));
-    const requestedObservationId = text(args.observation_id ?? args.observationId);
+    const ref = observedRef(args);
+    const normalized = ref && !text(args.ref) ? { ...args, ref } : args;
+    if (text(normalized.selector) || !text(normalized.ref)) return normalized;
+    const target = this.observeTargets.get(connection.id)?.get(text(normalized.ref));
+    const requestedObservationId = text(normalized.observation_id ?? normalized.observationId);
     if (target && (!requestedObservationId || requestedObservationId === target.observationId)) {
-      return this.mergeObservedTarget(target, args);
+      return this.mergeObservedTarget(target, normalized);
     }
     if (requestedObservationId) {
-      const historic = this.findHistoricTarget(connection.id, requestedObservationId, text(args.ref));
-      if (historic) return { ...args, observedRefRecoveryCandidate: historic };
-      return { ...args, observationMismatch: true };
+      const historic = this.findHistoricTarget(connection.id, requestedObservationId, text(normalized.ref));
+      if (historic) return { ...normalized, observedRefRecoveryCandidate: historic };
+      return { ...normalized, observationMismatch: true };
     }
-    return { ...args, observedRefExpired: true };
+    return { ...normalized, observedRefExpired: true };
   }
 
   mergeObservedTarget(target, args) {
@@ -451,43 +422,8 @@ class NativeBrowserAutomation {
     return { success: true, waitedMs, cardStep: { name: `等待 ${waitedMs}ms`, type: 'wait', timeout: waitedMs } };
   }
 
-  async browserDownloadElement(connection, args) {
-    if (!this.downloadService?.downloadElement) throw new Error('Chromium 元素下载服务不可用');
-    const target = runtimeTarget(this.resolveObservedTarget(connection, args));
-    return this.downloadService.downloadElement(args, (targetPath) => this.runtimeCommand(
-      connection, 'download-element', { ...target, target_path: targetPath },
-    ));
-  }
-
-  browserServerUpload(args) {
-    if (!this.downloadService?.resolveUploadPaths) throw new Error('AI 工作区文件服务不可用');
-    const [absolutePath] = this.downloadService.resolveUploadPaths([localServerUploadPath(args)]);
-    return {
-      success: true, action: 'upload_to_server', file_name: path.basename(absolutePath),
-      absolute_path: absolutePath, local_workspace_file: true,
-    };
-  }
-
-  async browserFile(connection, args) {
-    const action = text(args.action).toLowerCase();
-    if (isDirectServerUpload(action, args)) return this.browserServerUpload(args);
-    if (action === 'upload') {
-      const result = await this.browserUpload(connection, args);
-      return { ...result, action: 'upload' };
-    }
-    if (action === 'download_element') return this.browserDownloadElement(connection, args);
-    if (!this.downloadService?.execute) throw new Error('AI 工作区下载服务不可用');
-    if (action === 'download') {
-      const response = await this.runtimeCommand(connection, 'get-session-data', {});
-      const session = response?.result || response;
-      const pageUrl = text(session?.url);
-      return this.downloadService.execute({
-        ...args, page_url: pageUrl, referer: pageUrl, cookies: session?.cookies || [],
-      }, { pageUrl });
-    }
-    if (action !== 'save_session') return this.downloadService.execute(args);
-    const response = await this.runtimeCommand(connection, 'get-session-data', {});
-    return this.downloadService.execute({ ...args, session: response?.result || response });
+  browserFile(connection, args) {
+    return browserFile(this, connection, args);
   }
 
   async dispatch(connectionId, tool, args = {}, options = {}) {

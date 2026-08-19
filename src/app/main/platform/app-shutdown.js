@@ -51,11 +51,12 @@ function attemptSync(logger, failureLabel, action) {
 
 async function stopRuntimeProcesses(deps) {
   const {
-    logger, aiServerDeviceService, browserAutomationBridge,
+    logger, aiServerDeviceService, browserAutomationBridge, opencutService,
     browserRuntimeManager, stopClashMiniProcess, sendToSide,
   } = deps;
   await attemptAsync(logger, '断开 AI 服务器设备连接失败', () => aiServerDeviceService?.stop?.());
   await attemptAsync(logger, '关闭 Chromium 原生自动化网关失败', () => browserAutomationBridge?.stop?.());
+  await attemptAsync(logger, '关闭 OpenCut 失败', async () => opencutService?.stop?.());
   await attemptAsync(logger, 'Chromium Profile 关闭失败', async () => {
     if (typeof browserRuntimeManager?.stopAll === 'function') {
       logger.log?.('[退出] 正在后台并行关闭 Chromium Profile...');

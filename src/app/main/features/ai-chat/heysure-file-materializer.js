@@ -12,7 +12,22 @@ const MAX_FILE_BYTES = 250 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 10 * 60 * 1000;
 const INCOMING_TTL_MS = 24 * 60 * 60 * 1000;
 
+function fileRefProperty() {
+  return { type: 'string', pattern: '^file_[a-f0-9]{32}$', description: 'HeySure 当前成员工作区的单个文件引用' };
+}
+
 function augmentHeySureBrowserFileTool(sourceName, tool) {
+  if (sourceName === 'opencut.media.import') {
+    const schema = tool.input_schema || { type: 'object', properties: {} };
+    return {
+      ...tool,
+      description: `${tool.description} HeySure 远程调用也可传服务器工作区 file_ref，不要与 path 混用。`,
+      input_schema: {
+        ...schema,
+        properties: { ...(schema.properties || {}), file_ref: fileRefProperty() },
+      },
+    };
+  }
   if (sourceName !== 'browser_file') return tool;
   const schema = tool.input_schema || { type: 'object', properties: {} };
   return {
@@ -22,7 +37,7 @@ function augmentHeySureBrowserFileTool(sourceName, tool) {
       ...schema,
       properties: {
         ...(schema.properties || {}),
-        file_ref: { type: 'string', pattern: '^file_[a-f0-9]{32}$', description: 'HeySure 当前成员工作区的单个文件引用' },
+        file_ref: fileRefProperty(),
         file_refs: {
           type: 'array', minItems: 1, maxItems: MAX_FILES, uniqueItems: true,
           items: { type: 'string', pattern: '^file_[a-f0-9]{32}$' },
@@ -181,16 +196,28 @@ function createHeySureFileMaterializer(options = {}) {
   };
 }
 
-async function prepareHeySureBrowserFileArgs(context) {
-  const args = context.args && typeof context.args === 'object' ? context.args : {};
-  const refs = context.sourceName === 'browser_file' ? normalizeFileRefs(args) : [];
-  if (!refs.length) return args;
-  if (String(args.action || '').toLowerCase() !== 'upload') throw new Error('file_ref/file_refs 仅支持 browser_file action=upload');
+async function materializeRefs(context, refs) {
   if (typeof context.materialize !== 'function') throw new Error('HeySure 文件物化服务不可用');
-  const paths = await context.materialize({
+  return context.materialize({
     server: context.server, token: context.token, aiConfigId: Number(context.task.aiConfigId),
     taskId: context.task.taskId, refs,
   });
+}
+
+async function prepareHeySureBrowserFileArgs(context) {
+  const args = context.args && typeof context.args === 'object' ? context.args : {};
+  if (context.sourceName === 'opencut.media.import') {
+    const refs = normalizeFileRefs(args);
+    if (!refs.length) return args;
+    if (refs.length !== 1) throw new Error('opencut.media.import 只支持单个 file_ref');
+    const paths = await materializeRefs(context, refs);
+    const { file_ref: _single, file_refs: _multiple, ...localArgs } = args;
+    return { ...localArgs, path: paths[0] };
+  }
+  const refs = context.sourceName === 'browser_file' ? normalizeFileRefs(args) : [];
+  if (!refs.length) return args;
+  if (String(args.action || '').toLowerCase() !== 'upload') throw new Error('file_ref/file_refs 仅支持 browser_file action=upload');
+  const paths = await materializeRefs(context, refs);
   const { file_ref: _single, file_refs: _multiple, ...localArgs } = args;
   return args.file_ref ? { ...localArgs, path: paths[0] } : { ...localArgs, paths };
 }

@@ -71,16 +71,29 @@ test('AI MCP prompt 按可用工具注入准确的多浏览器路由和页面操
   assert.match(prompt, /必须在下一次浏览器工具调用中传 change_browser/);
   assert.match(prompt, /页面明显变化后重新 observe/);
   assert.match(prompt, /先主动调用 browser_observe/);
-  assert.match(prompt, /downloadLinks\[\]\.url/);
+  assert.match(prompt, /mediaUrl\/downloadUrl/);
   assert.match(prompt, /browser_file action=download/);
   assert.match(prompt, /category 传给 media_type/);
-  assert.match(prompt, /当前 Chromium 登录态/);
+  assert.match(prompt, /经浏览器代理下载/);
   assert.match(prompt, /禁止跨浏览器或跨页面复用旧 ref/);
   assert.match(prompt, /history_id 和 tab_id 不能当作 change_browser/);
   assert.match(prompt, /要显示或聚焦已有栏目，调用 windows_tab 的 open/);
   assert.match(prompt, /窗口已打开不等于其 MCP 已连接/);
   assert.match(prompt, /未收到成功结果前不得声称操作完成/);
   assert.equal(context.tools.find((tool) => tool.name === 'browser_tab').input_schema.properties.change_browser.type, 'string');
+});
+
+test('OpenCut tools add a video editing workflow hint', () => {
+  const context = buildChatToolContext({
+    connections: [],
+    initialMessages: [{ role: 'user', content: '剪一个视频' }],
+    windowTools: {
+      has: (name) => name === 'opencut.status',
+      tools: [{ name: 'opencut.status', input_schema: { type: 'object' } }],
+    },
+  });
+  assert.match(context.modelMessages[0].content, /opencut\.\*/);
+  assert.match(context.modelMessages[0].content, /127\.0\.0\.1:5173/);
 });
 
 test('自动化卡片目录注入全部卡片并要求 AI 自行筛选', () => {

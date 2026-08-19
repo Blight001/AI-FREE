@@ -133,6 +133,87 @@ test('browser_file download_element resolves an observed image and uses the Chro
   }]);
 });
 
+test('browser_file download_element accepts element alias and recovers missing native command', async () => {
+  const { downloads, service, setAutomationHandler } = fixture();
+  setAutomationHandler(async (_pid, command) => {
+    if (command === 'observe-page') {
+      return { result: { success: true, items: [{
+        id: 'e9', kind: 'media', tag: 'img', selector: 'img.generated',
+        mediaUrl: 'https://assets.grok.com/generated/image.jpg', mediaType: 'image',
+        x: 10, y: 10, width: 100, height: 80,
+      }] } };
+    }
+    if (command === 'download-element') {
+      const error = new Error('Runtime Bridge 命令不在白名单');
+      error.code = 'COMMAND_NOT_ALLOWED';
+      throw error;
+    }
+    return { result: { success: true, url: 'https://grok.com/imagine', cookies: [] } };
+  });
+  await service.dispatch('native:profile-a', 'browser_observe', { filter: 'media' });
+  const result = await service.dispatch('native:profile-a', 'browser_file', {
+    action: 'download_element', element: 'e9', filename: 'image.jpg',
+  });
+  assert.equal(result.action, 'download');
+  assert.equal(downloads[0].args.url, 'https://assets.grok.com/generated/image.jpg');
+  assert.equal(downloads[0].args.media_type, 'image');
+  assert.equal(downloads[0].args.referer, 'https://grok.com/imagine');
+});
+
+test('browser_file download without url treats ref as download_element', async () => {
+  const { calls, service, setAutomationHandler } = fixture();
+  setAutomationHandler(async (_pid, command) => ({ result: command === 'observe-page' ? {
+    success: true,
+    items: [{ id: 'e2', kind: 'media', tag: 'img', selector: 'img', x: 20, y: 30, width: 400, height: 300 }],
+  } : { success: true, command } }));
+  await service.dispatch('native:profile-a', 'browser_observe', { filter: 'media' });
+  await service.dispatch('native:profile-a', 'browser_file', { action: 'download', ref: 'e2' });
+  assert.equal(calls[1][2], 'download-element');
+});
+
+test('browser_file download_element rejects an expired element ref instead of dropping it', async () => {
+  const { service } = fixture();
+  const result = await service.dispatch('native:profile-a', 'browser_file', {
+    action: 'download_element', ref: 'stale-ref',
+  });
+  assert.equal(result.success, false);
+  assert.equal(result.errorCode, 'OBSERVED_REF_EXPIRED');
+});
+
+test('browser_file download_element falls back from coordinates when native command is missing', async () => {
+  const { downloads, service, setAutomationHandler } = fixture();
+  setAutomationHandler(async (_pid, command) => {
+    if (command === 'observe-page') {
+      return { result: { success: true, items: [{
+        id: 'e3', kind: 'media', mediaUrl: 'https://assets.grok.com/generated/image.jpg',
+        mediaType: 'image', x: 100, y: 80, width: 200, height: 120,
+      }] } };
+    }
+    if (command === 'download-element') {
+      const error = new Error('Runtime Bridge 命令不在白名单');
+      error.code = 'COMMAND_NOT_ALLOWED';
+      throw error;
+    }
+    return { result: { success: true, url: 'https://grok.com/imagine', cookies: [] } };
+  });
+  const result = await service.dispatch('native:profile-a', 'browser_file', {
+    action: 'download_element', x: 160, y: 110, filename: 'image.jpg',
+  });
+  assert.equal(result.action, 'download');
+  assert.equal(downloads[0].args.url, 'https://assets.grok.com/generated/image.jpg');
+});
+
+test('browser_file software download uses the Chromium profile proxy', async () => {
+  const { downloads, service } = fixture();
+  service.runtime.chromium = {
+    instances: new Map([['profile-a', { profile: { proxyServer: 'http://127.0.0.1:7890' } }]]),
+  };
+  await service.dispatch('native:profile-a', 'browser_file', {
+    action: 'download', url: 'https://assets.grok.com/generated/image.jpg',
+  });
+  assert.equal(downloads[0].args.proxy_url, 'http://127.0.0.1:7890');
+});
+
 test('observe and action dispatch directly to the Chromium runtime bridge', async () => {
   const { calls, service } = fixture();
   const observed = await service.dispatch('native:profile-a', 'browser_observe', { limit: 5 });

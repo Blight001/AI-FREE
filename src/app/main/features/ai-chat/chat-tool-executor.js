@@ -142,21 +142,33 @@ function syncWindowToolControl(context, toolName, args, toolResult) {
   context.emit?.({ type: 'browser_control_changed', connectionId: next.id, name: next.name || '' });
 }
 
+function isPreviewImageResult(toolName, result) {
+  if (!result || result.success === false) return false;
+  if (!/^data:image\/[a-z0-9.+-]+;base64,/i.test(String(result.dataUrl || ''))) return false;
+  return toolName === 'browser_screenshot' || result.send_to_user === true;
+}
+
+function buildToolImageMessage(toolName, dataUrl) {
+  const label = toolName === 'opencut.preview'
+    ? '以下图片是 opencut.preview 刚刚抽取的时间线预览帧，请直接分析图片内容。'
+    : '以下图片是 browser_screenshot 刚刚截取的页面，请直接分析图片内容。';
+  return {
+    role: 'user',
+    content: [
+      { type: 'text', text: label },
+      { type: 'image_url', image_url: { url: dataUrl } },
+    ],
+    ai_free_transient_image: true,
+  };
+}
+
 function serializeToolResult(result, toolName) {
   let serializedResult = result ?? null;
   let imageMessage = null;
-  if (toolName === 'browser_screenshot' && result?.success === true
-      && /^data:image\/[a-z0-9.+-]+;base64,/i.test(String(result.dataUrl || ''))) {
+  if (isPreviewImageResult(toolName, result)) {
     const { dataUrl, ...metadata } = result;
     serializedResult = { ...metadata, image_attached: true };
-    imageMessage = {
-      role: 'user',
-      content: [
-        { type: 'text', text: '以下图片是 browser_screenshot 刚刚截取的页面，请直接分析图片内容。' },
-        { type: 'image_url', image_url: { url: dataUrl } },
-      ],
-      ai_free_transient_image: true,
-    };
+    imageMessage = buildToolImageMessage(toolName, dataUrl);
   }
   try { return { content: JSON.stringify(serializedResult), failure: '', imageMessage }; } catch (_) {
     const failure = `${toolName} 返回了无法序列化的结果`;
@@ -169,7 +181,7 @@ function serializeToolResult(result, toolName) {
 }
 
 function compactToolActivityResult(context, result, toolName) {
-  if (toolName === 'browser_screenshot' && result?.dataUrl) {
+  if (isPreviewImageResult(toolName, result) || (toolName === 'browser_screenshot' && result?.dataUrl)) {
     const { dataUrl: _dataUrl, ...metadata } = result;
     return context.compactToolValue({ ...metadata, image_attached: true });
   }

@@ -62,6 +62,25 @@ test('AI 默认工具包含 AI-Workspace 命令执行入口', async (t) => {
   assert.match((await tools.execute('run_command', { command })).stdout, /ready/);
 });
 
+test('AI 默认工具包含 OpenCut 剪辑目录', async (t) => {
+  const sandboxDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-chat-opencut-'));
+  t.after(() => fs.rmSync(sandboxDir, { recursive: true, force: true }));
+  const opencutTools = {
+    tools: [{ name: 'opencut.status' }, { name: 'opencut.project.create' }],
+    has: (name) => String(name).startsWith('opencut.'),
+    execute: async () => ({ success: true, running: true }),
+  };
+  const service = createService({}, {
+    aiSandboxDir: sandboxDir,
+    browserWindowUi: { getTabs: () => new Map() },
+    opencutService: { createTools: () => opencutTools },
+  });
+  const tools = service.getWindowTools();
+  assert.equal(tools.has('opencut.status'), true);
+  assert.equal(tools.has('run_command'), true);
+  assert.deepEqual(await tools.execute('opencut.status', {}), { success: true, running: true });
+});
+
 test('内置模型正常返回完整消息链并发布流式完成事件', async () => {
   const client = {
     sendAIControlMessage: async () => ({ ok: true, quota: { remaining: 9 }, message: { role: 'assistant', content: '完成' } }),

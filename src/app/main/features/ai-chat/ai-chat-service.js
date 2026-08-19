@@ -2,6 +2,7 @@
 
 const { createAiBrowserWindowTools } = require('../../services/ai-browser-window-tools');
 const { createAiSandboxFileTools } = require('../../services/ai-sandbox-file-tools');
+const { combineToolSets } = require('../../services/combine-tool-sets');
 const { createChatRunRegistry } = require('./chat-run-registry');
 const { prepareChatRequest } = require('./chat-request-context');
 const { runChatConversation } = require('./chat-conversation-runner');
@@ -58,13 +59,8 @@ function createAiChatService(deps = {}) {
           waitForBrowserConnection: (target) => waitForBrowserConnection(deps, target),
         });
         const fileTools = createAiSandboxFileTools({ sandboxDir: deps.aiSandboxDir });
-        aiBrowserWindowTools = {
-          tools: [...windowTools.tools, ...fileTools.tools],
-          has: (name) => windowTools.has(name) || fileTools.has(name),
-          execute: (name, args) => (windowTools.has(name)
-            ? windowTools.execute(name, args)
-            : fileTools.execute(name, args)),
-        };
+        const opencutTools = deps.opencutService?.createTools?.() || null;
+        aiBrowserWindowTools = combineToolSets(windowTools, fileTools, opencutTools);
       } catch (error) {
         logger.warn?.('[AI窗口工具] 初始化失败:', error?.message || error);
       }

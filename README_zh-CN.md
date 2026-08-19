@@ -191,7 +191,8 @@ app2.1/
 │  └─ chromium-fork/             # Chromium 版本锁、补丁与构建脚本
 ├─ resources/
 │  ├─ chromium/                  # 已暂存的 AI-FREE Chromium 运行时
-│  └─ clash-mini/core/           # Mihomo 内核与本地 Geo/规则资源
+│  ├─ clash-mini/core/           # Mihomo 内核与本地 Geo/规则资源
+│  └─ opencut/web/               # 启动时自动拉起的 OpenCut 本地界面
 ├─ scripts/                      # 启动、构建、冒烟和验收脚本
 ├─ src/
 │  ├─ app/

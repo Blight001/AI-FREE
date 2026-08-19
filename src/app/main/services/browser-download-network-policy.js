@@ -4,6 +4,7 @@ const dns = require('dns');
 const http = require('http');
 const https = require('https');
 const net = require('net');
+const { HttpsProxyAgent } = require('https-proxy-agent');
 
 const blockedAddresses = new net.BlockList();
 /** @type {Array<[string, number]>} */
@@ -70,6 +71,59 @@ function pinnedLookup(records) {
   };
 }
 
+function parseProxyUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  try {
+    const parsed = new URL(raw.includes('://') ? raw : `http://${raw}`);
+    return ['http:', 'https:'].includes(parsed.protocol) ? parsed : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function asDownloadResponse(response) {
+  return {
+    status: Number(response.statusCode || 0),
+    ok: Number(response.statusCode || 0) >= 200 && Number(response.statusCode || 0) < 300,
+    headers: downloadResponseHeaders(response.headers),
+    body: response,
+  };
+}
+
+function fetchViaHttpProxy(url, options, proxyUrl) {
+  return new Promise((resolve, reject) => {
+    const request = http.request({
+      hostname: proxyUrl.hostname,
+      port: Number(proxyUrl.port) || 80,
+      path: url.href,
+      method: 'GET',
+      headers: { ...options.headers, Host: url.host },
+      signal: options.signal,
+    }, (response) => resolve(asDownloadResponse(response)));
+    request.once('error', reject);
+    request.end();
+  });
+}
+
+function fetchViaHttpsProxy(url, options, proxyUrl) {
+  const agent = new (/** @type {any} */ (HttpsProxyAgent))(proxyUrl, { rejectUnauthorized: false });
+  return new Promise((resolve, reject) => {
+    const request = https.request({
+      hostname: url.hostname,
+      port: url.port || 443,
+      path: `${url.pathname}${url.search || ''}`,
+      method: 'GET',
+      headers: options.headers,
+      signal: options.signal,
+      rejectUnauthorized: false,
+      agent,
+    }, (response) => resolve(asDownloadResponse(response)));
+    request.once('error', reject);
+    request.end();
+  });
+}
+
 function downloadResponseHeaders(source) {
   const headers = new Headers();
   for (const [name, value] of Object.entries(source)) {
@@ -81,17 +135,18 @@ function downloadResponseHeaders(source) {
 
 async function secureDownloadFetch(url, options = {}, resolveHost) {
   const records = await resolvePublicDownloadHost(url, resolveHost, options.trustedPageUrl);
+  const proxyUrl = parseProxyUrl(options.proxyUrl);
+  if (proxyUrl) {
+    return url.protocol === 'https:'
+      ? fetchViaHttpsProxy(url, options, proxyUrl)
+      : fetchViaHttpProxy(url, options, proxyUrl);
+  }
   const transport = url.protocol === 'https:' ? https : http;
   return new Promise((resolve, reject) => {
     const request = transport.request(url, {
       method: 'GET', headers: options.headers, signal: options.signal,
       lookup: pinnedLookup(records),
-    }, (response) => resolve({
-      status: Number(response.statusCode || 0),
-      ok: Number(response.statusCode || 0) >= 200 && Number(response.statusCode || 0) < 300,
-      headers: downloadResponseHeaders(response.headers),
-      body: response,
-    }));
+    }, (response) => resolve(asDownloadResponse(response)));
     request.once('error', reject);
     request.end();
   });
@@ -99,6 +154,7 @@ async function secureDownloadFetch(url, options = {}, resolveHost) {
 
 module.exports = {
   assertPublicAddress,
+  parseProxyUrl,
   resolvePublicDownloadHost,
   secureDownloadFetch,
 };
