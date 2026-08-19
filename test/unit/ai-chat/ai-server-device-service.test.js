@@ -112,24 +112,6 @@ test('HeySure 的 browser_file schema 额外暴露成员工作区 file_ref 输�
   assert.match(catalog.tools[0].description, /HeySure.*file_ref/);
 });
 
-test('HeySure 把 OpenCut 工具登记为 aifree.opencut+ 并暴露 file_ref', () => {
-  const catalog = normalizeToolCatalog({ tools: [{
-    name: 'opencut.media.import',
-    description: '导入素材',
-    input_schema: { type: 'object', properties: { path: { type: 'string' } } },
-    destructive: true,
-  }, {
-    name: 'opencut.export',
-    description: '导出成片',
-    input_schema: { type: 'object', properties: { output: { type: 'string' } } },
-    destructive: true,
-  }] });
-  assert.equal(catalog.tools[0].name, 'aifree.opencut+media+import');
-  assert.equal(catalog.routes.get('aifree.opencut+media+import'), 'opencut.media.import');
-  assert.equal(catalog.tools[0].input_schema.properties.file_ref.pattern, '^file_[a-f0-9]{32}$');
-  assert.equal(catalog.tools[1].name, 'aifree.opencut+export');
-});
-
 test('登录后注册 custom 设备并将派发任务恰好回一个终态', async () => {
   const socket = new FakeSocket();
   const calls = [];
@@ -159,7 +141,7 @@ test('登录后注册 custom 设备并将派发任务恰好回一个终态', asy
   assert.equal(registration.platform, 'ai-free-custom-service');
   assert.equal(
     registration.aiDescription,
-    '用于连接 AI-FREE，调用其中已启用的软件窗口、浏览器、OpenCut 剪辑与自动化 MCP 工具',
+    '用于连接 AI-FREE，调用其中已启用的软件窗口、浏览器与自动化 MCP 工具',
   );
   assert.equal(registration.catalogProtocolVersion, 2);
   assert.deepEqual(registration.capabilities, ['aifree.browser+action']);

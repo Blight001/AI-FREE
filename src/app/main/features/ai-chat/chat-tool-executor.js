@@ -149,9 +149,7 @@ function isPreviewImageResult(toolName, result) {
 }
 
 function buildToolImageMessage(toolName, dataUrl) {
-  const label = toolName === 'opencut.preview'
-    ? '以下图片是 opencut.preview 刚刚抽取的时间线预览帧，请直接分析图片内容。'
-    : '以下图片是 browser_screenshot 刚刚截取的页面，请直接分析图片内容。';
+  const label = '以下图片是刚刚截取的页面，请直接分析图片内容。';
   return {
     role: 'user',
     content: [

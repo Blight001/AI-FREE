@@ -43,7 +43,6 @@ const {
   resolveAutomationCardCacheDir,
   resolveChromiumResourcesPath,
 } = require('../config/paths');
-const { createOpenCutService } = require('../features/opencut/opencut-service');
 
 const APP_DISPLAY_NAME = 'AI-FREE';
 
@@ -185,20 +184,6 @@ function createCoreServices({ app, fs, path, BrowserWindow, powerSaveBlocker, sa
     console.error('[AutomationBridge] 启动失败:', error?.message || error);
   });
 
-  const opencutService = createOpenCutService({
-    app,
-    workspaceDir: aiSandboxDir,
-    logger: console,
-  });
-  app.whenReady().then(() => opencutService.start()).catch((error) => {
-    console.warn('[OpenCut] 启动失败:', error?.message || error);
-  });
-  app.once('will-quit', () => {
-    try { opencutService.stop(); } catch (error) {
-      console.warn('[OpenCut] 退出时关闭失败:', error?.message || error);
-    }
-  });
-
   const isDevMode = !!(
     (app && app.isPackaged === false)
     || (
@@ -328,7 +313,6 @@ function createCoreServices({ app, fs, path, BrowserWindow, powerSaveBlocker, sa
     applyPluginSettings,
     logger,
     browserAutomationBridge,
-    opencutService,
     aiServerDeviceService,
     isDevMode,
     sendToSide,

@@ -68,16 +68,7 @@ function createHeySureFileUploader(options = {}) {
   };
 }
 
-function isOpenCutExportResult(context) {
-  return context.sourceName === 'opencut.export'
-    && context.result
-    && typeof context.result === 'object'
-    && context.result.success !== false
-    && Boolean(context.result.path);
-}
-
 function isDownloadResult(context) {
-  if (isOpenCutExportResult(context)) return true;
   const action = String(context.args?.action || '').trim().toLowerCase();
   return context.sourceName === 'browser_file'
     && (SERVER_UPLOAD_ACTIONS.has(action) || context.result?.action === 'upload_to_server')

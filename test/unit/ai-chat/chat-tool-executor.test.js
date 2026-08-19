@@ -83,19 +83,6 @@ test('AI MCP prompt 按可用工具注入准确的多浏览器路由和页面操
   assert.equal(context.tools.find((tool) => tool.name === 'browser_tab').input_schema.properties.change_browser.type, 'string');
 });
 
-test('OpenCut tools add a video editing workflow hint', () => {
-  const context = buildChatToolContext({
-    connections: [],
-    initialMessages: [{ role: 'user', content: '剪一个视频' }],
-    windowTools: {
-      has: (name) => name === 'opencut.status',
-      tools: [{ name: 'opencut.status', input_schema: { type: 'object' } }],
-    },
-  });
-  assert.match(context.modelMessages[0].content, /opencut\.\*/);
-  assert.match(context.modelMessages[0].content, /127\.0\.0\.1:5173/);
-});
-
 test('自动化卡片目录注入全部卡片并要求 AI 自行筛选', () => {
   const context = buildChatToolContext({
     connections: [{

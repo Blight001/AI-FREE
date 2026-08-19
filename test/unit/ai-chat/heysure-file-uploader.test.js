@@ -166,24 +166,3 @@ test('failed server upload preserves successful local download result', async ()
   assert.equal(result.uploaded_to_heysure, false);
   assert.match(result.server_upload_error, /network unavailable/);
 });
-
-test('OpenCut export result uploads the workspace file and returns file_ref', async () => {
-  const fileRef = `file_${'f'.repeat(32)}`;
-  const uploads = [];
-  const result = await attachHeySureDownloadedFile({
-    sourceName: 'opencut.export',
-    args: { output: 'demo.mp4' },
-    result: { success: true, path: 'C:/AI-Workspace/demo.mp4', bytes: 12 },
-    server: 'https://heysure.example', token: 'secret', aiConfigId: 3, sessionId: 'cut-1',
-    upload: async (input) => {
-      uploads.push(input);
-      return {
-        file_ref: fileRef, workspace_path: 'Uploads/demo.mp4',
-        mime_type: 'video/mp4', can_send_to_user: true,
-      };
-    },
-  });
-  assert.equal(uploads[0].localPath, 'C:/AI-Workspace/demo.mp4');
-  assert.equal(result.uploaded_to_heysure, true);
-  assert.equal(result.file_ref, fileRef);
-});

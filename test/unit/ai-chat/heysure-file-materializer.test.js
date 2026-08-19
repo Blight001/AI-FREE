@@ -110,20 +110,3 @@ test('file_ref 与本地路径混用或引用重复时在下载前拒绝', () =>
   assert.throws(() => normalizeFileRefs({ file_ref: REF, path: 'local.txt' }), /不能.*混用/);
   assert.throws(() => normalizeFileRefs({ file_refs: [REF, REF] }), /重复/);
 });
-
-test('OpenCut 导入把 HeySure file_ref 物化成本机 path', async () => {
-  const prepared = await prepareHeySureBrowserFileArgs({
-    sourceName: 'opencut.media.import',
-    args: { file_ref: REF, project_id: 'proj_1' },
-    server: 'https://heysure.example',
-    token: 'token',
-    task: { aiConfigId: 3, taskId: 'cut-1' },
-    materialize: async (input) => {
-      assert.deepEqual(input.refs, [REF]);
-      return ['C:/AI-Workspace/Incoming/cut-1/clip.mp4'];
-    },
-  });
-  assert.equal(prepared.path, 'C:/AI-Workspace/Incoming/cut-1/clip.mp4');
-  assert.equal(prepared.project_id, 'proj_1');
-  assert.equal(prepared.file_ref, undefined);
-});

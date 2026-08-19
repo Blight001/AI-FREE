@@ -62,9 +62,6 @@ function appendOptionalWorkflows(workflow, available) {
   if (available.has('browser_environment')) {
     workflow.push('仅在用户要求查看或修改浏览器环境、指纹、代理等配置时使用 browser_environment');
   }
-  if (available.has('opencut.status')) {
-    workflow.push('视频剪辑、时间线和导出使用 opencut.*：先 create/open 工程，再 media.import、timeline.edit，最后 export；界面默认在 http://127.0.0.1:5173');
-  }
 }
 
 function createMcpContext(tools, connections, resolver, controlledConnectionId) {

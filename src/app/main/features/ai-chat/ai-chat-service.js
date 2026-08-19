@@ -59,8 +59,7 @@ function createAiChatService(deps = {}) {
           waitForBrowserConnection: (target) => waitForBrowserConnection(deps, target),
         });
         const fileTools = createAiSandboxFileTools({ sandboxDir: deps.aiSandboxDir });
-        const opencutTools = deps.opencutService?.createTools?.() || null;
-        aiBrowserWindowTools = combineToolSets(windowTools, fileTools, opencutTools);
+        aiBrowserWindowTools = combineToolSets(windowTools, fileTools);
       } catch (error) {
         logger.warn?.('[AI窗口工具] 初始化失败:', error?.message || error);
       }

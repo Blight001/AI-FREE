@@ -123,10 +123,6 @@
         "to": "clash-mini/core"
       },
       {
-        "from": "resources/opencut",
-        "to": "opencut"
-      },
-      {
         "from": "src/assets/logo.ico",
         "to": "resource/logo.ico"
       }

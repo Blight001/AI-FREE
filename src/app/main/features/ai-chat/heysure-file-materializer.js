@@ -17,17 +17,6 @@ function fileRefProperty() {
 }
 
 function augmentHeySureBrowserFileTool(sourceName, tool) {
-  if (sourceName === 'opencut.media.import') {
-    const schema = tool.input_schema || { type: 'object', properties: {} };
-    return {
-      ...tool,
-      description: `${tool.description} HeySure 远程调用也可传服务器工作区 file_ref，不要与 path 混用。`,
-      input_schema: {
-        ...schema,
-        properties: { ...(schema.properties || {}), file_ref: fileRefProperty() },
-      },
-    };
-  }
   if (sourceName !== 'browser_file') return tool;
   const schema = tool.input_schema || { type: 'object', properties: {} };
   return {
@@ -206,14 +195,6 @@ async function materializeRefs(context, refs) {
 
 async function prepareHeySureBrowserFileArgs(context) {
   const args = context.args && typeof context.args === 'object' ? context.args : {};
-  if (context.sourceName === 'opencut.media.import') {
-    const refs = normalizeFileRefs(args);
-    if (!refs.length) return args;
-    if (refs.length !== 1) throw new Error('opencut.media.import 只支持单个 file_ref');
-    const paths = await materializeRefs(context, refs);
-    const { file_ref: _single, file_refs: _multiple, ...localArgs } = args;
-    return { ...localArgs, path: paths[0] };
-  }
   const refs = context.sourceName === 'browser_file' ? normalizeFileRefs(args) : [];
   if (!refs.length) return args;
   if (String(args.action || '').toLowerCase() !== 'upload') throw new Error('file_ref/file_refs 仅支持 browser_file action=upload');

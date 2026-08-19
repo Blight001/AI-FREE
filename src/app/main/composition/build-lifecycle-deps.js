@@ -20,7 +20,6 @@ function buildLifecycleDeps({
     browserRuntimeManager,
     aiSandboxDir,
     browserAutomationBridge,
-    opencutService,
     aiServerDeviceService,
     licenseCache,
     browserPartitionCleaner,
@@ -56,7 +55,6 @@ function buildLifecycleDeps({
     browserRuntimeManager,
     aiSandboxDir,
     browserAutomationBridge,
-    opencutService,
     aiServerDeviceService,
     getTabs: () => tabs,
     // AI 默认窗口工具需要的标签页/窗口操作桥。tabManager 的函数在 bootstrap

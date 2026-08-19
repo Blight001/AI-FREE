@@ -16,7 +16,7 @@ const LEGACY_DEFAULT_HEYSURE_SERVER = 'http://49.234.181.190:3000';
 const REGISTER_INTERVAL_MS = 3000;
 const LOGIN_TIMEOUT_MS = 10000;
 const MAX_COMPLETED_TASKS = 200;
-const HEYSURE_AI_DESCRIPTION = '用于连接 AI-FREE，调用其中已启用的软件窗口、浏览器、OpenCut 剪辑与自动化 MCP 工具';
+const HEYSURE_AI_DESCRIPTION = '用于连接 AI-FREE，调用其中已启用的软件窗口、浏览器与自动化 MCP 工具';
 
 function defaultSocketFactory(url, options) {
   return require('socket.io-client').io(url, options);
