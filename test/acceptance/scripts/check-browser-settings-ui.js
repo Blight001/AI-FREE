@@ -10,7 +10,6 @@ let independentBrowserCreateRequests = 0;
 let accountSessionRequests = 0;
 let accountCenterRequests = 0;
 let windowCloseBehavior = 'ask';
-const automationOperations = [];
 ipcMain.handle('open-browser-history', (_event, payload = {}) => {
   browserHistoryOpenRequests += 1;
   return { ok: true, historyId: payload.historyId, name: '平台 A' };
@@ -49,14 +48,9 @@ ipcMain.handle('set-ai-control-settings', (_event, payload = {}) => ({
   settings: { mcpCallLimit: Number(payload.mcpCallLimit) },
 }));
 ipcMain.handle('set-sidebar-width', () => ({ ok: true, width: 280 }));
-ipcMain.handle('ai-control-manage-automation-card', (_event, input = {}) => {
-  automationOperations.push(input);
-  if (input.action === 'write') {
-    const item = { id: input.id || 'acceptance-card', cardName: input.cardData?.name, cardData: input.cardData, updatedAt: Date.now() };
-    return { ok: true, data: { success: true, item, state: { selectedId: item.id, items: [item] } } };
-  }
-  return { ok: true, data: { success: true, selectedId: '', items: [] } };
-});
+ipcMain.handle('ai-control-manage-automation-card', () => ({
+  ok: true, data: { success: true, selectedId: '', items: [] },
+}));
 for (const [channel, response] of /** @type {Array<[string, any]>} */ ([
   ['get-extension-manager-state', { ok: true, extensions: [] }],
   ['get-clash-mini-status', { running: false }],
@@ -169,96 +163,11 @@ app.whenReady().then(async () => {
       && nodeToggle?.getAttribute('aria-expanded') === 'true';
     if (nodeToggle) nodeToggle.disabled = nodeToggleWasDisabled;
     await new Promise((resolve) => setTimeout(resolve, 20));
-    const automationDialog = document.getElementById('automation-workbench-dialog');
-    const automationInitiallyClosed = automationDialog?.open === false
-      && document.getElementById('automation-workbench')?.getBoundingClientRect().width === 0;
-    document.getElementById('automation-workbench-open')?.click();
-    await new Promise((resolve) => setTimeout(resolve, 120));
-    const flowCanvas = document.getElementById('automation-flow-canvas');
-    const expandedDialogBounds = automationDialog.getBoundingClientRect();
-    const mainContentCenter = (window.innerWidth - 280) / 2;
-    const expandedDialogCenter = expandedDialogBounds.left + expandedDialogBounds.width / 2;
-    document.documentElement.classList.add('sidebar-collapsed');
-    await window.AppShellAutomationWorkbench.syncDialogLayout();
-    const collapsedDialogBounds = automationDialog.getBoundingClientRect();
-    const collapsedDialogCenter = collapsedDialogBounds.left + collapsedDialogBounds.width / 2;
-    document.documentElement.classList.remove('sidebar-collapsed');
-    await window.AppShellAutomationWorkbench.syncDialogLayout();
-    const canvasShell = document.querySelector('.automation-canvas-shell');
-    const nodeInspector = document.getElementById('automation-node-inspector');
-    const inspectorHiddenWithoutSelection = nodeInspector?.hidden === true
-      && Math.abs(flowCanvas.getBoundingClientRect().right - canvasShell.getBoundingClientRect().right) <= 2;
-    const basicInfoDialog = document.getElementById('automation-basic-info-dialog');
-    const basicInfoInitiallyClosed = basicInfoDialog?.open === false;
-    const basicFieldsMovedToDialog = document.getElementById('automation-card-name')?.closest('dialog') === basicInfoDialog
-      && document.getElementById('automation-card-steps')?.closest('dialog') === basicInfoDialog
-      && document.getElementById('automation-run-inputs')?.closest('dialog') === basicInfoDialog;
-    document.getElementById('automation-basic-info-open')?.click();
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    const basicInfoDialogVisible = basicInfoDialog?.open === true
-      && basicInfoDialog.getBoundingClientRect().width > 0;
-    document.getElementById('automation-basic-info-done')?.click();
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    const canvasBounds = flowCanvas.getBoundingClientRect();
-    const panTarget = document.getElementById('automation-flow-nodes');
-    panTarget?.dispatchEvent(new PointerEvent('pointerdown', {
-      bubbles: true, button: 0, clientX: canvasBounds.left + 20, clientY: canvasBounds.top + 20,
-    }));
-    document.dispatchEvent(new PointerEvent('pointermove', {
-      bubbles: true, button: 0, clientX: canvasBounds.left + 70, clientY: canvasBounds.top + 55,
-    }));
-    document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0 }));
-    const canvasPansFromBlankArea = document.getElementById('automation-flow-viewport')
-      ?.style.transform.includes('translate(50px, 35px)') === true;
-    const wheelEvent = new WheelEvent('wheel', {
-      bubbles: true, cancelable: true, deltaY: -100,
-      clientX: canvasBounds.left + canvasBounds.width / 2,
-      clientY: canvasBounds.top + canvasBounds.height / 2,
-    });
-    const wheelDefaultPrevented = flowCanvas.dispatchEvent(wheelEvent) === false;
-    const canvasZoomsFromWheel = document.getElementById('automation-flow-viewport')
-      ?.style.transform.includes('scale(1.1)') === true
-      && document.getElementById('automation-canvas-zoom-reset')?.textContent === '110%'
-      && wheelDefaultPrevented;
-    document.getElementById('automation-canvas-zoom-reset')?.click();
-    const initialCanvasNodeCount = document.querySelectorAll('.automation-flow-node').length;
-    document.querySelector('[data-canvas-add="condition"]')?.click();
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    const conditionNode = Array.from(document.querySelectorAll('.automation-flow-node')).at(-1);
-    conditionNode?.click();
-    const inspectorVisibleForSelection = nodeInspector?.hidden === false
-      && nodeInspector.getBoundingClientRect().width > 0;
-    const nodeName = document.querySelector('[data-node-field="name"]');
-    nodeName.value = '验收判断节点';
-    nodeName.dispatchEvent(new Event('change', { bubbles: true }));
-    const falsePort = conditionNode?.querySelector('.automation-flow-port.is-false');
-    const firstInput = document.querySelector('.automation-flow-node .automation-flow-port.is-input');
-    const sourceBounds = falsePort?.getBoundingClientRect();
-    const targetBounds = firstInput?.getBoundingClientRect();
-    falsePort?.dispatchEvent(new PointerEvent('pointerdown', {
-      bubbles: true, button: 0, clientX: sourceBounds?.x || 0, clientY: sourceBounds?.y || 0,
-    }));
-    document.dispatchEvent(new PointerEvent('pointerup', {
-      bubbles: true, button: 0,
-      clientX: (targetBounds?.left || 0) + (targetBounds?.width || 0) / 2,
-      clientY: (targetBounds?.top || 0) + (targetBounds?.height || 0) / 2,
-    }));
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    document.querySelector('[data-canvas-add="mcp"]')?.click();
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    const mcpNode = Array.from(document.querySelectorAll('.automation-flow-node')).at(-1);
-    mcpNode?.click();
-    const mcpTool = document.querySelector('[data-node-field="tool"]');
-    const mcpArguments = document.querySelector('[data-node-field="arguments"]');
-    const mcpToolOptions = Array.from(mcpTool?.options || []).map((item) => item.value);
-    mcpTool.value = 'run_command';
-    mcpTool.dispatchEvent(new Event('change', { bubbles: true }));
-    mcpArguments.value = '{"command":"echo {message}"}';
-    mcpArguments.dispatchEvent(new Event('change', { bubbles: true }));
-    document.getElementById('automation-card-name').value = '画布验收卡片';
-    document.getElementById('automation-editor').requestSubmit();
-    await new Promise((resolve) => setTimeout(resolve, 30));
-    const canvasSteps = JSON.parse(document.getElementById('automation-card-steps').value || '[]');
+    const automationWorkbenchRemoved = !document.getElementById('automation-workbench-dialog')
+      && !document.getElementById('automation-workbench')
+      && !document.getElementById('automation-workbench-open')
+      && !document.querySelector('.automation-workbench-launcher')
+      && !document.getElementById('automation-flow-canvas');
     return {
       active: panel.classList.contains('active'),
       dedicatedSettingsPage: document.documentElement.classList.contains('browser-settings-page'),
@@ -303,39 +212,7 @@ app.whenReady().then(async () => {
         && !document.getElementById('import-extension-plugin'),
       woolResourceMovedOut: !document.getElementById('wool-platform-buttons')
         && !document.getElementById('wool-resource-title'),
-      automationLauncherVisible: document.getElementById('automation-workbench-open')
-        ?.getBoundingClientRect().width > 0,
-      automationInitiallyClosed,
-      automationDialogVisible: automationDialog?.open === true
-        && document.getElementById('automation-workbench')?.getBoundingClientRect().width > 0,
-      automationDialogCenteredInMainContent: Math.abs(expandedDialogCenter - mainContentCenter) <= 2
-        && expandedDialogBounds.right <= window.innerWidth - 279,
-      automationDialogCenteredAfterCollapse: Math.abs(collapsedDialogCenter - window.innerWidth / 2) <= 2,
-      automationWorkbenchBelowHome: document.querySelector('.automation-workbench-launcher')
-        ?.getBoundingClientRect().top > document.querySelector('.browser-settings-home')?.getBoundingClientRect().bottom,
-      automationLauncherBelowProxy: document.querySelector('.automation-workbench-launcher')?.parentElement
-          === document.querySelector('.settings-network-tools')
-        && document.querySelector('.automation-workbench-launcher')?.getBoundingClientRect().top
-          > document.querySelector('.vpn-node-selector-shell')?.getBoundingClientRect().bottom,
-      automationUsesNativeCopy: document.getElementById('automation-workbench')
-        ?.textContent.includes('原生 Chromium 控制') === true,
-      canvasVisible: flowCanvas?.getBoundingClientRect().height >= 550,
-      canvasPansFromBlankArea,
-      canvasZoomsFromWheel,
-      inspectorHiddenWithoutSelection,
-      inspectorVisibleForSelection,
-      basicInfoInitiallyClosed,
-      basicFieldsMovedToDialog,
-      basicInfoDialogVisible,
-      canvasAddedNode: initialCanvasNodeCount === 1 && document.querySelectorAll('.automation-flow-node').length === 3,
-      canvasConditionPorts: conditionNode?.querySelectorAll('.automation-flow-port.is-true, .automation-flow-port.is-false').length === 2,
-      canvasEdgeVisible: document.querySelectorAll('.automation-flow-edge').length >= 1,
-      canvasManualBranch: Array.from(document.querySelectorAll('.automation-flow-edge-label'))
-        .some((label) => label.textContent === 'false'),
-      canvasInspectorEdited: canvasSteps.some((step) => step.name === '验收判断节点' && step.type === 'condition'),
-      canvasMcpConfigured: mcpToolOptions.includes('run_command')
-        && canvasSteps.some((step) => step.type === 'mcp' && step.tool === 'run_command'
-          && step.arguments?.command === 'echo {message}'),
+      automationWorkbenchRemoved,
       removedNetworkHeading: !document.getElementById('network-tools-title') && !panel.querySelector('.settings-network-tools-hint'),
       overflowY: getComputedStyle(document.getElementById('browser-empty-state')).overflowY,
     };
@@ -354,29 +231,8 @@ app.whenReady().then(async () => {
     || !result.prominentStackedHome
     || !result.networkToolsUnboxed
     || !result.vpnAutoStartBusyAppearance
-    || !result.automationLauncherVisible
-    || !result.automationInitiallyClosed
-    || !result.automationDialogVisible
-    || !result.automationDialogCenteredInMainContent
-    || !result.automationDialogCenteredAfterCollapse
-    || !result.automationWorkbenchBelowHome
-    || !result.automationLauncherBelowProxy
-    || !result.automationUsesNativeCopy
+    || !result.automationWorkbenchRemoved
     || !result.woolResourceMovedOut
-    || !result.canvasVisible
-    || !result.canvasPansFromBlankArea
-    || !result.canvasZoomsFromWheel
-    || !result.inspectorHiddenWithoutSelection
-    || !result.inspectorVisibleForSelection
-    || !result.basicInfoInitiallyClosed
-    || !result.basicFieldsMovedToDialog
-    || !result.basicInfoDialogVisible
-    || !result.canvasAddedNode
-    || !result.canvasConditionPorts
-    || !result.canvasEdgeVisible
-    || !result.canvasManualBranch
-    || !result.canvasInspectorEdited
-    || !result.canvasMcpConfigured
     || !result.nodeToggleVisible
     || JSON.stringify(result.proxyModes) !== JSON.stringify([
       { value: 'port', checked: true },
@@ -417,13 +273,6 @@ app.whenReady().then(async () => {
   }
   if (accountCenterRequests !== 1) {
     throw new Error(`未登录操作应请求侧边栏个人中心，实际请求 ${accountCenterRequests} 次`);
-  }
-  const savedCanvas = automationOperations.find((input) => input.action === 'write')?.cardData;
-  if (!savedCanvas?.flow?.nodes?.length || !savedCanvas.flow.edges?.some((edge) => edge.label === 'false')) {
-    throw new Error('流程画布没有通过软件 IPC 保存 nodes/edges 数据');
-  }
-  if (!savedCanvas.steps?.some((step) => step.type === 'mcp' && step.tool === 'run_command')) {
-    throw new Error('流程画布没有保存已选 MCP 工具节点');
   }
   const browserHistoryInteractionResult = await win.webContents.executeJavaScript(`(async () => {
     const getMain = () => document.querySelector('[data-history-id="shared-browser"] .browser-history-main');
@@ -541,7 +390,9 @@ app.whenReady().then(async () => {
       const profileStyle = getComputedStyle(panel.querySelector('.account-profile-shell'));
       const profileBackgroundRemoved = profileStyle.backgroundColor === 'rgba(0, 0, 0, 0)'
         && profileStyle.boxShadow === 'none';
-      const accountContentScrolls = getComputedStyle(panel.querySelector(':scope > .container')).overflowY === 'auto';
+      const accountContainer = panel.querySelector(':scope > .container');
+      const accountContentScrolls = getComputedStyle(panel).overflowY === 'auto'
+        && getComputedStyle(accountContainer).overflowY === 'visible';
       const woolResource = panel.querySelector('.account-wool-resource');
       const woolResourceBelowRedeem = panel.querySelector('.sidebar-quota-redeem')?.nextElementSibling === woolResource
         && woolResource?.parentElement === accountCard
@@ -630,7 +481,7 @@ app.whenReady().then(async () => {
   homeSwitchRequests = 0;
   independentBrowserCreateRequests = 0;
   await win.loadFile(path.join(__dirname, '../../../src/app/views/app-shell.html'));
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await new Promise((resolve) => setTimeout(resolve, 120));
   const shellAccountResult = await win.webContents.executeJavaScript(`(async () => {
     const updateWidget = document.getElementById('update-widget');
     const theme = document.getElementById('theme-toggle-btn');
@@ -642,9 +493,10 @@ app.whenReady().then(async () => {
     const wasLight = document.documentElement.classList.contains('theme-light');
     theme?.click();
     createButton?.click();
+    await new Promise((resolve) => setTimeout(resolve, 30));
     homeButton?.click();
     homeCreateButton?.click();
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await new Promise((resolve) => setTimeout(resolve, 30));
     return {
       controlsOrdered: updateWidget?.nextElementSibling === version
         && version?.nextElementSibling === theme

@@ -9,9 +9,6 @@
   <link rel="stylesheet" href="../sidebar/client/app/side/styles/side.css" />
   <link rel="stylesheet" href="../renderer/styles/app-shell.css" />
   <link rel="stylesheet" href="../renderer/styles/app-shell-home.css" />
-  <link rel="stylesheet" href="../renderer/styles/app-shell-automation.css" />
-  <link rel="stylesheet" href="../renderer/styles/app-shell-automation-canvas.css" />
-  <link rel="stylesheet" href="../renderer/styles/app-shell-automation-workflow.css" />
 </head>
 <body>
   <div id="app-container">
@@ -110,17 +107,6 @@
               </div>
             </div>
 
-            <section class="automation-workbench-launcher" aria-label="原生 Chromium 控制">
-              <button id="automation-workbench-open" class="automation-workbench-open" type="button" aria-haspopup="dialog" aria-controls="automation-workbench-dialog" aria-expanded="false">
-                <span>
-                  <span class="automation-kicker">原生 Chromium 控制</span>
-                  <strong>AI 自动化工作台</strong>
-                  <small>管理并运行自动化卡片</small>
-                </span>
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"></path></svg>
-              </button>
-            </section>
-
             <button id="start-clash-mini-btn" class="main-button btn-large-teal" type="button" data-loading-text="启动中..." hidden>启动 Clash Mini</button>
 
           </section>
@@ -205,199 +191,6 @@
             </div>
           </section>
         </form>
-        <dialog id="automation-workbench-dialog" class="automation-workbench-dialog" aria-labelledby="automation-workbench-title">
-        <section id="automation-workbench" class="automation-workbench">
-          <button id="automation-workbench-close" class="automation-workbench-close" type="button" aria-label="关闭 AI 自动化工作台">×</button>
-          <header class="automation-workbench-header">
-            <div>
-              <p class="automation-kicker">原生 Chromium 控制</p>
-              <h2 id="automation-workbench-title">AI 自动化工作台</h2>
-              <p>卡片由软件保存和执行，不依赖浏览器插件或页面注入。</p>
-            </div>
-            <div class="automation-browser-picker">
-              <label for="automation-browser-select">运行浏览器</label>
-              <div>
-                <select id="automation-browser-select" aria-label="运行浏览器"></select>
-                <button id="automation-refresh" type="button">刷新</button>
-              </div>
-            </div>
-          </header>
-          <nav class="automation-workbench-tabs" aria-label="自动化工作台视图">
-            <button id="automation-tab-cards" type="button" aria-selected="true">卡片</button>
-            <button id="automation-tab-runs" type="button" aria-selected="false">运行历史</button>
-          </nav>
-          <div id="automation-cards-panel" class="automation-workbench-grid">
-            <aside class="automation-library" aria-label="自动化卡片库">
-              <div class="automation-section-heading">
-                <h3>自动化卡片</h3>
-                <span id="automation-card-count">0 / 0</span>
-              </div>
-              <div class="automation-workbench-toolbar">
-                <input id="automation-card-search" type="search" placeholder="搜索名称、说明或标签" aria-label="搜索自动化卡片">
-                <select id="automation-card-status-filter" aria-label="筛选卡片状态">
-                  <option value="">全部状态</option>
-                  <option value="active">可执行</option>
-                  <option value="draft">草稿</option>
-                  <option value="validated">已校验</option>
-                  <option value="deprecated">已停用</option>
-                </select>
-                <button id="automation-new" type="button">新建</button>
-              </div>
-              <div id="automation-card-list" class="automation-card-list"></div>
-              <div class="automation-library-actions">
-                <button id="automation-import" type="button">导入 JSON</button>
-                <button id="automation-export" type="button">导出</button>
-                <input id="automation-import-file" type="file" accept="application/json,.json" hidden>
-              </div>
-            </aside>
-            <form id="automation-editor" class="automation-editor" novalidate>
-              <section class="automation-canvas-section" aria-labelledby="automation-canvas-title">
-                <header class="automation-canvas-header">
-                  <div><strong id="automation-canvas-title">流程画布</strong><small>拖动节点与端点，组合原生步骤和已有 MCP</small></div>
-                  <div class="automation-canvas-controls">
-                    <button id="automation-canvas-layout" type="button">自动排版</button>
-                    <button id="automation-canvas-zoom-out" type="button" aria-label="缩小画布">−</button>
-                    <button id="automation-canvas-zoom-reset" type="button">100%</button>
-                    <button id="automation-canvas-zoom-in" type="button" aria-label="放大画布">＋</button>
-                  </div>
-                </header>
-                <div id="automation-canvas-palette" class="automation-canvas-palette" aria-label="步骤组件">
-                  <button type="button" data-canvas-add="navigate">访问网页</button>
-                  <button type="button" data-canvas-add="click">点击元素</button>
-                  <button type="button" data-canvas-add="type">输入内容</button>
-                  <button type="button" data-canvas-add="wait">等待条件</button>
-                  <button type="button" data-canvas-add="delay">延迟等待</button>
-                  <button type="button" data-canvas-add="condition">判断分支</button>
-                  <button type="button" data-canvas-add="get_credits">获取积分</button>
-                  <button type="button" data-canvas-add="save_cookies">保存会话</button>
-                  <button type="button" data-canvas-add="screenshot">截图</button>
-                  <button type="button" data-canvas-add="mcp">调用 MCP</button>
-                  <button type="button" data-canvas-add="end">结束流程</button>
-                </div>
-                <div class="automation-canvas-shell">
-                  <div id="automation-flow-canvas" class="automation-flow-canvas" tabindex="0" aria-label="自动化流程画布">
-                    <div id="automation-flow-viewport" class="automation-flow-viewport">
-                      <svg id="automation-flow-svg" class="automation-flow-svg" aria-hidden="true"></svg>
-                      <div id="automation-flow-nodes" class="automation-flow-nodes"></div>
-                    </div>
-                    <p id="automation-flow-empty" class="automation-flow-empty">暂无节点，请从上方添加步骤。</p>
-                  </div>
-                  <aside id="automation-node-inspector" class="automation-node-inspector" aria-label="节点设置">
-                    <div id="automation-node-fields" hidden>
-                      <div class="automation-node-heading">
-                        <strong id="automation-node-title">节点设置</strong>
-                        <div>
-                          <button type="button" data-node-command="start">设为入口</button>
-                          <button type="button" data-node-command="up">上移</button>
-                          <button type="button" data-node-command="down">下移</button>
-                          <button type="button" data-node-command="delete" class="automation-danger">删除</button>
-                        </div>
-                      </div>
-                      <label>名称<input data-node-field="name" type="text"></label>
-                      <label>类型<select data-node-field="type"></select></label>
-                      <label data-node-types="mcp">MCP 工具<select data-node-field="tool"></select></label>
-                      <label data-node-types="mcp">MCP 参数 JSON<textarea data-node-field="arguments" rows="6" spellcheck="false">{}</textarea></label>
-                      <label>选择器<input data-node-field="selector" type="text" placeholder="#submit / 文本"></label>
-                      <label>URL / 匹配文本<input data-node-field="url" type="text"></label>
-                      <label>输入文本<input data-node-field="text" type="text"></label>
-                      <label>变量名<input data-node-field="variable" type="text"></label>
-                      <label>判断方式<select data-node-field="condition_mode"></select></label>
-                      <label>超时（毫秒）<input data-node-field="timeout" type="number" min="0" step="100"></label>
-                      <label>节点 JSON<textarea data-node-field="raw" rows="6" spellcheck="false"></textarea></label>
-                    </div>
-                  </aside>
-                </div>
-                <p class="automation-canvas-hint">拖动节点调整位置；从右侧端点拖到目标节点左侧端点建立连线。判断节点提供 true / false 两个分支。点击连线后按 Delete 可移除。</p>
-              </section>
-              <details class="automation-version-panel">
-                <summary>版本历史与校验</summary>
-                <div id="automation-version-list" class="automation-version-list"></div>
-                <pre id="automation-version-preview">选择历史版本查看完整定义。</pre>
-              </details>
-              <dialog id="automation-basic-info-dialog" class="automation-basic-info-dialog" aria-labelledby="automation-basic-info-title">
-                <header class="automation-basic-info-header">
-                  <div>
-                    <h3 id="automation-basic-info-title">基础信息</h3>
-                    <p>编辑卡片资料、步骤源码与运行输入。</p>
-                  </div>
-                  <button id="automation-basic-info-close" type="button" aria-label="关闭基础信息">×</button>
-                </header>
-                <div class="automation-basic-info-body">
-                  <div class="automation-fields">
-                    <label>卡片名称<input id="automation-card-name" name="name" maxlength="160"></label>
-                    <label>目标网站<input id="automation-card-website" name="website" type="url" placeholder="https://example.com"></label>
-                  </div>
-                  <label>说明<textarea id="automation-card-description" name="description" rows="2"></textarea></label>
-                  <div class="automation-metadata-fields">
-                    <label>状态
-                      <select id="automation-card-status"><option value="active">可执行</option><option value="draft">草稿</option><option value="validated">已校验</option><option value="deprecated">已停用</option></select>
-                    </label>
-                    <label>风险等级
-                      <select id="automation-card-risk-level"><option value="read_only">只读</option><option value="normal_change">普通变更</option><option value="high_risk">高风险</option></select>
-                    </label>
-                    <label>访问范围
-                      <select id="automation-card-access-scope"><option value="all">所有成员</option><option value="owner">仅创建者</option><option value="selected">指定成员</option></select>
-                    </label>
-                    <label class="is-wide">标签（逗号分隔）<input id="automation-card-tags" type="text" placeholder="登录, 数据采集"></label>
-                    <label>总超时（秒）<input id="automation-card-timeout-seconds" type="number" min="1" max="86400" value="900"></label>
-                    <label>最大步骤推进<input id="automation-card-max-transitions" type="number" min="1" max="500" value="120"></label>
-                    <label class="is-wide">输入 JSON Schema<textarea id="automation-card-input-schema" rows="6" spellcheck="false">{"type":"object","properties":{}}</textarea></label>
-                  </div>
-                  <label class="automation-json-field">
-                    <span>步骤 JSON <small>保留 flow、变量和全部扩展字段</small></span>
-                    <textarea id="automation-card-steps" name="steps" rows="12" spellcheck="false"></textarea>
-                  </label>
-                  <label class="automation-json-field">
-                    <span>运行输入 JSON <small>替换步骤中的 {变量名}</small></span>
-                    <textarea id="automation-run-inputs" name="inputs" rows="5" spellcheck="false">{}</textarea>
-                  </label>
-                </div>
-                <footer class="automation-basic-info-actions">
-                  <button id="automation-basic-info-done" class="automation-primary" type="button">完成</button>
-                </footer>
-              </dialog>
-              <div class="automation-editor-actions">
-                <button id="automation-basic-info-open" type="button" aria-haspopup="dialog" aria-controls="automation-basic-info-dialog" aria-expanded="false">基础信息</button>
-                <button id="automation-save" type="submit">保存卡片</button>
-                <button id="automation-validate" type="button">校验</button>
-                <button id="automation-clone" type="button">复制</button>
-                <button id="automation-export-modern" type="button">导出定义</button>
-                <button id="automation-run" class="automation-primary" type="button">运行</button>
-                <button id="automation-save-session" type="button">保存当前会话</button>
-                <button id="automation-delete" class="automation-danger" type="button">删除</button>
-              </div>
-              <pre id="automation-status" class="automation-status" aria-live="polite">正在加载原生自动化工作台…</pre>
-            </form>
-          </div>
-          <section id="automation-runs-panel" class="automation-runs-layout" hidden aria-label="自动化运行历史">
-            <div id="automation-run-list" class="automation-run-list"></div>
-            <article class="automation-run-detail">
-              <header class="automation-run-detail-header">
-                <div><strong>运行详情</strong><small id="automation-run-detail-id"></small></div>
-                <span id="automation-run-detail-status" class="automation-status-badge is-info">请选择运行</span>
-              </header>
-              <p id="automation-run-detail-time" class="automation-canvas-hint">暂无运行记录</p>
-              <pre id="automation-run-detail-error"></pre>
-              <pre id="automation-run-detail-output">暂无输出</pre>
-              <div class="automation-editor-actions">
-                <button id="automation-run-cancel" class="automation-danger" type="button" hidden>取消运行</button>
-                <button id="automation-run-retry" type="button" hidden>新运行重试</button>
-              </div>
-              <h3>步骤记录</h3>
-              <div id="automation-run-step-list" class="automation-run-step-list"></div>
-            </article>
-          </section>
-          <dialog id="automation-run-dialog" class="automation-run-dialog" aria-labelledby="automation-run-card-name">
-            <div class="automation-run-dialog-body">
-              <header class="automation-run-detail-header"><strong id="automation-run-card-name">运行自动化卡片</strong><button id="automation-run-close" type="button" aria-label="关闭运行设置">×</button></header>
-              <label>运行浏览器<select id="automation-run-target"></select></label>
-              <label>运行版本<select id="automation-run-version"><option value="">最新版本</option></select></label>
-              <label>运行输入<textarea id="automation-run-input" rows="10" spellcheck="false">{}</textarea></label>
-              <div class="automation-run-dialog-actions"><button id="automation-run-start" class="automation-primary" type="button">启动运行</button></div>
-            </div>
-          </dialog>
-        </section>
-        </dialog>
       </section>
       </main>
     </div>
@@ -440,11 +233,6 @@
   <script src="../sidebar/client/app/side/controllers/pages/side-panel/modules/bootstrap.js"></script>
   <script src="../sidebar/client/app/side/controllers/pages/side-panel/index.js"></script>
   <script src="../sidebar/client/app/side/controllers/pages/side-panel/dream-opener.js"></script>
-  <script src="../renderer/controllers/pages/app-shell/automation-canvas-history.js"></script>
-  <script src="../renderer/controllers/pages/app-shell/automation-workbench-view-model.js"></script>
-  <script src="../renderer/controllers/pages/app-shell/automation-workbench-upgrade.js"></script>
-  <script src="../renderer/controllers/pages/app-shell/shell-automation-canvas.js"></script>
-  <script src="../renderer/controllers/pages/app-shell/shell-automation-workbench.js"></script>
   <script src="../renderer/controllers/pages/app-shell/shell-home.js"></script>
   <script src="../renderer/controllers/pages/app-shell/tabs-shell-ui.js"></script>
   <script src="../renderer/controllers/pages/app-shell/tabs-tooltip.js"></script>

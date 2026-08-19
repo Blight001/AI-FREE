@@ -11,47 +11,36 @@ function source(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), 'utf8');
 }
 
-test('automation workbench packages the workflow UI, history and canvas modules', () => {
+const removedAssets = [
+  'src/app/renderer/styles/app-shell-automation.css',
+  'src/app/renderer/styles/app-shell-automation-canvas.css',
+  'src/app/renderer/styles/app-shell-automation-workflow.css',
+  'src/app/renderer/controllers/pages/app-shell/automation-canvas-history.js',
+  'src/app/renderer/controllers/pages/app-shell/automation-workbench-view-model.js',
+  'src/app/renderer/controllers/pages/app-shell/automation-workbench-upgrade.js',
+  'src/app/renderer/controllers/pages/app-shell/shell-automation-canvas.js',
+  'src/app/renderer/controllers/pages/app-shell/shell-automation-workbench.js',
+];
+
+test('homepage no longer ships the native Chromium automation workbench', () => {
   const html = source('src/app/views/app-shell.html');
-  for (const id of [
-    'automation-tab-cards', 'automation-tab-runs', 'automation-cards-panel',
-    'automation-runs-panel', 'automation-card-search', 'automation-card-status-filter',
-    'automation-version-list', 'automation-run-list', 'automation-run-dialog',
-    'automation-run-target', 'automation-run-input', 'automation-run-step-list',
-  ]) assert.match(html, new RegExp(`id=["']${id}["']`), `缺少自动化 UI #${id}`);
-
-  for (const asset of [
-    'app-shell-automation-workflow.css', 'automation-canvas-history.js',
-    'automation-workbench-view-model.js', 'automation-workbench-upgrade.js',
-    'shell-automation-canvas.js', 'shell-automation-workbench.js',
-  ]) assert.match(html, new RegExp(asset.replaceAll('.', '\\.')));
-
-  assert.match(html, /data-canvas-add="delay"/);
-  assert.match(html, /data-canvas-add="end"/);
-  assert.match(html, /data-node-command="start"/);
+  for (const token of [
+    'automation-workbench', 'automation-workbench-open', 'automation-flow-canvas',
+    '原生 Chromium 控制', 'AI 自动化工作台', 'shell-automation-workbench.js',
+    'app-shell-automation.css',
+  ]) assert.equal(html.includes(token), false, `主窗口仍包含已删除的工作台标记: ${token}`);
 });
 
-test('sidebar compatibility pages keep the upgraded automation assets loadable', () => {
+test('sidebar pages do not reload the removed workbench assets', () => {
   for (const page of ['src/app/sidebar/ai-control.html', 'src/app/sidebar/account-center.html']) {
     const html = source(page);
-    assert.match(html, /app-shell-automation-workflow\.css/);
-    assert.match(html, /automation-canvas-history\.js/);
-    assert.match(html, /automation-workbench-view-model\.js/);
-    assert.match(html, /automation-workbench-upgrade\.js/);
+    assert.equal(html.includes('app-shell-automation'), false, `${page} 仍引用工作台样式`);
+    assert.equal(html.includes('shell-automation-'), false, `${page} 仍引用工作台脚本`);
   }
 });
 
-test('automation workbench follows the AI control dark theme and viewport layout', () => {
-  const workbenchCss = source('src/app/renderer/styles/app-shell-automation.css');
-  const canvasCss = source('src/app/renderer/styles/app-shell-automation-canvas.css');
-  const workflowCss = source('src/app/renderer/styles/app-shell-automation-workflow.css');
-
-  assert.match(workbenchCss, /--shell-panel:\s*#0d1420/);
-  assert.match(workbenchCss, /--shell-accent:\s*#4d9cff/);
-  assert.match(workbenchCss, /color-scheme:\s*dark/);
-  assert.match(workbenchCss, /grid-template-columns:\s*228px minmax\(0, 1fr\)/);
-  assert.match(workbenchCss, /max-height:\s*calc\(100vh - 184px\)/);
-  assert.match(canvasCss, /background-color:\s*#0b1320/);
-  assert.match(canvasCss, /height:\s*clamp\(430px, 56vh, 660px\)/);
-  assert.match(workflowCss, /background:\s*#3d8bee/);
+test('workbench controller and style files stay deleted until the later rewrite', () => {
+  for (const relativePath of removedAssets) {
+    assert.equal(fs.existsSync(path.join(root, relativePath)), false, relativePath);
+  }
 });

@@ -205,7 +205,7 @@ function verifyAsarIntegrity(projectDir, appOutDir) {
       || !appShell.includes('../sidebar/client/scripts/logo-assets.js')
       || (appShell.match(/<img[^>]*data-app-logo/g) || []).length !== 2
       || !appShell.includes('id="ai-free-settings-panel"')
-      || !appShell.includes('id="automation-workbench"')
+      || appShell.includes('id="automation-workbench"')
       || !sidebar.includes('data-tab="account-center-panel"')
       || !account.includes('id="account-center-panel"')) {
       throw new Error('独立个人中心页面缺失，或主窗口头像入口仍然存在');
