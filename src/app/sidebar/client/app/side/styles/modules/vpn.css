@@ -311,3 +311,69 @@
 .vpn-node-option[aria-checked="true"] {
   outline: none;
 }
+
+.vpn-node-selector-dialog[hidden] {
+  display: none !important;
+}
+
+.vpn-node-selector-dialog {
+  position: fixed;
+  inset: 0 var(--app-shell-sidebar-width, 30%) 0 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+html.sidebar-collapsed .vpn-node-selector-dialog {
+  right: 0;
+}
+
+.vpn-node-selector-dialog-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: rgba(6, 9, 18, 0.58);
+  cursor: pointer;
+}
+
+.vpn-node-selector-dialog-panel {
+  position: relative;
+  width: min(720px, 100%);
+  max-height: min(78vh, 640px);
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+.vpn-node-selector-dialog-close {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #c9d2e6;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.vpn-node-selector-dialog-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.vpn-node-selector-dialog-panel .vpn-node-selector-grid {
+  max-height: min(58vh, 520px);
+  overflow: auto;
+}
+
+html.theme-light .vpn-node-selector-dialog-backdrop {
+  background: rgba(24, 32, 48, 0.28);
+}
+
+html.theme-light .vpn-node-selector-dialog-close {
+  color: #334155;
+}

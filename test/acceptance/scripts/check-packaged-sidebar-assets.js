@@ -82,7 +82,8 @@ async function main() {
     return {
       avatarRemoved: !document.getElementById('account-center-btn'),
       controlsOrdered: updateWidget?.nextElementSibling === version
-        && version?.nextElementSibling === theme
+        && version?.nextElementSibling === document.getElementById('shell-network-magic')
+        && document.getElementById('shell-network-magic')?.nextElementSibling === theme
         && theme?.nextElementSibling === appLauncher,
       homeButtonFirst: document.getElementById('tabs-container')?.firstElementChild?.id === 'home-tab-btn',
       appLogoLauncher: !!appLauncher?.querySelector('img.shell-app-logo[data-app-logo]'),

@@ -263,8 +263,11 @@ function updateClashVpnButton(button, { enabled, isBusy }) {
     button.disabled = true;
     return;
   }
-  button.textContent = enabled ? '关闭网络魔法' : '开启网络魔法';
-  button.title = enabled ? '点击关闭网络魔法' : '点击开启网络魔法';
+  button.textContent = enabled ? '关闭魔法代理' : '开启魔法代理';
+  button.title = enabled ? '点击关闭魔法代理' : '点击开启魔法代理';
+  if (typeof syncNetworkMagicLauncherState === 'function') {
+    syncNetworkMagicLauncherState(enabled);
+  }
 }
 
 function handleClashStatusTransition(wasRunning, enabled, loadProxyOptions) {

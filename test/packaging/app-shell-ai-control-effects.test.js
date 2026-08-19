@@ -64,6 +64,30 @@ test('底部任务栏提供独立首页入口并在主题按钮左侧显示版�
   assert.match(shellUi, /UpdatesApi\.getAppVersion/);
 });
 
+test('内置代理收进底部任务栏魔法棒，首页空白页不再展示开关', () => {
+  const html = fs.readFileSync(path.join(appRoot, 'views/app-shell.html'), 'utf8');
+  const css = fs.readFileSync(path.join(appShellRoot, 'styles/app-shell-network-magic.css'), 'utf8');
+  const vpnCss = fs.readFileSync(path.join(
+    appRoot, 'sidebar/client/app/side/styles/modules/vpn.css',
+  ), 'utf8');
+  const controller = fs.readFileSync(path.join(
+    appShellRoot, 'controllers/pages/app-shell/shell-network-magic.js',
+  ), 'utf8');
+  const emptyState = html.match(/id="browser-empty-state"[\s\S]*?<\/main>/)?.[0] || '';
+
+  assert.match(html, /id="shell-app-version"[\s\S]*?id="shell-network-magic"[\s\S]*?id="theme-toggle-btn"/);
+  assert.match(html, /id="shell-network-magic-toggle"[\s\S]*?class="network-magic-wand-icon"/);
+  assert.match(html, /id="VPN-switch"[\s\S]*?开启魔法代理/);
+  assert.match(html, /id="vpn-node-selector-toggle-btn"[\s\S]*?切换节点/);
+  assert.match(html, /id="vpn-node-selector-panel"[\s\S]*?class="vpn-node-selector-dialog"/);
+  assert.doesNotMatch(emptyState, /id="VPN-switch"/);
+  assert.doesNotMatch(emptyState, /内置代理/);
+  assert.doesNotMatch(emptyState, /vpn-node-selector-toggle-btn/);
+  assert.match(css, /\.shell-network-magic-menu\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?--app-shell-sidebar-width/);
+  assert.match(vpnCss, /\.vpn-node-selector-dialog\s*\{[\s\S]*?inset:\s*0\s+var\(--app-shell-sidebar-width,\s*30%\)\s+0\s+0/);
+  assert.match(controller, /setNetworkMagicMenuOpen/);
+});
+
 test('个人中心不再显示教程、版本号或资料外层背景盒子', () => {
   const accountHtml = fs.readFileSync(path.join(appRoot, 'sidebar/account-center.html'), 'utf8');
   const themeCss = fs.readFileSync(path.join(

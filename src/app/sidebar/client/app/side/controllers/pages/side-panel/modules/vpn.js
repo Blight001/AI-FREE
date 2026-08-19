@@ -16,8 +16,8 @@ function renderProxyTrafficQuota(quota) {
     renderAccountProxyTrafficUsage(proxyTrafficQuotaSnapshot);
   }
   if (vpnSwitchBtn) {
-    vpnSwitchBtn.textContent = isVpnEnabled ? '关闭网络魔法' : '开启网络魔法';
-    vpnSwitchBtn.title = isVpnEnabled ? '点击关闭网络魔法' : '点击开启网络魔法';
+    vpnSwitchBtn.textContent = isVpnEnabled ? '关闭魔法代理' : '开启魔法代理';
+    vpnSwitchBtn.title = isVpnEnabled ? '点击关闭魔法代理' : '点击开启魔法代理';
   }
 }
 // 设置/更新/持久化：setVpnNodeSelectorOpen的具体业务逻辑。

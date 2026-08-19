@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="../sidebar/client/app/side/styles/side.css" />
   <link rel="stylesheet" href="../renderer/styles/app-shell.css" />
   <link rel="stylesheet" href="../renderer/styles/app-shell-home.css" />
+  <link rel="stylesheet" href="../renderer/styles/app-shell-network-magic.css" />
 </head>
 <body>
   <div id="app-container">
@@ -34,6 +35,29 @@
         </div>
       </div>
       <span id="shell-app-version" class="shell-app-version" aria-label="软件版本" hidden></span>
+      <div id="shell-network-magic" class="shell-network-magic">
+        <button id="shell-network-magic-toggle" class="shell-theme-toggle-btn shell-network-magic-btn" type="button" aria-expanded="false" aria-controls="shell-network-magic-menu" aria-haspopup="true" aria-label="内置代理" title="内置代理">
+          <svg class="network-magic-wand-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4.2 19.8 13.8 10.2"></path>
+            <path d="m12.4 8.8 2.8 2.8"></path>
+            <path d="M16.1 3.6 15.2 6.4 12.4 7.3 15.2 8.2 16.1 11 17 8.2 19.8 7.3 17 6.4 16.1 3.6Z"></path>
+            <path d="M19.4 12.1v2.4M18.2 13.3h2.4"></path>
+            <path d="M20.1 4.8v1.6M19.3 5.6h1.6"></path>
+          </svg>
+        </button>
+        <div id="shell-network-magic-menu" class="shell-network-magic-menu" hidden>
+          <div class="shell-network-magic-menu-primary">
+            <button id="VPN-switch" class="shell-network-magic-action VPN-btn" type="button" disabled>开启魔法代理</button>
+            <button id="vpn-node-selector-toggle-btn" class="shell-network-magic-action" type="button" aria-expanded="false" aria-controls="vpn-node-selector-panel" disabled>切换节点</button>
+          </div>
+          <fieldset id="network-magic-proxy-mode" class="network-magic-proxy-mode shell-network-magic-menu-modes" aria-label="网络魔法代理模式">
+            <legend>代理模式</legend>
+            <label><input type="radio" name="network-magic-proxy-mode" value="port" checked><span>端口代理</span></label>
+            <label><input type="radio" name="network-magic-proxy-mode" value="system"><span>系统代理</span></label>
+            <label><input type="radio" name="network-magic-proxy-mode" value="global"><span>全局代理</span></label>
+          </fieldset>
+        </div>
+      </div>
       <button id="theme-toggle-btn" class="shell-theme-toggle-btn" type="button" aria-pressed="false" aria-label="切换主题" title="切换到白色模式">
         <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" aria-hidden="true">
           <circle cx="12" cy="12" r="4.2"></circle>
@@ -66,7 +90,7 @@
           </div>
         </header>
         <form id="ai-free-settings-form" class="settings-container vb-form" autocomplete="off">
-          <section class="settings-network-tools" aria-label="浏览器记录与网络魔法">
+          <section class="settings-network-tools" aria-label="浏览器记录">
 
             <section class="browser-history-inline" aria-labelledby="browser-history-title">
               <div class="browser-history-heading">
@@ -82,32 +106,6 @@
                 <div class="browser-history-empty">正在读取浏览器记录…</div>
               </div>
             </section>
-
-            <div class="settings-network-tools-subtitle settings-network-tools-proxy-title">内置代理</div>
-            <div class="vpn-node-selector-shell">
-              <fieldset id="network-magic-proxy-mode" class="network-magic-proxy-mode" aria-label="网络魔法代理模式">
-                <legend>代理模式</legend>
-                <label><input type="radio" name="network-magic-proxy-mode" value="port" checked><span>端口代理</span></label>
-                <label><input type="radio" name="network-magic-proxy-mode" value="system"><span>系统代理</span></label>
-                <label><input type="radio" name="network-magic-proxy-mode" value="global"><span>全局代理</span></label>
-              </fieldset>
-              <div class="vpn-node-selector-row">
-                <button id="VPN-switch" class="main-button btn-large-purple VPN-btn" type="button" disabled>关闭网络魔法</button>
-                <button id="vpn-node-selector-toggle-btn" class="vpn-node-selector-btn vpn-node-selector-btn-toggle" type="button" aria-expanded="false" aria-controls="vpn-node-selector-panel" disabled>
-                  <span class="vpn-node-selector-toggle-text">切换节点</span>
-                  <svg class="vpn-node-selector-toggle-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
-                </button>
-              </div>
-              <div id="vpn-node-selector-panel" class="vpn-node-selector-panel" hidden>
-                <div class="vpn-node-selector-panel-head">
-                  <span id="vpn-node-selector-group" class="vpn-node-selector-panel-subtitle">节点选择</span>
-                  <button id="vpn-node-retest-all-btn" class="vpn-node-retest-all" type="button" disabled>重新测速</button>
-                </div>
-                <div id="vpn-node-selector-grid" class="vpn-node-selector-grid"></div>
-              </div>
-            </div>
-
-            <button id="start-clash-mini-btn" class="main-button btn-large-teal" type="button" data-loading-text="启动中..." hidden>启动 Clash Mini</button>
 
           </section>
 
@@ -194,6 +192,20 @@
       </section>
       </main>
     </div>
+    <div id="vpn-node-selector-panel" class="vpn-node-selector-dialog" hidden>
+      <button class="vpn-node-selector-dialog-backdrop" type="button" data-vpn-node-selector-close aria-label="关闭节点选择"></button>
+      <div class="vpn-node-selector-panel vpn-node-selector-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="vpn-node-selector-group">
+        <div class="vpn-node-selector-panel-head">
+          <span id="vpn-node-selector-group" class="vpn-node-selector-panel-subtitle">节点选择</span>
+          <div class="vpn-node-selector-panel-heading">
+            <button id="vpn-node-retest-all-btn" class="vpn-node-retest-all" type="button" disabled>重新测速</button>
+            <button class="vpn-node-selector-dialog-close" type="button" data-vpn-node-selector-close aria-label="关闭节点选择">&times;</button>
+          </div>
+        </div>
+        <div id="vpn-node-selector-grid" class="vpn-node-selector-grid"></div>
+      </div>
+    </div>
+    <button id="start-clash-mini-btn" class="main-button btn-large-teal" type="button" data-loading-text="启动中..." hidden>启动 Clash Mini</button>
   </div>
   <script src="../sidebar/client/scripts/logo-assets.js"></script>
   <script src="../renderer/controllers/shared/controller-utils.js"></script>
@@ -234,6 +246,7 @@
   <script src="../sidebar/client/app/side/controllers/pages/side-panel/index.js"></script>
   <script src="../sidebar/client/app/side/controllers/pages/side-panel/dream-opener.js"></script>
   <script src="../renderer/controllers/pages/app-shell/shell-home.js"></script>
+  <script src="../renderer/controllers/pages/app-shell/shell-network-magic.js"></script>
   <script src="../renderer/controllers/pages/app-shell/tabs-shell-ui.js"></script>
   <script src="../renderer/controllers/pages/app-shell/tabs-tooltip.js"></script>
   <script src="../renderer/controllers/pages/app-shell/tabs-renderer.js"></script>

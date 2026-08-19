@@ -1,0 +1,123 @@
+#tab-bar {
+  position: relative;
+  z-index: 20;
+}
+
+.shell-network-magic {
+  position: relative;
+  flex: 0 0 var(--shell-tab-height);
+  width: var(--shell-tab-height);
+  height: var(--shell-tab-height);
+}
+
+.shell-network-magic-btn .network-magic-wand-icon {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.shell-network-magic-btn.is-active {
+  color: #f3e8ff;
+  border-color: rgba(168, 85, 247, 0.55);
+  background: rgba(147, 51, 234, 0.28);
+}
+
+.shell-network-magic-btn.is-open,
+.shell-network-magic-btn:hover {
+  transform: translateY(-1px);
+}
+
+html.theme-light .shell-network-magic-btn.is-active {
+  color: #6b21a8;
+  border-color: rgba(147, 51, 234, 0.32);
+  background: rgba(147, 51, 234, 0.14);
+}
+
+html.theme-gold .shell-network-magic-btn.is-active {
+  color: #f4ead2;
+  border-color: rgba(226, 200, 138, 0.62);
+  background: rgba(212, 183, 118, 0.28);
+}
+
+.shell-network-magic-menu {
+  position: fixed;
+  right: max(8px, var(--app-shell-sidebar-width, 30%));
+  bottom: calc(var(--shell-tab-height) + 19px);
+  width: 268px;
+  padding: 10px;
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--shell-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--shell-panel) 96%, transparent);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.32);
+  z-index: 30;
+}
+
+html.sidebar-collapsed .shell-network-magic-menu {
+  right: 8px;
+}
+
+.shell-network-magic-menu[hidden] {
+  display: none !important;
+}
+
+.shell-network-magic-menu-primary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.shell-network-magic-action {
+  min-height: 34px;
+  padding: 0 8px;
+  border: 1px solid rgba(129, 140, 248, 0.28);
+  border-radius: 8px;
+  background: var(--brand-grad, linear-gradient(135deg, #6366f1, #8b5cf6));
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.shell-network-magic-action:hover:not(:disabled) {
+  filter: brightness(1.04);
+}
+
+.shell-network-magic-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+#VPN-switch[data-busy='1'] {
+  background: #8b929e !important;
+  color: #f1f3f5 !important;
+  box-shadow: none !important;
+  filter: none !important;
+  cursor: wait !important;
+  opacity: 0.78;
+}
+
+.shell-network-magic-menu-modes {
+  margin: 0;
+  padding: 4px;
+}
+
+.shell-network-magic-menu-modes span {
+  min-height: 30px;
+  font-size: 12px;
+}
+
+html.theme-light .shell-network-magic-menu {
+  background: #fff;
+  box-shadow: 0 16px 36px rgba(24, 24, 27, 0.14);
+}
+
+html.theme-gold .shell-network-magic-menu {
+  background: #14120d;
+  border-color: rgba(212, 183, 118, 0.22);
+}

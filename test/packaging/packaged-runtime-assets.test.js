@@ -96,6 +96,10 @@ test('sidebar logos use the runtime asset resolver in source and packaged apps',
   assert.ok(devConsolePage.includes('../../sidebar/ai-control.html?dev=1'));
   assert.equal(appShellSource.includes('createDevConsoleWindow'), false);
   assert.ok(appShell.includes('../sidebar/client/scripts/logo-assets.js'));
+  assert.ok(appShell.includes('app-shell-network-magic.css'));
+  assert.ok(appShell.includes('shell-network-magic.js'));
+  assert.ok(appShell.includes('id="shell-network-magic-toggle"'));
+  assert.equal(appShell.includes('settings-network-tools-proxy-title'), false);
   assert.equal((appShell.match(/<img[^>]*data-app-logo/g) || []).length, 2);
   assert.ok(appShell.includes('id="ai-free-settings-panel"'));
   assert.ok(appShell.includes('id="browser-settings-tutorial"'));

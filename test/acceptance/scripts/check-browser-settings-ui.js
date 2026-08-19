@@ -130,6 +130,15 @@ app.whenReady().then(async () => {
     document.getElementById('vpn-node-selector-grid')?.appendChild(animationProbe);
     const nodeAnimationName = getComputedStyle(animationProbe).animationName;
     animationProbe.remove();
+    const magicToggle = document.getElementById('shell-network-magic-toggle');
+    const magicMenu = document.getElementById('shell-network-magic-menu');
+    magicToggle?.click();
+    const magicMenuVisible = magicMenu?.hidden === false && magicToggle?.getAttribute('aria-expanded') === 'true';
+    const sidebarWidthPx = parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue('--app-shell-sidebar-width'),
+    ) || 0;
+    const magicMenuClearOfSidebar = magicMenuVisible
+      && magicMenu.getBoundingClientRect().right <= window.innerWidth - sidebarWidthPx + 1;
     const vpnButton = document.getElementById('VPN-switch');
     const vpnButtonOriginal = {
       busy: vpnButton?.dataset.busy,
@@ -157,11 +166,13 @@ app.whenReady().then(async () => {
     const nodePanelCollapsedByDefault = nodePanel?.hidden === true
       && nodeToggle?.getAttribute('aria-expanded') === 'false';
     const nodeToggleWasDisabled = nodeToggle?.disabled === true;
+    const nodeToggleVisible = nodeToggle?.getBoundingClientRect().width > 0;
     if (nodeToggle) nodeToggle.disabled = false;
     nodeToggle?.click();
     const nodePanelOpenedByToggle = nodePanel?.hidden === false
       && nodeToggle?.getAttribute('aria-expanded') === 'true';
     if (nodeToggle) nodeToggle.disabled = nodeToggleWasDisabled;
+    const magicMenuClosedAfterNode = magicMenu?.hidden === true;
     await new Promise((resolve) => setTimeout(resolve, 20));
     const automationWorkbenchRemoved = !document.getElementById('automation-workbench-dialog')
       && !document.getElementById('automation-workbench')
@@ -184,12 +195,18 @@ app.whenReady().then(async () => {
       proxyModes: Array.from(document.querySelectorAll('input[name="network-magic-proxy-mode"]')).map((input) => ({
         value: input.value, checked: input.checked,
       })),
-      nodeToggleVisible: nodeToggle?.getBoundingClientRect().width > 0,
+      homeProxyRemoved: !document.querySelector('#browser-empty-state #VPN-switch')
+        && !document.querySelector('#browser-empty-state .settings-network-tools-proxy-title')
+        && !document.getElementById('browser-empty-state')?.textContent.includes('内置代理'),
+      magicLauncherVisible: magicToggle?.getBoundingClientRect().width > 0,
+      magicMenuOpened: magicMenuVisible,
+      magicMenuClearOfSidebar,
+      magicMenuClosedAfterNode,
+      nodeToggleVisible,
       nodePanelCollapsedByDefault,
       nodePanelVisible: nodePanelOpenedByToggle,
-      nodePanelStatic: getComputedStyle(document.getElementById('vpn-node-selector-panel')).position === 'relative',
-      allNodesExpanded: getComputedStyle(document.getElementById('vpn-node-selector-grid')).maxHeight === 'none'
-        && getComputedStyle(document.getElementById('vpn-node-selector-grid')).overflow === 'visible',
+      nodePanelOverlay: getComputedStyle(document.getElementById('vpn-node-selector-panel')).position === 'fixed',
+      nodeGridScrollable: getComputedStyle(document.getElementById('vpn-node-selector-grid')).overflow === 'auto',
       nodeAnimationDisabled: nodeAnimationName === 'none',
       initialDefault,
       navRemoved: navTops.length === 0,
@@ -233,6 +250,11 @@ app.whenReady().then(async () => {
     || !result.vpnAutoStartBusyAppearance
     || !result.automationWorkbenchRemoved
     || !result.woolResourceMovedOut
+    || !result.homeProxyRemoved
+    || !result.magicLauncherVisible
+    || !result.magicMenuOpened
+    || !result.magicMenuClearOfSidebar
+    || !result.magicMenuClosedAfterNode
     || !result.nodeToggleVisible
     || JSON.stringify(result.proxyModes) !== JSON.stringify([
       { value: 'port', checked: true },
@@ -241,8 +263,8 @@ app.whenReady().then(async () => {
     ])
     || !result.nodePanelCollapsedByDefault
     || !result.nodePanelVisible
-    || !result.nodePanelStatic
-    || !result.allNodesExpanded
+    || !result.nodePanelOverlay
+    || !result.nodeGridScrollable
     || !result.nodeAnimationDisabled
     || Object.values(result.initialDefault).some((value) => value !== true)
     || !result.navRemoved
@@ -499,7 +521,8 @@ app.whenReady().then(async () => {
     await new Promise((resolve) => setTimeout(resolve, 30));
     return {
       controlsOrdered: updateWidget?.nextElementSibling === version
-        && version?.nextElementSibling === theme
+        && version?.nextElementSibling === document.getElementById('shell-network-magic')
+        && document.getElementById('shell-network-magic')?.nextElementSibling === theme
         && theme?.nextElementSibling === appLauncher,
       versionVisible: version?.hidden === false && version.textContent === 'v2.6.38',
       homeButtonFirst: document.getElementById('tabs-container')?.firstElementChild === homeButton,

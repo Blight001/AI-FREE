@@ -88,7 +88,7 @@ async function stopClashMiniFlow({ startBtn, vpnBtn } = {}) {
   }
   await persistNetworkMagicAutoStartEnabled(false).catch(() => {});
   applyClashMiniStatus(result, { startBtn, vpnBtn });
-  return '开启网络魔法';
+  return '开启魔法代理';
 }
 
 // 完整启动流程（单次执行体，勿直接调用，统一走 startClashMiniFlow）：
@@ -118,7 +118,7 @@ async function startClashMiniFlowOnce({ startBtn, vpnBtn, fetchConfig = true, ke
   await persistNetworkMagicAutoStartEnabled(true).catch(() => {});
   applyClashMiniStatus(result, { startBtn, vpnBtn, loadProxyOptions: false });
   void loadVpnNodeSelectorOptions({ force: true, probeDelays: true });
-  return '关闭网络魔法';
+  return '关闭魔法代理';
 }
 
 async function stopClashForFreshConfig(fetchConfig) {

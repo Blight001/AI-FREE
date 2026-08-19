@@ -35,7 +35,7 @@ browser extension ↔ AutomationBridge ↔ Chromium runtime
 
 | UI | 入口与宿主 | 当前职责 | 控制器与样式归属 | 整改约束 |
 |---|---|---|---|---|
-| 主窗口与浏览器首页 | `src/app/views/app-shell.html`，由主 `BrowserWindow` 加载 | 顶部标签栏、主题/更新控件、无活动浏览器时的首页、浏览器记录、环境配置、内置代理；活动 Chromium 的可见区域也由该窗口协调 | 主窗口逻辑位于 `renderer/controllers/pages/app-shell/`，基础样式位于 `renderer/styles/app-shell*.css` | 主内容功能必须放在此处或由此页面装配，不得再创建覆盖首页的第二个 `WebContentsView`；首页显隐只由标签运行状态决定；浏览器内容区域和侧栏预留宽度必须同步验证；不得在此页重新加入已删除的原生自动化工作台 DOM |
+| 主窗口与浏览器首页 | `src/app/views/app-shell.html`，由主 `BrowserWindow` 加载 | 底部任务栏（主题、更新、内置代理）、无活动浏览器时的首页、浏览器记录、环境配置；活动 Chromium 的可见区域也由该窗口协调 | 主窗口逻辑位于 `renderer/controllers/pages/app-shell/`，基础样式位于 `renderer/styles/app-shell*.css` | 主内容功能必须放在此处或由此页面装配，不得再创建覆盖首页的第二个 `WebContentsView`；首页显隐只由标签运行状态决定；浏览器内容区域和侧栏预留宽度必须同步验证；不得在此页重新加入已删除的原生自动化工作台 DOM；内置代理只保留窗口栏魔法棒入口，不得再放回首页空白页 |
 | AI 控制页 | `src/app/sidebar/ai-control.html`，由右侧 `WebContentsView` 加载 | AI 对话、模型选择、浏览器/自动化卡片选择、工具调用展示、自定义 API、AI 服务器设备和 Prompt 诊断 | `sidebar/client/app/side/controllers/pages/ai-control/` 与 `sidebar/client/app/side/styles/modules/ai-control.css` | 只承载 AI 控制域，不得加入浏览器首页或个人中心 DOM；进入个人中心必须导航到 `account-center.html`；轮询、订阅和会话保存必须在页面卸载时保持可恢复 |
 | 个人中心页 | `src/app/sidebar/account-center.html`，与 AI 控制页复用同一个右侧 `WebContentsView`，通过页面导航切换 | 登录/注册、设备登录、账号资料、额度、VIP 套餐、兑换码、关闭方式、公告、教程和版本信息 | `sidebar/client/app/side/controllers/pages/side-panel/modules/account-*`、`window-close-preference.js`、`announcements.js` 及 `account-auth.css` | 账号表单和 VIP 弹层只在此页保留一个 DOM 真源；从 AI 页触发登录时使用会话内导航意图，不复制登录表单；不得直接读取主进程存储或凭据 |
 | 侧栏兼容入口 | `src/app/sidebar/index.html` | 仅把旧入口跳转到 `ai-control.html`，兼容旧路径、工具和外部启动参数 | 无业务控制器 | 必须保持轻量；不得重新放回 AI、账号或首页面板；新增正式侧栏页面时应让主进程直接加载明确文件，而不是依赖此跳转 |
@@ -44,7 +44,7 @@ browser extension ↔ AutomationBridge ↔ Chromium runtime
 | 标签上下文菜单弹窗 | 由 `main/features/browser/tab-context-menu-controller.js` 生成 `data:` 页面并加载到临时窗口 | 标签的重命名、关闭等上下文操作 | HTML 构建和动作回传归该 controller | 只承载上下文动作；必须绑定明确 tab ID、处理窗口销毁并转义可见文本；复杂设置应回到主窗口，不在弹窗中扩张 |
 | 更新下载页 | `main/features/updates/update-download-page.js` 创建窗口并加载受控远程地址 | 当直接安装包下载链路需要网页交互时，承载发行方下载页面 | URL 校验、导航、下载监听和窗口回收归更新域 | 这是外部页面而非本地 UI 真源；必须限制允许的 URL/导航和下载行为，不注入本地业务 DOM，不向页面暴露宽泛 preload 能力 |
 
-主窗口中的浏览器设置目前仍复用部分 `sidebar/client/.../side-panel/modules/` 控制器与侧栏样式，这是从独立设置页迁入 `app-shell.html` 后的已知过渡耦合。后续整改应按功能把 `browser-settings-*`、VPN 首页绑定和对应样式迁到 `renderer/controllers/pages/app-shell/`、`renderer/styles/`，但迁移过程中只能移动真源，不能复制后保留两套实现。
+主窗口中的浏览器设置目前仍复用部分 `sidebar/client/.../side-panel/modules/` 控制器与侧栏样式，这是从独立设置页迁入 `app-shell.html` 后的已知过渡耦合。后续整改应按功能把 `browser-settings-*`、VPN 窗口栏绑定和对应样式迁到 `renderer/controllers/pages/app-shell/`、`renderer/styles/`，但迁移过程中只能移动真源，不能复制后保留两套实现。
 
 UI 调整还必须遵守以下规则：
 

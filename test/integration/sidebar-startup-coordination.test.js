@@ -47,7 +47,7 @@ test('自动开启网络魔法在配置获取完成前禁用主开关', async ()
   let finishStart;
   let startOptions = null;
   const startPending = new Promise((resolve) => { finishStart = resolve; });
-  const vpnBtn = createButton('开启网络魔法');
+  const vpnBtn = createButton('开启魔法代理');
   const startBtn = createButton('启动 Clash Mini');
   const context = vm.createContext({
     console,
@@ -73,7 +73,7 @@ test('自动开启网络魔法在配置获取完成前禁用主开关', async ()
     isLicenseValidated: () => false,
     applyVpnActionAvailability: () => {},
     updateClashVpnButton: (button, state) => {
-      button.textContent = state.enabled ? '关闭网络魔法' : '开启网络魔法';
+      button.textContent = state.enabled ? '关闭魔法代理' : '开启魔法代理';
     },
   });
   vm.runInContext(
@@ -108,17 +108,17 @@ test('自动开启网络魔法在配置获取完成前禁用主开关', async ()
   await task;
   assert.equal(vpnBtn.disabled, false);
   assert.equal(vpnBtn.dataset.busy, '0');
-  assert.equal(vpnBtn.textContent, '开启网络魔法');
+  assert.equal(vpnBtn.textContent, '开启魔法代理');
 });
 
 test('点击开启网络魔法成功后主开关恢复为关闭按钮', async () => {
-  const vpnBtn = createButton('开启网络魔法');
+  const vpnBtn = createButton('开启魔法代理');
   const context = vm.createContext({
     console,
     window: {},
     isVpnEnabled: false,
     updateClashVpnButton: (button, state) => {
-      button.textContent = state.enabled ? '关闭网络魔法' : '开启网络魔法';
+      button.textContent = state.enabled ? '关闭魔法代理' : '开启魔法代理';
     },
   });
   vm.runInContext(readSource('src/app/renderer/controllers/shared/controller-utils.js'), context);
@@ -134,7 +134,7 @@ test('点击开启网络魔法成功后主开关恢复为关闭按钮', async ()
 
   assert.equal(vpnBtn.disabled, false);
   assert.equal(vpnBtn.dataset.busy, '0');
-  assert.equal(vpnBtn.textContent, '关闭网络魔法');
+  assert.equal(vpnBtn.textContent, '关闭魔法代理');
 });
 
 test('侧边栏启动时主动读取并渲染浏览器记录', async () => {
