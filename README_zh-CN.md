@@ -1,5 +1,7 @@
 # AI-FREE
 
+HeySure 首次连接地址读取聚合仓库 `device.config.json`；独立打包或安装态缺失时固定回退 `http://49.234.181.190:58150`。仅显式设置 `HEYSURE_LOCAL_TEST=true` 才使用 `http://127.0.0.1:3000`，环境变量 `HEYSURE_SERVER` 和用户已保存地址始终优先。
+
 连接并成功注册到 HeySure 后，AI-FREE 会向**当前登录服务器**检查设备大厅稳定版；也会响应服务器的 `device:update-available` 提醒并重新查询。每个服务器的每个新版本只弹一次询问，确认后仅用系统浏览器打开服务器返回的设备大厅链接，不复用旧的自动下载/安装流程。检查失败不会影响设备连接。
 
 [English](README.md) | 简体中文
