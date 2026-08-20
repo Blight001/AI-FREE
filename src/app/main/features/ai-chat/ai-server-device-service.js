@@ -1,6 +1,8 @@
 'use strict';
 
 const os = require('os');
+const fs = require('fs');
+const path = require('path');
 const {
   normalizeToolError,
   normalizeToolSchema,
@@ -11,7 +13,20 @@ const {
 } = require('./heysure-file-materializer');
 const { attachHeySureDownloadedFile } = require('./heysure-file-uploader');
 
-const DEFAULT_HEYSURE_SERVER = 'http://49.234.181.190:58150';
+const PRODUCTION_HEYSURE_SERVER = 'http://49.234.181.190:58150';
+const LOCAL_TEST_HEYSURE_SERVER = 'http://127.0.0.1:3000';
+function loadDefaultHeySureServer() {
+  const localTest = /^(1|true|yes)$/i.test(process.env.HEYSURE_LOCAL_TEST || '');
+  const key = localTest ? 'local_test_server_url' : 'default_server_url';
+  const fallback = localTest ? LOCAL_TEST_HEYSURE_SERVER : PRODUCTION_HEYSURE_SERVER;
+  try {
+    const config = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../../../../../device.config.json'), 'utf8'));
+    return String(config[key] || fallback).trim().replace(/\/+$/, '');
+  } catch (_) {
+    return fallback;
+  }
+}
+const DEFAULT_HEYSURE_SERVER = loadDefaultHeySureServer();
 const LEGACY_DEFAULT_HEYSURE_SERVER = 'http://49.234.181.190:3000';
 const REGISTER_INTERVAL_MS = 3000;
 const LOGIN_TIMEOUT_MS = 10000;
