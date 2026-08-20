@@ -128,6 +128,7 @@ test('登录后注册 custom 设备并将派发任务恰好回一个终态', asy
       calls.push({ name, args });
       return { done: true };
     },
+    remoteControl: {},
   });
 
   const result = await service.login({
@@ -144,7 +145,7 @@ test('登录后注册 custom 设备并将派发任务恰好回一个终态', asy
     '用于连接 AI-FREE，调用其中已启用的软件窗口、浏览器与自动化 MCP 工具',
   );
   assert.equal(registration.catalogProtocolVersion, 2);
-  assert.deepEqual(registration.capabilities, ['aifree.browser+action']);
+  assert.deepEqual(registration.capabilities, ['aifree.browser+action', 'remote_control']);
   assert.equal(registration.toolDefs[0].input_schema.required[0], 'action');
 
   socket.serverEmit('device:registered', { aiConfigId: 7 });
@@ -159,6 +160,65 @@ test('登录后注册 custom 设备并将派发任务恰好回一个终态', asy
   assert.deepEqual(calls, [{ name: 'browser_action', args: { action: 'click' } }]);
   assert.equal(socket.sent.filter((entry) => entry.event === 'task:result').length, 1);
   assert.equal(service.status().registered, true);
+  service.stop();
+});
+
+test('注册成功与服务器更新事件都会触发当前服务器更新查询', async () => {
+  const socket = new FakeSocket();
+  const checks = [];
+  const service = createAiServerDeviceService({
+    hasVipAccess: () => true,
+    fetch: async () => loginResponse(),
+    createSocket: () => socket,
+    checkForUpdate: async (server) => checks.push(server),
+  });
+  await service.login({ server: 'https://heysure.test', account: 'u', password: 'p' });
+  socket.serverEmit('device:registered', {});
+  socket.serverEmit('device:update-available', {});
+  await tick();
+  assert.deepEqual(checks, ['https://heysure.test', 'https://heysure.test']);
+  service.stop();
+});
+
+test('HeySure rc 信令转交远程浏览器并通过原设备 socket 回传', async () => {
+  const socket = new FakeSocket();
+  const calls = [];
+  let service;
+  const remoteControl = {
+    start: async (data, connection) => calls.push(['start', data, connection]),
+    answer: async (data) => calls.push(['answer', data]),
+    ice: async (data) => calls.push(['ice', data]),
+    stop: async (reason) => calls.push(['stop', reason]),
+    stopSession: async (sessionId) => calls.push(['stopSession', sessionId]),
+  };
+  service = createAiServerDeviceService({
+    hasVipAccess: () => true,
+    fetch: async () => loginResponse('remote-token'),
+    createSocket: () => socket,
+    getTools: () => ({ tools: [] }),
+    remoteControl,
+  });
+  await service.login({ server: 'https://heysure.example', account: 'alice', password: 'secret' });
+  await tick();
+  calls.length = 0;
+
+  await socket.serverEmit('rc:start', { sessionId: 'rc-1', qualityPreset: 'clear' });
+  await socket.serverEmit('rc:answer', { sessionId: 'rc-1', sdp: 'answer' });
+  await socket.serverEmit('rc:ice', { sessionId: 'rc-1', candidate: { candidate: 'ice' } });
+  await socket.serverEmit('rc:stop', { sessionId: 'rc-1' });
+  service.emitRemoteSignal('rc:offer', { sessionId: 'rc-1', sdp: 'offer' });
+
+  assert.deepEqual(calls, [
+    ['start', { sessionId: 'rc-1', qualityPreset: 'clear' }, {
+      server: 'https://heysure.example', token: 'remote-token',
+    }],
+    ['answer', { sessionId: 'rc-1', sdp: 'answer' }],
+    ['ice', { sessionId: 'rc-1', candidate: { candidate: 'ice' } }],
+    ['stopSession', 'rc-1'],
+  ]);
+  assert.deepEqual(socket.sent.at(-1), {
+    event: 'rc:offer', payload: { sessionId: 'rc-1', sdp: 'offer' },
+  });
   service.stop();
 });
 

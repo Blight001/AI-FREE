@@ -16,6 +16,7 @@ const LEGACY_DEFAULT_HEYSURE_SERVER = 'http://49.234.181.190:3000';
 const REGISTER_INTERVAL_MS = 3000;
 const LOGIN_TIMEOUT_MS = 10000;
 const MAX_COMPLETED_TASKS = 200;
+const REMOTE_CONTROL_CAPABILITY = 'remote_control';
 const HEYSURE_AI_DESCRIPTION = '用于连接 AI-FREE，调用其中已启用的软件窗口、浏览器与自动化 MCP 工具';
 
 function defaultSocketFactory(url, options) {
@@ -94,6 +95,12 @@ function catalogSignature(tools) {
   return JSON.stringify(tools);
 }
 
+function deviceCapabilities(tools, hasRemoteControl) {
+  const capabilities = tools.map((tool) => tool.name);
+  if (hasRemoteControl) capabilities.push(REMOTE_CONTROL_CAPABILITY);
+  return capabilities;
+}
+
 function publicMessage(error, fallback) {
   return String(error?.message || error || fallback || '').trim();
 }
@@ -134,9 +141,11 @@ class AiServerDeviceService {
     this.callTool = options.callTool || (() => { throw new Error('MCP 执行器尚未就绪'); });
     this.materializeFileRefs = options.materializeFileRefs || null;
     this.uploadWorkspaceFile = options.uploadWorkspaceFile;
+    this.remoteControl = options.remoteControl;
     this.credentialStore = options.credentialStore || null;
     this.hasVipAccess = options.hasVipAccess || (() => false);
     this.onStatus = options.onStatus || (() => {});
+    this.checkForUpdate = options.checkForUpdate || (async () => {});
     this.logger = options.logger || console;
     this.version = String(options.version || '1.0.0');
     this.socket = null;
@@ -255,9 +264,33 @@ class AiServerDeviceService {
     socket.on('disconnect', (reason) => this.handleDisconnect(reason));
     socket.on('connect_error', (error) => this.handleConnectError(error));
     socket.on('device:registered', (data) => this.handleRegistered(data));
+    socket.on('device:update-available', () => this.scheduleUpdateCheck());
     socket.on('device:register_rejected', (data) => void this.handleRejected(data));
     socket.on('task:dispatch', (task) => void this.handleTask(task));
+    socket.on('rc:start', (data) => void this.handleRemoteStart(data));
+    socket.on('rc:answer', (data) => void this.remoteControl?.answer?.(data));
+    socket.on('rc:ice', (data) => void this.remoteControl?.ice?.(data));
+    socket.on('rc:stop', (data) => void this.remoteControl?.stopSession?.(data?.sessionId));
     socket.connect();
+  }
+
+  emitRemoteSignal(event, payload) {
+    if (this.socket?.connected) this.socket.emit(event, payload);
+  }
+
+  async handleRemoteStart(data = {}) {
+    if (!this.remoteControl) {
+      this.emitRemoteSignal('rc:error', {
+        sessionId: String(data.sessionId || ''),
+        code: 'remote_control_unavailable',
+        message: 'AI-FREE 远程浏览器控制尚未装配',
+      });
+      return;
+    }
+    await this.remoteControl.start(data, {
+      server: this.credentials?.server,
+      token: this.token,
+    });
   }
 
   handleConnect() {
@@ -290,6 +323,15 @@ class AiServerDeviceService {
       message: aiConfigId === null
         ? '设备已在线；请到作坊面板分配 AI 并勾选 MCP 权限'
         : '设备已在线并绑定 AI',
+    });
+    this.scheduleUpdateCheck();
+  }
+
+  scheduleUpdateCheck() {
+    const server = this.credentials?.server;
+    if (!server) return;
+    void this.checkForUpdate(server).catch((error) => {
+      this.logger.warn?.('[AIServerDevice] 更新检查跳过:', publicMessage(error, '更新检查失败'));
     });
   }
 
@@ -341,7 +383,7 @@ class AiServerDeviceService {
         version: this.version,
         aiDescription: HEYSURE_AI_DESCRIPTION,
         catalogProtocolVersion: 2,
-        capabilities: catalog.tools.map((tool) => tool.name),
+        capabilities: deviceCapabilities(catalog.tools, !!this.remoteControl),
         toolDefs: catalog.tools,
       });
       this.publishStatus({
@@ -422,6 +464,7 @@ class AiServerDeviceService {
     this.registerTimer = null;
     const socket = this.socket;
     this.socket = null;
+    void this.remoteControl?.stop?.('agent_disconnected', false);
     if (socket) socket.disconnect();
     this.registered = false;
   }

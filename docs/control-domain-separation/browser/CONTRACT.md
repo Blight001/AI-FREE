@@ -54,6 +54,17 @@
 - Browser Automation 使用 Browser AutomationBridge、Browser 连接与定向 side view
   进度事件；事件在迁移模式下包含 `domain: "browser"`。
 
+## 网页远程控制
+
+- AI-FREE 作为 HeySure 自定义设备注册时声明 `remote_control`，复用统一 `rc:*`
+  信令和网页控制端，不创建第二套公网控制接口。
+- 远控只绑定会话开始时的活动 Browser Profile，通过 Chromium Runtime Bridge
+  采集页面、注入输入并管理该 Profile 内的网页标签；不得读取或控制 Software
+  Workspace、Home、账号页和 AI 侧栏。
+- 视频与输入走 WebRTC P2P，服务器只中继 SDP/ICE 信令；ICE/TURN 配置必须从当前
+  已认证 HeySure 服务器动态获取。Socket 断开、退出登录、应用退出或 WebRTC 失败时
+  必须释放采集、接管状态、定时器和隐藏 peer renderer。
+
 ## 持久化兼容
 
 - Chromium Profile、浏览器历史、账号会话和许可证路径保持原路径。

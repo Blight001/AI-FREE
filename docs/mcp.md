@@ -190,6 +190,8 @@ AI 对话和 HeySure 设备端都会发现当前所有已连接浏览器的工�
 ## HeySure 注册与可用性
 
 - HeySure 设备工具注册由 [`ai-server-device-service.js`](../src/app/main/features/ai-chat/ai-server-device-service.js) 负责，内部名称会转换为 `aifree.<工具名>`。
+- 设备同时上报 `remote_control` 能力，并沿用 HeySure 的 `rc:*` WebRTC 协议。手机或其他电脑在网页控制台发起远程控制后，AI-FREE 会采集当前活动 Chromium Profile 的网页画面，通过 P2P 视频轨传输，并把网页端鼠标、滚动、键盘、地址栏和标签操作注入 Chromium Runtime。只有已连接 HeySure 且当前存在活动浏览器时才能建立会话。
+- ICE 配置从已登录服务器的 `/api/rtc/ice-servers` 动态读取；读取失败时仅回退到 STUN。跨 NAT 环境要稳定使用，服务器仍需正确配置 TURN，AI-FREE 不保存或写死 TURN 凭据。
 - 注册同时上报 AI 用途说明“用于连接 AI-FREE，调用其中已启用的软件窗口、浏览器和自动化 MCP 工具”和 `catalogProtocolVersion=2`，让 HeySure AI 能把该设备与普通浏览器、桌面或 Android 执行器区分开；该说明仅是能力元数据，不是执行指令。
 - 外部调用目录由 [`browser-automation-external-gateway.js`](../src/app/main/services/browser-automation-external-gateway.js) 汇总，并执行会员权限、浏览器路由和敏感参数限制。
 - 只有服务器实时校验为有效会员时，软件才会向 HeySure 注册为在线设备并接受调用。

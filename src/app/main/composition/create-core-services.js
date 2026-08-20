@@ -22,6 +22,9 @@ const { createTabHelpers } = require('../services/tab-helpers');
 const { createRuntimeHelpers } = require('../services/runtime-helpers');
 const { createSystemResourceMonitor } = require('../platform/system-resource-monitor');
 const { createBrowserLaunchGuard } = require('../features/browser/browser-launch-guard');
+const { createRemoteBrowserPeerController } = require('../features/browser/remote-browser-peer-controller');
+const { createRemoteBrowserControl } = require('../features/browser/remote-browser-control');
+const { createDeviceHallUpdateChecker } = require('../features/updates/device-hall-update-checker');
 const { createBackgroundExecutionLeaseManager } = require('../platform/background-execution-lease');
 const { createExtensionManager } = require('../services/extension-manager');
 const { getHardwareFingerprint } = require('../utils/hardware-js');
@@ -69,7 +72,7 @@ function prepareAiSandboxDirectory(app, fileSystem) {
   return workspaceDir;
 }
 
-function createCoreServices({ app, fs, path, BrowserWindow, powerSaveBlocker, safeStorage, safeModePolicy, getTabManager }) {
+function createCoreServices({ app, fs, path, BrowserWindow, dialog, shell, powerSaveBlocker, safeStorage, safeModePolicy, getTabManager }) {
   // ---- 全局状态 ----
   const appRuntime = createAppState();
   const tabs = appRuntime.tabs;
@@ -264,12 +267,47 @@ function createCoreServices({ app, fs, path, BrowserWindow, powerSaveBlocker, sa
     filePath: path.join(app.getPath('userData'), 'ai-server-device-credentials.json'),
     logger: console,
   });
-  const aiServerDeviceService = createAiServerDeviceService({
+  let aiServerDeviceService = null;
+  let remoteBrowserControl = null;
+  const remoteBrowserPeer = createRemoteBrowserPeerController({
+    BrowserWindow,
+    logger: console,
+    onMessage: (message) => remoteBrowserControl?.handlePeerMessage?.(message),
+  });
+  const deviceHallUpdateChecker = createDeviceHallUpdateChecker({
+    filePath: path.join(app.getPath('userData'), 'device-hall-update-notices.json'),
+    version: app.getVersion(),
+    logger: console,
+    confirmDownload: async ({ version, releaseNotes }) => {
+      const detail = releaseNotes ? `\n\n${releaseNotes}` : '';
+      const result = await dialog.showMessageBox({
+        type: 'info',
+        title: '发现新版本',
+        message: `AI-FREE ${version} 已发布`,
+        detail: `是否打开当前 HeySure 服务器的设备大厅下载？${detail}`,
+        buttons: ['前往下载', '稍后'],
+        defaultId: 0,
+        cancelId: 1,
+      });
+      return result.response === 0;
+    },
+    openExternal: (url) => shell.openExternal(url),
+  });
+  remoteBrowserControl = createRemoteBrowserControl({
+    browserRuntimeManager,
+    getActiveProfileId: appRuntime.getActiveTabId,
+    peer: remoteBrowserPeer,
+    logger: console,
+    sendSignal: (event, payload) => aiServerDeviceService?.emitRemoteSignal?.(event, payload),
+  });
+  aiServerDeviceService = createAiServerDeviceService({
     computeDeviceId: runtimeHelpers.computeDeviceId,
     getTools: () => browserAutomationBridge.listExternalMcpTools(),
     callTool: (...args) => browserAutomationBridge.callExternalMcpTool(...args),
     materializeFileRefs: createHeySureFileMaterializer({ sandboxDir: aiSandboxDir }),
     uploadWorkspaceFile: createHeySureFileUploader({ sandboxDir: aiSandboxDir }),
+    remoteControl: remoteBrowserControl,
+    checkForUpdate: (server) => deviceHallUpdateChecker.check(server),
     onStatus: (status) => sendToSide('ai-server-device-status', status),
     credentialStore: aiServerCredentialStore,
     hasVipAccess: () => resolveVipAccess(licenseCache.getSnapshot()).isVip,

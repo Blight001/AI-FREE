@@ -5,7 +5,7 @@
 //   create-refresh-platforms —— 平台/目标地址/教程地址运行时刷新
 //   build-app-shell-deps     —— createAppShell 依赖装配
 //   build-lifecycle-deps     —— registerAppLifecycle 依赖装配
-const { app, BrowserWindow, WebContentsView, dialog, Menu, Tray, powerSaveBlocker, safeStorage, screen } = require('electron');
+const { app, BrowserWindow, WebContentsView, dialog, shell, Menu, Tray, powerSaveBlocker, safeStorage, screen } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { acquireSingleInstance, applyWindowsAppUserModelId } = require('./composition/startup-guards');
@@ -48,7 +48,7 @@ function startMainApp() {
   // ---- 核心服务 ----
   let tabManager;
   const services = createCoreServices({
-    app, fs, path, BrowserWindow, powerSaveBlocker, safeStorage,
+    app, fs, path, BrowserWindow, dialog, shell, powerSaveBlocker, safeStorage,
     safeModePolicy: crashLoopDecision.safeModePolicy,
     getTabManager: () => tabManager,
   });

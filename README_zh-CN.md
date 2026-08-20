@@ -1,5 +1,7 @@
 # AI-FREE
 
+连接并成功注册到 HeySure 后，AI-FREE 会向**当前登录服务器**检查设备大厅稳定版；也会响应服务器的 `device:update-available` 提醒并重新查询。每个服务器的每个新版本只弹一次询问，确认后仅用系统浏览器打开服务器返回的设备大厅链接，不复用旧的自动下载/安装流程。检查失败不会影响设备连接。
+
 [English](README.md) | 简体中文
 
 AI-FREE 是面向 Windows 的多环境 AI 浏览器工作台。Electron 负责桌面外壳、账号授权、网络与环境配置，实际网页统一运行在项目内置的 **AI-FREE Chromium Fork** 中，并通过原生 Win32 宿主嵌入主窗口。
