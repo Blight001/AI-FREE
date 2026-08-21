@@ -10,8 +10,18 @@ if errorlevel 1 (
   exit /b 1
 )
 
-rem Production mode must not restore or accept a loopback backend saved by v-debug.bat.
+rem Keep the account backend in its existing production mode. HeySure has an
+rem independent forced profile so saved or inherited addresses cannot win.
 set "AI_FREE_SERVER_MODE=remote"
+set "HEYSURE_LOCAL_TEST=false"
+set "HEYSURE_FORCE_SERVER_MODE=true"
+set "HEYSURE_SERVER="
+set "VITE_HEYSURE_SERVER="
+set "HEYSURE_LAUNCH_MODE=remote"
+if /i "%~1"=="--local" (
+  set "HEYSURE_LOCAL_TEST=true"
+  set "HEYSURE_LAUNCH_MODE=local"
+)
 
 where npm >nul 2>&1
 if errorlevel 1 (
@@ -33,7 +43,7 @@ if not exist "node_modules\electron\path.txt" (
 )
 
 echo ========================================
-echo   AI-FREE Chromium Runtime Launcher  ^(npm start^)
+echo   AI-FREE Chromium Runtime Launcher  ^(HeySure %HEYSURE_LAUNCH_MODE%^)
 echo ========================================
 echo.
 

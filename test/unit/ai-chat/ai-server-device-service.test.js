@@ -42,11 +42,11 @@ function tick() {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
-function loginResponse(token = 'test-token') {
+function loginResponse(token = 'test-token', socketUrl = 'http://socket.example:3000') {
   return {
     ok: true,
     status: 200,
-    json: async () => ({ access_token: token, agent_socket_url: 'http://socket.example:3000' }),
+    json: async () => ({ access_token: token, agent_socket_url: socketUrl }),
   };
 }
 
@@ -160,6 +160,65 @@ test('登录后注册 custom 设备并将派发任务恰好回一个终态', asy
   assert.deepEqual(calls, [{ name: 'browser_action', args: { action: 'click' } }]);
   assert.equal(socket.sent.filter((entry) => entry.event === 'task:result').length, 1);
   assert.equal(service.status().registered, true);
+  service.stop();
+});
+
+test('HeySure 启动器 profile 压过外部地址和已保存地址，直接启动仍接受显式地址', () => {
+  const input = { server: 'https://saved.example', account: 'user', password: 'secret' };
+  assert.equal(normalizeLoginConfig(input, {
+    HEYSURE_FORCE_SERVER_MODE: 'true',
+    HEYSURE_LOCAL_TEST: 'false',
+    HEYSURE_SERVER: 'https://inherited.example',
+  }).server, 'http://49.234.181.190:58150');
+  assert.equal(normalizeLoginConfig(input, {
+    HEYSURE_FORCE_SERVER_MODE: 'true',
+    HEYSURE_LOCAL_TEST: 'true',
+    HEYSURE_SERVER: 'https://inherited.example',
+  }).server, 'http://127.0.0.1:3000');
+  assert.equal(normalizeLoginConfig(input, {
+    HEYSURE_SERVER: 'https://explicit.example/base/',
+  }).server, 'https://explicit.example/base');
+});
+
+test('HeySure profile 切换重新登录并只向新 socket 注册新 token', async () => {
+  const env = {
+    HEYSURE_FORCE_SERVER_MODE: 'true',
+    HEYSURE_LOCAL_TEST: 'false',
+    HEYSURE_SERVER: 'https://inherited.example',
+  };
+  const requests = [];
+  const sockets = [];
+  const service = createAiServerDeviceService({
+    env,
+    hasVipAccess: () => true,
+    fetch: async (url) => {
+      requests.push(url);
+      const local = url.startsWith('http://127.0.0.1:3000/');
+      return loginResponse(local ? 'local-token' : 'remote-token', local
+        ? 'http://127.0.0.1:3000'
+        : 'http://49.234.181.190:58150');
+    },
+    createSocket: () => {
+      const socket = new FakeSocket();
+      sockets.push(socket);
+      return socket;
+    },
+    getTools: () => ({ tools: [] }),
+  });
+
+  await service.login({ server: 'https://saved.example', account: 'alice', password: 'secret' });
+  await tick();
+  env.HEYSURE_LOCAL_TEST = 'true';
+  await service.login({ server: 'https://saved.example', account: 'alice', password: 'secret' });
+  await tick();
+
+  assert.deepEqual(requests, [
+    'http://49.234.181.190:58150/api/auth/login',
+    'http://127.0.0.1:3000/api/auth/login',
+  ]);
+  assert.equal(sockets[0].connected, false);
+  assert.equal(sockets[0].sent.find((entry) => entry.event === 'device:register').payload.token, 'remote-token');
+  assert.equal(sockets[1].sent.find((entry) => entry.event === 'device:register').payload.token, 'local-token');
   service.stop();
 });
 
@@ -385,7 +444,8 @@ test('首次登录安全记忆凭据，重启后仅会员自动连接，主动�
     load: () => (saved ? { ...saved } : null),
     clear: () => { saved = null; clearCount += 1; return true; },
   };
-  const createService = (isVip, socket) => createAiServerDeviceService({
+  const createService = (isVip, socket, env) => createAiServerDeviceService({
+    env,
     hasVipAccess: () => isVip,
     credentialStore,
     fetch: async () => { loginCount += 1; return loginResponse(`token-${loginCount}`); },
@@ -412,7 +472,16 @@ test('首次登录安全记忆凭据，重启后仅会员自动连接，主动�
   assert.equal(automatic.status.remembered, true);
   assert.equal(saved.server, DEFAULT_HEYSURE_SERVER);
   assert.equal(loginCount, 2);
-  assert.equal(restarted.logout().ok, true);
+  restarted.stop();
+
+  saved.server = 'https://saved.example';
+  const local = createService(true, new FakeSocket(), {
+    HEYSURE_FORCE_SERVER_MODE: 'true', HEYSURE_LOCAL_TEST: 'true', HEYSURE_SERVER: 'https://ignored.example',
+  });
+  assert.equal((await local.startAutomatically()).ok, true);
+  assert.equal(saved.server, 'http://127.0.0.1:3000');
+  assert.equal(loginCount, 3);
+  assert.equal(local.logout().ok, true);
   assert.equal(saved, null);
   assert.equal(clearCount, 1);
 });

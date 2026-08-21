@@ -12,6 +12,10 @@ if errorlevel 1 (
 
 rem Local debug target. Adjust to your own local service.
 set "AI_FREE_SERVER_MODE=local"
+set "HEYSURE_LOCAL_TEST=true"
+set "HEYSURE_FORCE_SERVER_MODE=true"
+set "HEYSURE_SERVER="
+set "VITE_HEYSURE_SERVER="
 set "SERVER_BASE=http://127.0.0.1:58111"
 set "ACCOUNT_SERVICE_URL=http://127.0.0.1:58111/api/account"
 set "PLATFORM=local"

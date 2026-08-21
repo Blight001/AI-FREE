@@ -1,6 +1,6 @@
 # AI-FREE
 
-HeySure 首次连接地址读取聚合仓库 `device.config.json`；独立打包或安装态缺失时固定回退 `http://49.234.181.190:58150`。仅显式设置 `HEYSURE_LOCAL_TEST=true` 才使用 `http://127.0.0.1:3000`，环境变量 `HEYSURE_SERVER` 和用户已保存地址始终优先。
+HeySure 地址统一读取聚合仓库 `device.config.json`；独立运行或安装态缺失时，正式地址固定回退 `http://49.234.181.190:58150`，本地地址固定回退 `http://127.0.0.1:3000`。Windows 使用 `run.bat` 启动默认 HeySure，使用 `run-local.bat` 启动本地 HeySure；这两个入口的 profile 高于外部 `HEYSURE_SERVER` 和已保存地址。直接运行 npm 命令时仍可用 `HEYSURE_SERVER` 显式指定地址，其优先级高于已保存地址和默认值。
 
 连接并成功注册到 HeySure 后，AI-FREE 会向**当前登录服务器**检查设备大厅稳定版；也会响应服务器的 `device:update-available` 提醒并重新查询。每个服务器的每个新版本只弹一次询问，确认后仅用系统浏览器打开服务器返回的设备大厅链接，不复用旧的自动下载/安装流程。检查失败不会影响设备连接。
 
@@ -63,7 +63,7 @@ npm ci
 npm start
 ```
 
-也可以双击 `v-start.bat`。它会强制使用远端服务模式，并检查 Electron 二进制是否安装完整。
+Windows 推荐双击 `run.bat`；本地 HeySure 联调双击 `run-local.bat`。兼容入口 `v-start.bat` 等同 `run.bat`，并继续检查 Electron 二进制是否安装完整。
 
 ### 启动命令
 
@@ -74,7 +74,10 @@ npm start
 | `npm run start:dev` | 直接启动 Electron 开发外壳；浏览器页仍使用内置 Chromium |
 | `npm run start:electron` | 与 `start:dev` 相同 |
 | `npm run start:prototype` | Chromium 接入排障模式，允许 prototype 握手；不得用于发布 |
-| `v-debug.bat` | 使用 `127.0.0.1:58111` 本地后端并启用 HTTP 兼容调试 |
+| `run.bat` | 标准入口：账号后端保持正式模式，HeySure 固定为默认服务器 |
+| `run-local.bat` | 本地 HeySure 联调：账号后端保持正式模式，HeySure 固定为 `127.0.0.1:3000` |
+| `v-start.bat` | 兼容入口，等同 `run.bat`；内部 `--local` 仅供 `run-local.bat` 使用 |
+| `v-debug.bat` | 兼容的全本地 HTTP 调试：账号后端 `127.0.0.1:58111`，HeySure `127.0.0.1:3000` |
 
 `start:dev` 不包含热更新服务器。修改主进程或预加载脚本后需要重启应用；修改内置扩展后需要重建或重新加载对应浏览器环境。
 
@@ -109,14 +112,17 @@ npm install
 
 | 变量 | 作用 |
 | --- | --- |
-| `AI_FREE_SERVER_MODE=remote|local` | 限制允许使用的服务地址类型，避免正式启动误用回环地址 |
+| `AI_FREE_SERVER_MODE=remote|local` | 仅控制既有账号后端地址模式，不决定 HeySure 设备服务器 |
 | `SERVER_BASE` | 覆盖服务根地址 |
 | `ACCOUNT_SERVICE_URL` | 覆盖账号 HTTP 接口 |
+| `HEYSURE_SERVER` | 直接 npm 启动时显式覆盖 HeySure 地址；标准 BAT 会清除此变量 |
+| `HEYSURE_LOCAL_TEST=true` | 直接 npm 启动时选择本地 HeySure profile |
+| `HEYSURE_FORCE_SERVER_MODE=true` | 强制 profile 高于显式/已保存地址；由标准 BAT 管理 |
 | `PLATFORM` | 选择平台配置 |
 | `FORCE_HTTP_COMPAT_MODE=1` | 禁用 TCP 通道，使用 HTTP 兼容模式 |
 | `DEBUG=1` | 启用调试行为与额外日志 |
 
-正式模式的服务地址由 `v-start.bat` 固定为 `remote`；本地联调建议使用 `v-debug.bat`，并按实际后端端口修改脚本中的地址。
+`run.bat` 与 `run-local.bat` 只切换 HeySure 设备服务器，不改变账号后端语义。每次连接都会重新调用目标服务器登录接口取得新的 token 和 Socket 地址；加密记忆文件只保存服务器、账号、密码和设备名，不保存 token 或 Socket 地址。需要同时调试旧账号 HTTP 后端时才使用 `v-debug.bat`。
 
 ## 内置扩展
 

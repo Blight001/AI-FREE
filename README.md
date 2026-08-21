@@ -4,6 +4,8 @@ English | [简体中文](README_zh-CN.md)
 
 AI-FREE is a multi-profile AI browser workspace for Windows. Electron provides the desktop shell, account and license flows, networking, and environment controls. All web content runs in the bundled **AI-FREE Chromium Fork**, embedded into the main window through a native Win32 host.
 
+The canonical Windows launchers are `run.bat` for the configured default HeySure server and `run-local.bat` for `http://127.0.0.1:3000`. Their forced profiles override inherited `HEYSURE_SERVER` values and remembered HeySure addresses. Direct npm launches can still use `HEYSURE_SERVER`, which takes priority over remembered and default addresses.
+
 Current version: `2.6.38`
 
 > This is no longer a conventional Electron webview application. Production mode requires `resources/chromium/ai-free-browser.exe` and an authenticated Runtime Bridge named-pipe handshake. It does not fall back to Electron web content or a system Chrome/Edge installation.
@@ -59,7 +61,7 @@ npm ci
 npm start
 ```
 
-On Windows, `v-start.bat` provides the same production-oriented launch. It forces remote server mode and verifies that the Electron binary was installed correctly.
+On Windows, use `run.bat` for the default HeySure server or `run-local.bat` for local HeySure integration. The compatible `v-start.bat` entry is equivalent to `run.bat` and continues to verify that Electron was installed correctly.
 
 ### Launch Commands
 
@@ -70,7 +72,10 @@ On Windows, `v-start.bat` provides the same production-oriented launch. It force
 | `npm run start:dev` | Starts the Electron development shell; browser pages still use bundled Chromium |
 | `npm run start:electron` | Same as `start:dev` |
 | `npm run start:prototype` | Chromium integration diagnostics with prototype handshake; never use for releases |
-| `v-debug.bat` | Uses a local backend at `127.0.0.1:58111` with HTTP compatibility mode |
+| `run.bat` | Canonical launch: production account backend and configured default HeySure server |
+| `run-local.bat` | Local HeySure launch at `127.0.0.1:3000`; the account backend remains production |
+| `v-start.bat` | Compatibility alias for `run.bat`; its internal `--local` option is used by `run-local.bat` |
+| `v-debug.bat` | Compatible full-local HTTP debug: account backend at `127.0.0.1:58111`, HeySure at `127.0.0.1:3000` |
 
 `start:dev` does not provide a hot-reload server. Restart the app after changing main-process or preload code; rebuild or reload the relevant browser environment after changing a bundled extension.
 
@@ -105,14 +110,17 @@ Common development environment variables:
 
 | Variable | Purpose |
 | --- | --- |
-| `AI_FREE_SERVER_MODE=remote|local` | Restricts allowed server-address types so production does not reuse a loopback backend |
+| `AI_FREE_SERVER_MODE=remote|local` | Controls only the existing account-backend address mode, not the HeySure device server |
 | `SERVER_BASE` | Overrides the service base URL |
 | `ACCOUNT_SERVICE_URL` | Overrides the account HTTP endpoint |
+| `HEYSURE_SERVER` | Explicit HeySure URL for direct npm launches; canonical BAT launchers clear it |
+| `HEYSURE_LOCAL_TEST=true` | Selects the local HeySure profile for direct npm launches |
+| `HEYSURE_FORCE_SERVER_MODE=true` | Makes the profile override explicit and remembered URLs; managed by the BAT launchers |
 | `PLATFORM` | Selects a platform configuration |
 | `FORCE_HTTP_COMPAT_MODE=1` | Disables the TCP channel and uses HTTP compatibility mode |
 | `DEBUG=1` | Enables debug behavior and additional logging |
 
-`v-start.bat` pins server mode to `remote`. For local integration, use `v-debug.bat` and adjust its backend addresses to match your service.
+`run.bat` and `run-local.bat` switch only the HeySure device server and preserve the account-backend semantics. Every connection logs in to the selected server for a fresh token and Socket URL; the encrypted remembered-login file stores only the server, account, password, and device name. Use `v-debug.bat` only when the legacy account HTTP backend must also run locally.
 
 ## Bundled Extensions
 

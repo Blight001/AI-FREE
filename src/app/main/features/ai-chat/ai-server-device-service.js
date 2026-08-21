@@ -1,8 +1,6 @@
 'use strict';
 
 const os = require('os');
-const fs = require('fs');
-const path = require('path');
 const {
   normalizeToolError,
   normalizeToolSchema,
@@ -12,22 +10,13 @@ const {
   prepareHeySureBrowserFileArgs,
 } = require('./heysure-file-materializer');
 const { attachHeySureDownloadedFile } = require('./heysure-file-uploader');
-
-const PRODUCTION_HEYSURE_SERVER = 'http://49.234.181.190:58150';
-const LOCAL_TEST_HEYSURE_SERVER = 'http://127.0.0.1:3000';
-function loadDefaultHeySureServer() {
-  const localTest = /^(1|true|yes)$/i.test(process.env.HEYSURE_LOCAL_TEST || '');
-  const key = localTest ? 'local_test_server_url' : 'default_server_url';
-  const fallback = localTest ? LOCAL_TEST_HEYSURE_SERVER : PRODUCTION_HEYSURE_SERVER;
-  try {
-    const config = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../../../../../device.config.json'), 'utf8'));
-    return String(config[key] || fallback).trim().replace(/\/+$/, '');
-  } catch (_) {
-    return fallback;
-  }
-}
-const DEFAULT_HEYSURE_SERVER = loadDefaultHeySureServer();
-const LEGACY_DEFAULT_HEYSURE_SERVER = 'http://49.234.181.190:3000';
+const {
+  DEFAULT_HEYSURE_SERVER,
+  loadDefaultHeySureServer,
+  migrateSavedLoginConfig,
+  normalizeLoginConfig,
+  normalizeServerUrl,
+} = require('./heysure-server-profile');
 const REGISTER_INTERVAL_MS = 3000;
 const LOGIN_TIMEOUT_MS = 10000;
 const MAX_COMPLETED_TASKS = 200;
@@ -38,29 +27,6 @@ function defaultSocketFactory(url, options) {
   return require('socket.io-client').io(url, options);
 }
 
-function normalizeServerUrl(value) {
-  const raw = String(value || DEFAULT_HEYSURE_SERVER).trim().replace(/\/+$/, '');
-  const parsed = new URL(raw);
-  if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('HeySure 地址仅支持 HTTP 或 HTTPS');
-  return parsed.toString().replace(/\/$/, '');
-}
-
-function requiredText(value, label, maxLength) {
-  const text = String(value || '').trim();
-  if (!text) throw new Error(`请输入${label}`);
-  if (text.length > maxLength) throw new Error(`${label}长度不能超过 ${maxLength} 个字符`);
-  return text;
-}
-
-function normalizeLoginConfig(input = {}) {
-  return {
-    server: normalizeServerUrl(input.server),
-    account: requiredText(input.account, '账号', 200),
-    password: requiredText(input.password, '密码', 4096),
-    serviceName: String(input.serviceName || 'AI-FREE').trim().slice(0, 80) || 'AI-FREE',
-  };
-}
-
 function protocolToolName(sourceName) {
   const action = String(sourceName || '')
     .trim()
@@ -68,11 +34,6 @@ function protocolToolName(sourceName) {
     .replace(/[^a-z0-9]+/g, '+')
     .replace(/^\++|\++$/g, '');
   return action ? `aifree.${action}` : '';
-}
-
-function migrateSavedLoginConfig(saved) {
-  if (String(saved?.server || '').replace(/\/+$/, '') !== LEGACY_DEFAULT_HEYSURE_SERVER) return saved;
-  return { ...saved, server: DEFAULT_HEYSURE_SERVER };
 }
 
 function legacyProtocolToolName(sourceName) {
@@ -147,8 +108,18 @@ function taskSummary(tool, result) {
   return explicit || `AI-FREE 工具 ${tool} 执行完成`;
 }
 
+function createInitialState(credentialStore, env) {
+  return {
+    phase: 'idle', server: loadDefaultHeySureServer(env), account: '', serviceId: '', serviceName: 'AI-FREE',
+    connected: false, registered: false, remembered: credentialStore?.has?.() === true,
+    aiConfigId: null, toolCount: 0, message: '尚未连接 AI 服务器',
+  };
+}
+
 class AiServerDeviceService {
   constructor(options = {}) {
+    const { env = process.env } = options;
+    this.env = env;
     this.fetch = options.fetch || globalThis.fetch;
     this.createSocket = options.createSocket || defaultSocketFactory;
     this.computeDeviceId = options.computeDeviceId || (() => 'device');
@@ -176,11 +147,7 @@ class AiServerDeviceService {
     this.lastCatalogSignature = '';
     this.inFlightTasks = new Set();
     this.completedTasks = new Map();
-    this.state = {
-      phase: 'idle', server: DEFAULT_HEYSURE_SERVER, account: '', serviceId: '', serviceName: 'AI-FREE',
-      connected: false, registered: false, remembered: this.credentialStore?.has?.() === true,
-      aiConfigId: null, toolCount: 0, message: '尚未连接 AI 服务器',
-    };
+    this.state = createInitialState(this.credentialStore, this.env);
   }
 
   status() {
@@ -194,7 +161,7 @@ class AiServerDeviceService {
 
   async resolveServiceId() {
     if (this.serviceId) return this.serviceId;
-    const explicit = String(process.env.HEYSURE_SERVICE_ID || '').trim();
+    const explicit = String(this.env.HEYSURE_SERVICE_ID || '').trim();
     const identity = explicit || await this.computeDeviceId();
     this.serviceId = explicit || stableServiceId(identity);
     return this.serviceId;
@@ -241,8 +208,10 @@ class AiServerDeviceService {
 
   async login(input = {}, options = {}) {
     if (this.hasVipAccess() !== true) return this.vipRequiredResult();
-    const config = normalizeLoginConfig(input);
+    const config = normalizeLoginConfig(input, this.env);
     this.disconnectSocket();
+    this.token = '';
+    this.socketUrl = '';
     this.credentials = config;
     this.publishStatus({
       phase: 'authenticating', server: config.server, account: config.account,
@@ -503,14 +472,14 @@ class AiServerDeviceService {
   }
 
   async startFromEnvironment() {
-    const account = String(process.env.HEYSURE_ACCOUNT || '').trim();
-    const password = String(process.env.HEYSURE_PASSWORD || '');
+    const account = String(this.env.HEYSURE_ACCOUNT || '').trim();
+    const password = String(this.env.HEYSURE_PASSWORD || '');
     if (!account || !password) return { ok: true, skipped: true, status: this.status() };
     return this.login({
-      server: process.env.HEYSURE_SERVER || DEFAULT_HEYSURE_SERVER,
+      server: this.env.HEYSURE_SERVER,
       account,
       password,
-      serviceName: process.env.HEYSURE_SERVICE_NAME || 'AI-FREE',
+      serviceName: this.env.HEYSURE_SERVICE_NAME || 'AI-FREE',
     }, { remember: false });
   }
 
@@ -527,8 +496,10 @@ class AiServerDeviceService {
     if (!environment.skipped) return environment;
     const saved = this.credentialStore?.load?.();
     if (!saved) return { ok: true, skipped: true, reason: 'no_credentials', status: this.status() };
-    const migrated = migrateSavedLoginConfig(saved);
-    return this.login(migrated, { remember: migrated !== saved });
+    const migrated = migrateSavedLoginConfig(saved, this.env);
+    const resolved = normalizeLoginConfig(migrated, this.env);
+    const savedServer = String(saved.server || '').trim().replace(/\/+$/, '');
+    return this.login(resolved, { remember: migrated !== saved || resolved.server !== savedServer });
   }
 
   stop() {
