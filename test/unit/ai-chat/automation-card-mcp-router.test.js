@@ -50,7 +50,29 @@ test('card MCP router reuses browser routing and strips route-only arguments', a
   assert.deepEqual(calls[0][3], { action: 'click', selector: '#submit' });
 });
 
+test('card MCP router accepts HeySure-exposed aliases stored by remote clients', async () => {
+  const aliases = [
+    'mcp__heysure_member__aifree_browser_action',
+    'aifree.browser+action',
+    'aifree_browser-action',
+  ];
+  for (const alias of aliases) {
+    const { router, calls } = fixture();
+    await router.execute('browser-1', alias, { action: 'click', selector: '#submit' });
+    assert.equal(calls[0][0], 'browser');
+    assert.equal(calls[0][2], 'browser_action');
+  }
+});
+
 test('card MCP router rejects recursive manage_card calls', async () => {
   const { router } = fixture();
   await assert.rejects(() => router.execute('browser-1', 'manage_card', { action: 'run' }), /禁止递归调用/);
+});
+
+test('card MCP router also blocks recursive manage_card aliases', async () => {
+  const { router } = fixture();
+  await assert.rejects(
+    () => router.execute('browser-1', 'mcp__heysure_member__aifree_manage_card', { action: 'run' }),
+    /禁止递归调用 manage_card/,
+  );
 });
