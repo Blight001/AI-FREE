@@ -187,6 +187,14 @@ class BrowserAutomationBridgeRuntime {
     return this.externalMcpGateway.refreshPublication({ host: this.host, port: this.port });
   }
 
+  getExternalMcpStatus() {
+    return this.externalMcpGateway.getStatus({ host: this.host, port: this.port });
+  }
+
+  getExternalMcpConnectionInfo() {
+    return this.externalMcpGateway.getConnectionInfo();
+  }
+
   configureExternalMcp(context = {}) {
     this.cardMcpRouter.configure(context);
     this.externalMcpGateway.configure(context);
@@ -214,6 +222,8 @@ function createBrowserAutomationBridge(options = {}) {
     dispatch: (...args) => runtime.dispatch(...args),
     getConnection: (...args) => runtime.getConnection(...args),
     getCardCacheState: () => runtime.getCardCacheState(),
+    getExternalMcpConnectionInfo: () => runtime.getExternalMcpConnectionInfo(),
+    getExternalMcpStatus: () => runtime.getExternalMcpStatus(),
     listConnections: () => runtime.listConnections(),
     listAutomationMcpTools: () => runtime.listAutomationMcpTools(),
     listExternalMcpTools: () => runtime.listExternalMcpTools(),

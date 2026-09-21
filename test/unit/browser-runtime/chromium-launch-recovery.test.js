@@ -8,7 +8,7 @@ const {
   classifyChromiumLaunchFailure,
   createChromiumLaunchRecovery,
   getChromiumHandshakeBudget,
-} = require('../../../src/app/main/browser-runtime/chromium-launch-recovery');
+} = require('../../../src/app/backend/browser-runtime/chromium-launch-recovery');
 
 function failure(code, details = {}) {
   return Object.assign(new Error('launch failed'), { code }, details);

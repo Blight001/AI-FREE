@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const { createAppShellMainWindowController } = require('../../../src/app/main/services/app-shell-main-window');
+const { createAppShellMainWindowController } = require('../../../src/app/backend/services/app-shell-main-window');
 
 test('浏览器配置内嵌主窗口且只创建侧边栏子视图', () => {
   const views = [];
@@ -71,7 +71,7 @@ test('浏览器配置内嵌主窗口且只创建侧边栏子视图', () => {
     resolveAppIconPath: () => 'C:/app/logo.ico',
     attachContextMenu: () => {}, resolveAddTab: () => null, resolveTabs: () => new Map(),
     resolveActiveTabId: () => null, resolveRefreshActiveTab: () => null, resolveAuth: () => null,
-    resolveControlPanelHtmlPath: (fileName) => `C:/app/sidebar/${fileName}`,
+    resolveControlPanelHtmlPath: (fileName) => `C:/app/frontend/sidebar/${fileName}`,
     getSideView: () => sideView, setSideView: (view) => { sideView = view; },
     setMainWindow: (window) => { mainWindow = window; }, resolveMainWindow: () => mainWindow,
     resolveControlPanelWindow: () => null,
@@ -82,7 +82,7 @@ test('浏览器配置内嵌主窗口且只创建侧边栏子视图', () => {
   assert.equal(maximizeCalls, 1);
   window.emit('ready-to-show');
   assert.equal(views.length, 1);
-  assert.deepEqual(loadedPages, ['C:/app/sidebar/ai-control.html']);
+  assert.deepEqual(loadedPages, ['C:/app/frontend/sidebar/account-center.html']);
   assert.deepEqual(views[0].bounds, { x: 700, y: 0, width: 300, height: 659 });
   assert.equal(views[0].visible, true);
   assert.equal(controller.setSidebarWidth(500), 500);

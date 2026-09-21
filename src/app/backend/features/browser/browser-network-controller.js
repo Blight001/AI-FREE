@@ -21,9 +21,10 @@ function getBrowserProxyEndpoint() {
   const endpoint = typeof getClashMiniProxyEndpoint === 'function' ? getClashMiniProxyEndpoint(coreDir) : null;
   if (!endpoint || !Number.isFinite(Number(endpoint.port))) return null;
   const host = firstText(endpoint.host, '127.0.0.1').trim();
+  const protocol = firstText(endpoint.protocol, 'http').trim().toLowerCase();
   return {
     enabled: true,
-    server: `http://${host || '127.0.0.1'}:${Number(endpoint.port)}`,
+    server: `${protocol}://${host || '127.0.0.1'}:${Number(endpoint.port)}`,
     bypassRules: '<local>;127.0.0.1;localhost;::1',
   };
 }

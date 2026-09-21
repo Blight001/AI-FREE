@@ -10,7 +10,7 @@ const test = require('node:test');
 const {
   runCachedChromiumPreflight,
   runChromiumPreflight,
-} = require('../../../src/app/main/browser-runtime/chromium-preflight');
+} = require('../../../src/app/backend/browser-runtime/chromium-preflight');
 
 function sha256(value) {
   return crypto.createHash('sha256').update(value).digest('hex').toUpperCase();

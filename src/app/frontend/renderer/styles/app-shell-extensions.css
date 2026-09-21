@@ -1,0 +1,21 @@
+.extension-manager-inline { margin: 0 0 15px; padding: 12px 0 14px; border-bottom: 1px solid rgba(113, 130, 160, .18); }
+.extension-manager-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.extension-manager-heading h2 { margin: 0; color: #eef3ff; font-size: 14px; }
+.extension-manager-heading p { margin: 5px 0 0; color: #8999b0; font-size: 10px; line-height: 1.45; }
+.extension-plugin-list { display: grid; gap: 7px; }
+.extension-plugin-empty { padding: 13px 10px; color: #8290a5; font-size: 11px; text-align: center; }
+.extension-plugin-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 8px 9px; border: 1px solid rgba(78, 99, 132, .42); border-radius: 9px; background: rgba(13, 18, 27, .55); }
+.extension-plugin-item.is-disabled { opacity: .72; }
+.extension-plugin-icon { width: 28px; height: 28px; object-fit: contain; border-radius: 6px; }
+.extension-plugin-main { min-width: 0; display: grid; gap: 3px; }
+.extension-plugin-main strong { overflow: hidden; color: #e7edf7; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.extension-plugin-main span { overflow: hidden; color: #91a0b5; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.extension-plugin-actions { display: flex; align-items: center; gap: 5px; }
+.extension-plugin-toggle, .extension-plugin-remove { min-height: 26px; padding: 0 8px; border: 1px solid rgba(82, 105, 139, .48); border-radius: 6px; color: #b8c5d8; background: rgba(30, 39, 54, .86); font: inherit; font-size: 10px; cursor: pointer; }
+.extension-plugin-toggle.is-enabled { border-color: rgba(65, 184, 98, .5); color: #b9efc8; }
+.extension-plugin-remove { border-color: rgba(210, 83, 83, .42); color: #e6a0a0; }
+.extension-plugin-toggle:disabled, .extension-plugin-remove:disabled { opacity: .55; cursor: wait; }
+.extension-manager-status { min-height: 16px; margin-top: 7px; color: #91a0b5; font-size: 10px; }
+.extension-manager-status[data-type="error"] { color: #ff9f9f; }
+.extension-manager-status[data-type="success"] { color: #b9efc8; }
+

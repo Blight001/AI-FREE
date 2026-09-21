@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { launchChromiumProfile } = require('../../../src/app/main/browser-runtime/chromium-runtime-launch');
+const { launchChromiumProfile } = require('../../../src/app/backend/browser-runtime/chromium-runtime-launch');
 
 test('runtime launch timing exposes profile, host, pipe, process, handshake and attach phases', async () => {
   const messages = [];

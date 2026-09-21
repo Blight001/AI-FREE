@@ -9,7 +9,7 @@ const test = require('node:test');
 const originalCwd = process.cwd();
 const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-account-storage-'));
 process.chdir(fixtureRoot);
-const accountStorage = require('../../../src/app/main/lib/account-storage');
+const accountStorage = require('../../../src/app/backend/lib/account-storage');
 
 test.after(() => {
   process.chdir(originalCwd);

@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createAccountService } = require('../../../src/app/main/features/account/account-service');
+const { createAccountService } = require('../../../src/app/backend/features/account/account-service');
 
 function successfulContext(overrides = {}) {
   const stored = [];

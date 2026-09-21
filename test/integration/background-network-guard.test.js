@@ -6,20 +6,20 @@ const path = require('node:path');
 const { EventEmitter } = require('node:events');
 const YAML = require('yaml');
 
-const { buildChromiumArgs } = require('../../src/app/main/browser-runtime/chromium-launcher');
-const { appContext } = require('../../src/app/main/runtime/app-context');
-const { resolveLatencyConcurrency } = require('../../src/app/main/ipc/register/clash-mini-actions');
+const { buildChromiumArgs } = require('../../src/app/backend/browser-runtime/chromium-launcher');
+const { appContext } = require('../../src/app/backend/runtime/app-context');
+const { resolveLatencyConcurrency } = require('../../src/app/backend/ipc/register/clash-mini-actions');
 const {
   installShutdownUncaughtExceptionGuard,
   isExpectedShutdownNetworkError,
-} = require('../../src/app/main/utils/logger');
+} = require('../../src/app/backend/utils/logger');
 const {
   importDirectClashRuntimeConfig,
   normalizeProbeUrl,
   normalizeClashMiniStartupConfig,
   syncLocalGeoAssets,
-} = require('../../src/app/main/ipc/register/clash-mini-core');
-const { createBeforeQuitHandler } = require('../../src/app/main/platform/app-shutdown');
+} = require('../../src/app/backend/ipc/register/clash-mini-core');
+const { createBeforeQuitHandler } = require('../../src/app/backend/platform/app-shutdown');
 
 function createTempDir(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'clash-mini-geo-test-'));

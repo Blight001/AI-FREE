@@ -10,7 +10,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const root = path.join(__dirname, '..', '..', '..');
-const mainDir = path.join(root, 'src', 'app', 'main');
+const mainDir = path.join(root, 'src', 'app', 'backend');
 const contracts = require(path.join(root, 'src', 'app', 'contracts', 'ipc-channels.js'));
 const { hasIpcPayloadSchema } = require(path.join(root, 'src', 'app', 'contracts', 'ipc-payloads.js'));
 

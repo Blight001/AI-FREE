@@ -10,13 +10,13 @@ const {
   isCustomAiApiConfigured,
   isCustomAiModelId,
   toPublicCustomAiApiConfig,
-} = require('../../src/app/main/utils/ai-control-settings');
+} = require('../../src/app/backend/utils/ai-control-settings');
 const {
   normalizeMessages,
   normalizeOpenAiTools,
   resolveChatCompletionsUrl,
   sendCustomAIControlMessage,
-} = require('../../src/app/main/services/custom-ai-api');
+} = require('../../src/app/backend/services/custom-ai-api');
 
 test('自定义 API 配置可识别且公开配置不会泄露 API Key', () => {
   const config = getCustomAiApiConfig({

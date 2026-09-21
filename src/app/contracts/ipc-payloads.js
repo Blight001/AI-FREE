@@ -239,6 +239,21 @@ const IPC_PAYLOAD_SCHEMAS = Object.freeze({
     }
     return input;
   },
+  'ai.workflow': (channel, payload) => {
+    const input = objectPayload(channel, payload);
+    const allowed = new Set(['connection_id', 'action', 'mode']);
+    Object.keys(input).forEach((key) => { if (!allowed.has(key)) fail(channel, key, '不支持的字段'); });
+    stringField(channel, input, 'connection_id', { required: true });
+    stringField(channel, input, 'action', { required: true, maxLength: 32 });
+    if (!['status', 'set_mode', 'pause', 'resume', 'report', 'cancel'].includes(input.action)) fail(channel, 'action', '不支持的动作');
+    stringField(channel, input, 'mode', { maxLength: 32 });
+    return input;
+  },
+  'ui.startup-settings': (channel, payload) => {
+    const input = objectPayload(channel, payload);
+    booleanField(channel, input, 'enabled');
+    return input;
+  },
   'ai.workspace-read': (channel, payload) => {
     const input = objectPayload(channel, payload);
     stringField(channel, input, 'path', { required: true, maxLength: 4096 });

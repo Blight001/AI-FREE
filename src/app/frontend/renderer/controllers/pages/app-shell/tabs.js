@@ -122,7 +122,7 @@ function bindAddTabBtnOnce() {
     e.stopPropagation();
     if (toggleSidebarClickLock) return;
     toggleSidebarClickLock = true;
-    ShellApi.toggleSidebar();
+    ShellApi.openAccountCenterSidebar?.();
     setTimeout(() => { toggleSidebarClickLock = false; }, 300);
   });
   addTabBtn.addEventListener('dblclick', async (e) => {

@@ -10,7 +10,7 @@ const {
   createHeySureFileMaterializer,
   normalizeFileRefs,
   prepareHeySureBrowserFileArgs,
-} = require('../../../src/app/main/features/ai-chat/heysure-file-materializer');
+} = require('../../../src/app/backend/features/ai-chat/heysure-file-materializer');
 
 const REF = `file_${'a'.repeat(32)}`;
 

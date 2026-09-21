@@ -6,7 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { createExtensionCompatService } = require('../../../src/app/main/features/extensions/extension-compat-service');
+const { createExtensionCompatService } = require('../../../src/app/backend/features/extensions/extension-compat-service');
 
 function copyDirectory(source, destination) {
   fs.mkdirSync(destination, { recursive: true });

@@ -145,7 +145,7 @@ function verifyUnpackedRuntimeFiles(projectDir, resourcesDir, extractDir) {
   }
   verifyExcludedPackagedExtensions(projectDir, unpackedRoot, packagedExtensions);
   for (const name of REQUIRED_WATCHDOG_FILES) {
-    const watchdogRelative = path.join('app', 'main', 'runtime', 'crash-watchdog', name);
+    const watchdogRelative = path.join('app', 'backend', 'runtime', 'crash-watchdog', name);
     assertFile(path.join(unpackedRoot, watchdogRelative), 128);
     assertFile(path.join(extractDir, 'src', watchdogRelative), 128);
   }
@@ -174,14 +174,15 @@ function verifyAsarIntegrity(projectDir, appOutDir) {
     // 缺失的文件都会在这里直接失败，禁止继续生成安装包。
     asar.extractAll(archivePath, extractDir);
     verifyUnpackedRuntimeFiles(projectDir, resourcesDir, extractDir);
-    const sidebarRoot = path.join(extractDir, 'src', 'app', 'sidebar');
+    const sidebarRoot = path.join(extractDir, 'src', 'app', 'frontend', 'sidebar');
     const sidebarPath = path.join(sidebarRoot, 'ai-control.html');
     const accountPath = path.join(sidebarRoot, 'account-center.html');
-    const appShellPath = path.join(extractDir, 'src', 'app', 'views', 'app-shell.html');
+    const appShellPath = path.join(extractDir, 'src', 'app', 'frontend', 'views', 'app-shell.html');
     const logoResolverPath = path.join(
       extractDir,
       'src',
       'app',
+      'frontend',
       'sidebar',
       'client',
       'scripts',

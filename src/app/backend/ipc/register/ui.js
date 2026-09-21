@@ -1,4 +1,4 @@
-const { BrowserWindow, nativeTheme, shell } = require('electron');
+const { BrowserWindow, clipboard, nativeTheme, shell } = require('electron');
 const { resolveTabTitle } = require('../../services/tab-common');
 const { createTabContextMenuController } = require('../../features/browser/tab-context-menu-controller');
 const { createSidebarFocusHandler } = require('../../features/browser/sidebar-focus-controller');
@@ -6,6 +6,11 @@ const {
   readWindowCloseBehavior,
   writeWindowCloseBehavior,
 } = require('../../features/window/window-close-preference');
+const {
+  isStartupSupported,
+  readStartupSettings,
+  updateStartupSettings,
+} = require('../../features/window/startup-preference');
 
 function uiIpcError(error) {
   return error?.message || String(error);
@@ -290,6 +295,58 @@ function readSidebarWidth(sideView) {
   return Number(bounds?.width) || 0;
 }
 
+function registerSidebarNavigationIPC(ipc, ui) {
+  ipc.on('toggle-sidebar', () => {
+    ui.toggleSidebar();
+  });
+  ipc.on('open-ai-control-sidebar', () => {
+    ui.openAiControlSidebar?.();
+  });
+  ipc.on('open-account-center-sidebar', () => {
+    ui.openAccountCenterSidebar?.();
+  });
+}
+
+function registerStartupPreferenceIPC(ipc, ctx) {
+  ipc.handle('get-startup-settings', async () => ({
+    ok: true,
+    data: {
+      ...readStartupSettings(ctx.readStoreConfigSafe, ctx.app),
+      supported: isStartupSupported(ctx.app, process.platform),
+    },
+  }));
+  ipc.handle('set-startup-settings', async (_event, payload = {}) => (
+    updateStartupSettings({
+      app: ctx.app,
+      readStoreConfigSafe: ctx.readStoreConfigSafe,
+      writeStoreConfigSafe: ctx.writeStoreConfigSafe,
+      payload: { openAtLogin: payload?.enabled === true, startMinimized: payload?.enabled === true },
+      options: { platform: process.platform, execPath: process.execPath },
+    })
+  ));
+}
+
+function registerExternalCodexIPC(ipc, ctx) {
+  ipc.handle('get-external-codex-status', async () => {
+    const bridge = ctx.browserAutomationBridge;
+    if (!bridge?.getExternalMcpStatus) return { ok: false, error: '外部 Codex 桥接尚未装配' };
+    return {
+      ok: true,
+      data: { ...bridge.getExternalMcpStatus(), codex: ctx.externalCodexLink?.getStatus?.() || null },
+    };
+  });
+  ipc.handle('copy-external-codex-config', async () => {
+    const linkedConfig = ctx.externalCodexLink?.getConfig?.();
+    if (!linkedConfig) return { ok: false, error: '外部 Codex 自动连接组件尚未装配' };
+    try {
+      clipboard.writeText(linkedConfig);
+      return { ok: true, data: { mode: 'stdio' } };
+    } catch (error) {
+      return { ok: false, error: uiIpcError(error) };
+    }
+  });
+}
+
 function registerUiUtilityIPC(ipc, ctx) {
   const { ui } = ctx;
   ipc.handle('set-sidebar-width', async (event, payload = {}) => {
@@ -315,7 +372,15 @@ function registerUiUtilityIPC(ipc, ctx) {
       String(payload?.behavior || ''),
     )
   ));
-  ipc.on('toggle-sidebar', () => ui.toggleSidebar());
+  registerStartupPreferenceIPC(ipc, ctx);
+  registerExternalCodexIPC(ipc, ctx);
+  registerSidebarNavigationIPC(ipc, ui);
+  ipc.on('toggle-network-magic-panel', (_event, payload = {}) => {
+    ui.ensureSidebarVisible?.();
+    ui.sendToSide?.('network-magic-panel-toggle', {
+      open: payload?.open === true,
+    });
+  });
   ipc.on('ensure-sidebar-visible', () => ui.ensureSidebarVisible?.());
   ipc.on('request-account-center', () => {
     try {

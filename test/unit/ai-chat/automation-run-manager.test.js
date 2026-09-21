@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { createAutomationRunManager } = require('../../../src/app/main/services/automation-run-manager');
+const { createAutomationRunManager } = require('../../../src/app/backend/services/automation-run-manager');
 
 async function eventually(read, predicate, timeoutMs = 2000) {
   const deadline = Date.now() + timeoutMs;

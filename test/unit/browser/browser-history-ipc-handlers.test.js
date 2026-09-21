@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 
 const {
   createBrowserHistoryIpcHandlers,
-} = require('../../../src/app/main/features/browser/browser-history-ipc-handlers');
+} = require('../../../src/app/backend/features/browser/browser-history-ipc-handlers');
 
 function fixture(overrides = {}) {
   const events = [];

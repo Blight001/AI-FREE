@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { createAiModelService, createCustomModel, remoteUnavailable } = require('../../../src/app/main/features/ai-chat/ai-model-service');
+const { createAiModelService, createCustomModel, remoteUnavailable } = require('../../../src/app/backend/features/ai-chat/ai-model-service');
 
 const verifiedVip = {
   vip_server_verified: true,

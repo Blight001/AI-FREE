@@ -9,7 +9,7 @@ const test = require('node:test');
 
 const {
   createBrowserAutomationExternalGateway,
-} = require('../../../src/app/main/services/browser-automation-external-gateway');
+} = require('../../../src/app/backend/services/browser-automation-external-gateway');
 
 function createFixture(root, overrides = {}) {
   const calls = [];
@@ -229,6 +229,76 @@ test('external gateway publishes a protected descriptor and authenticates HTTP c
 
     gateway.unpublish();
     assert.equal(fs.existsSync(descriptorPath), false);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('external gateway serves the Streamable HTTP MCP JSON-RPC contract', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-external-mcp-json-rpc-'));
+  const { gateway } = createFixture(root);
+  const server = http.createServer((req, res) => {
+    const url = new URL(req.url, `http://127.0.0.1:${server.address()?.port || 0}`);
+    void gateway.handle(req, res, url).then((handled) => {
+      if (!handled) { res.statusCode = 404; res.end(); }
+    });
+  });
+  try {
+    await new Promise((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', resolve);
+    });
+    const port = server.address().port;
+    gateway.publish({ host: '127.0.0.1', port });
+    const connection = gateway.getConnectionInfo();
+    assert.deepEqual(connection, {
+      endpoint: `http://127.0.0.1:${port}/mcp/v1`,
+      token: JSON.parse(fs.readFileSync(path.join(root, 'ai-free-mcp-bridge.json'), 'utf8')).token,
+    });
+    const headers = { 'content-type': 'application/json', 'x-ai-free-mcp-token': connection.token };
+    const initialize = await fetch(connection.endpoint, {
+      method: 'POST', headers,
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
+    });
+    assert.equal(initialize.status, 200);
+    assert.equal((await initialize.json()).result.protocolVersion, '2025-06-18');
+
+    const tools = await fetch(connection.endpoint, {
+      method: 'POST', headers,
+      body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }),
+    });
+    assert.equal(tools.status, 200);
+    assert.equal((await tools.json()).result.tools.some((tool) => tool.name === 'software_window'), true);
+
+    const call = await fetch(connection.endpoint, {
+      method: 'POST', headers,
+      body: JSON.stringify({
+        jsonrpc: '2.0', id: 3, method: 'tools/call',
+        params: { name: 'software_window', arguments: { action: 'list' } },
+      }),
+    });
+    assert.equal(call.status, 200);
+    const called = await call.json();
+    assert.equal(called.result.isError, false);
+    assert.equal(JSON.parse(called.result.content[0].text).success, true);
+
+    gateway.options.dispatch = async () => ({ success: true, dataUrl: 'data:image/png;base64,aGVsbG8=', observationId: 'obs-test' });
+    const imageCall = await fetch(connection.endpoint, {
+      method: 'POST', headers,
+      body: JSON.stringify({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'browser_observe', arguments: {} } }),
+    });
+    const imageResult = (await imageCall.json()).result;
+    assert.equal(imageResult.content[1].type, 'image');
+    assert.equal(imageResult.content[1].mimeType, 'image/png');
+    assert.equal(imageResult.structuredContent.dataUrl, undefined);
+    assert.equal(imageResult.content[0].text.includes('aGVsbG8='), false);
+    gateway.options.dispatch = async () => ({ success: false, errorCode: 'OBSERVED_REF_EXPIRED' });
+    const failedCall = await fetch(connection.endpoint, {
+      method: 'POST', headers,
+      body: JSON.stringify({ jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'browser_observe', arguments: {} } }),
+    });
+    assert.equal((await failedCall.json()).result.isError, true);
   } finally {
     await new Promise((resolve) => server.close(resolve));
     fs.rmSync(root, { recursive: true, force: true });

@@ -2,7 +2,7 @@
 
 const assert = require('assert');
 const test = require('node:test');
-const { ChromiumRuntime } = require('../../../src/app/main/browser-runtime/chromium-runtime');
+const { ChromiumRuntime } = require('../../../src/app/backend/browser-runtime/chromium-runtime');
 
 function createRuntime() {
   const sent = [];

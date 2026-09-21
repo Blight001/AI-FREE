@@ -8,6 +8,10 @@ const {
 } = require('./native-browser-observation');
 const { waitForBrowserCondition } = require('./native-browser-wait');
 const { browserFile, observedRef } = require('./native-browser-file');
+const { browserMedia } = require('./native-browser-media');
+const { executeBrowserTab } = require('./native-browser-tabs');
+const { BrowserWorkflow } = require('./browser-workflow');
+const { requestsAccessibility, accessibilityUnavailable, attachScreenshot, actionObservation } = require('./native-browser-feedback');
 
 const CONNECTION_PREFIX = 'native:';
 const READY_STATUSES = new Set(['ready', 'hidden']);
@@ -37,6 +41,8 @@ function runtimeTarget(target) {
     stableRef: _stableRef,
     observedRole: _observedRole,
     observedLabel: _observedLabel,
+    testId: _testId,
+    elementId: _elementId,
     observedUrl: _observedUrl,
     selectorUnique: _selectorUnique,
     selectorStability: _selectorStability,
@@ -88,10 +94,11 @@ function fileUploadRequired(input) {
 
 function isReadOnlyTool(tool, args) {
   const action = text(args.action).toLowerCase();
-  if (['browser_observe', 'browser_screenshot', 'browser_wait', 'browser_control'].includes(tool)) return true;
+  if (['browser_observe', 'browser_screenshot', 'browser_wait', 'browser_control', 'browser_workflow'].includes(tool)) return true;
+  if (tool === 'browser_media') return action === 'list';
   if (tool === 'browser_tab') return action === 'list';
   if (tool === 'browser_file') return ['info', 'save_session'].includes(action);
-  if (tool === 'manage_card') return ['rules', 'list', 'get'].includes(action);
+    if (tool === 'manage_card') return ['rules', 'list', 'get', 'template'].includes(action);
   return false;
 }
 
@@ -177,13 +184,16 @@ class NativeBrowserAutomation {
     this.observeTargets = new Map();
     this.observationHistory = new Map();
     this.takeoverConnections = new Set();
+    this.workflow = new BrowserWorkflow(this);
   }
 
   listConnections() {
     const states = this.runtime?.listStates?.() || [];
-    return states.filter((state) => (
+    const connections = states.filter((state) => (
       state?.bridgeConnected === true && READY_STATUSES.has(text(state.status)) && text(state.profileId)
     )).map((state) => publicConnection(state, findTab(this.getTabs, state.profileId)));
+    this.workflow.prune(connections);
+    return connections;
   }
 
   getConnection(id) {
@@ -211,41 +221,34 @@ class NativeBrowserAutomation {
     return result;
   }
 
-  async browserTab(connection, args) {
-    const action = text(args.action).toLowerCase();
-    const profileId = connection.profileId;
-    if (action === 'list') return this.runtimeCommand(connection, 'list-tabs');
-    if (action === 'switch') {
-      const index = Number(args.index ?? args.tab_index ?? args.id ?? args.tab_id);
-      const target = {
-        url: text(args.url),
-        index: Number.isInteger(index) && index >= 0 ? index : -1,
-      };
-      const switched = target.url || target.index >= 0
-        ? await this.runtimeCommand(connection, 'activate-tab', target)
-        : (await this.runtimeCommand(connection, 'list-tabs')).activeTab;
-      await this.runtime.focus(profileId, 'chromium');
-      this.takeoverConnections.delete(connection.id);
-      return { success: true, action, ...switched };
-    }
-    if (action === 'reload') {
-      await this.runtime.reload(profileId, 'chromium');
-      return { success: true, action, id: profileId };
-    }
-    const url = normalizeUrl(args.url);
-    if (action === 'replace') await this.runtime.navigate(profileId, 'chromium', url);
-    else if (action === 'navigate') {
-      await this.runtime.openTabs(profileId, 'chromium', [url]);
-      await this.runtime.focus(profileId, 'chromium');
-      this.takeoverConnections.delete(connection.id);
-    }
-    else throw new Error(`browser_tab 不支持的原生操作: ${action || '(空)'}`);
-    return { success: true, action, id: profileId, url, cardStep: { name: `打开 ${new URL(url).hostname}`, type: 'navigate', url } };
+  browserTab(connection, args) {
+    return executeBrowserTab(this, connection, args, normalizeUrl);
   }
 
   async browserAction(connection, args) {
+    if (text(args.action) === 'upload_file') throw new Error('文件上传请使用 browser_file action=upload');
+    const blocked = fileUploadRequired(this.resolveObservedTarget(connection, args));
+    if (blocked) return blocked;
+    return this.workflow.action(connection, args);
+  }
+
+  async browserActionRaw(connection, args) {
+    if (args.after && !['none', 'observe'].includes(args.after)) {
+      return { success: false, errorCode: 'INVALID_ACTION_FEEDBACK', error: 'after 只支持 none 或 observe' };
+    }
     let input = this.resolveObservedTarget(connection, args);
     if (input.observedRefRecoveryCandidate) input = await this.recoverObservedTarget(connection, input);
+    if (!text(input.selector) && text(input.observedRole) && text(input.observedLabel)) {
+      const resolved = await this.runtimeCommand(connection, 'inspect-page-state', {
+        target: { role: input.observedRole, name: input.observedLabel, exact: true },
+      });
+      if (resolved?.target?.found && resolved.target.count === 1) {
+        input = { ...input, selector: resolved.target.selector || input.selector,
+          x: resolved.target.clickX ?? input.x, y: resolved.target.clickY ?? input.y };
+      } else if (resolved?.target?.count > 1) {
+        return { success: false, errorCode: 'TARGET_AMBIGUOUS', error: '观察到的目标在当前页面有多个匹配项，请使用 scope、nth 或 test_id', candidates: resolved.target.candidates || [], actionExecuted: false };
+      }
+    }
     const mismatch = mismatchedObservationResult(input);
     if (mismatch) return mismatch;
     const expired = expiredObservedRefResult(input);
@@ -254,9 +257,10 @@ class NativeBrowserAutomation {
     const blocked = fileUploadRequired(input);
     if (blocked) return blocked;
     const result = await this.runtimeCommand(connection, 'perform-action', runtimeTarget(input));
-    return input.observedRefRecovered === true
+    const actionResult = input.observedRefRecovered === true
       ? { ...result, refRecovered: true, recoveryStrategy: 'unique-observed-selector' }
       : result;
+    return actionObservation(this, connection, actionResult, args);
   }
 
   async browserControl(connection, args) {
@@ -296,7 +300,9 @@ class NativeBrowserAutomation {
     if (tool === 'browser_wait') return this.browserWait(connection, input);
     if (tool === 'browser_tab') return this.browserTab(connection, input);
     if (tool === 'browser_file') return this.browserFile(connection, input);
+    if (tool === 'browser_media') return browserMedia(this, connection, input);
     if (tool === 'browser_control') return this.browserControl(connection, input);
+    if (tool === 'browser_workflow') return this.workflow.control(connection, input);
     return null;
   }
 
@@ -393,13 +399,15 @@ class NativeBrowserAutomation {
 
   async browserObserve(connection, input) {
     const result = await this.runtimeCommand(connection, 'observe-page', input);
+    if (result?.success === false || result?.ok === false) return result;
+    if (requestsAccessibility(input) && !result.accessibilityTree) return accessibilityUnavailable(result);
     const observationId = `obs-${randomUUID()}`;
     const decorated = processObservationResult(result, input, observationId);
     const targets = new Map(decorated.items
       .map((item) => observedTarget(item, observationId, { url: decorated.url })).filter(Boolean));
     this.observeTargets.set(connection.id, targets);
     this.rememberObservation(connection.id, observationId, targets);
-    return decorated;
+    return attachScreenshot(this, connection, decorated, input);
   }
 
   async browserWait(connection, args) {
@@ -430,6 +438,8 @@ class NativeBrowserAutomation {
     const connection = this.requireConnection(connectionId);
     const input = args && typeof args === 'object' ? args : {};
     const toolName = normalizeToolName(tool);
+    const blocked = this.workflow.blocked(connection, toolName, input);
+    if (blocked) return blocked;
     if (!isReadOnlyTool(toolName, input) && !this.takeoverConnections.has(connection.id)) {
       return takeoverRequired(toolName, input);
     }

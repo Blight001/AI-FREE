@@ -78,7 +78,7 @@ class FakeBrowserWindow {
 }
 
 const electronPath = require.resolve('electron');
-const targetPath = require.resolve('../../../src/app/main/features/updates/update-download-page');
+const targetPath = require.resolve('../../../src/app/backend/features/updates/update-download-page');
 require.cache[electronPath] = { exports: {
   BrowserWindow: FakeBrowserWindow,
   app: { getPath: () => '' },

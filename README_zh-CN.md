@@ -218,13 +218,13 @@ app2.1/
 
 ### 关键入口
 
-- `src/app/main/main.js`：Electron 入口。
-- `src/app/main/bootstrap.js`：主进程装配和应用启动生命周期。
-- `src/app/main/browser-runtime/`：Chromium 启动、握手、Profile 和窗口桥接。
-- `src/app/main/services/tab-manager.js`：浏览器环境与顶部标签生命周期。
-- `src/app/main/services/extension-manager.js`：扩展发现、加载与刷新。
-- `src/app/main/services/browser-automation-bridge.js`：AI 自动化本机桥接。
-- `src/app/main/ipc/`：侧边栏与主进程之间的 IPC。
+- `src/app/backend/main.js`：Electron 入口。
+- `src/app/backend/bootstrap.js`：主进程装配和应用启动生命周期。
+- `src/app/backend/browser-runtime/`：Chromium 启动、握手、Profile 和窗口桥接。
+- `src/app/backend/services/tab-manager.js`：浏览器环境与顶部标签生命周期。
+- `src/app/backend/services/extension-manager.js`：扩展发现、加载与刷新。
+- `src/app/backend/services/browser-automation-bridge.js`：AI 自动化本机桥接。
+- `src/app/backend/ipc/`：侧边栏与主进程之间的 IPC。
 - `scripts/build-windows.js`：Windows 正式构建、资源同步与校验。
 
 ## 相关文档

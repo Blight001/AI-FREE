@@ -2,10 +2,11 @@
 
 const crypto = require('crypto');
 const { definitionDigest, normalizedMetadata } = require('./automation-card-store');
+const { videoEditingRegressionCard } = require('./video-editing-regression-card');
 
 const ACTIONS = new Set([
   'rules', 'list', 'get', 'write', 'patch_step', 'insert_step', 'delete_step', 'move_step', 'delete', 'run',
-  'validate', 'clone', 'versions', 'get_version', 'set_enabled', 'export',
+  'validate', 'clone', 'versions', 'get_version', 'set_enabled', 'export', 'template',
 ]);
 const STEP_TYPES = new Set([
   'navigate', 'click', 'type', 'wait', 'condition', 'save_cookies',
@@ -240,7 +241,7 @@ async function executeStepWithRetry(step, dispatch, context, progressBase) {
     } catch (error) {
       lastError = error;
       context.onProgress?.({ ...progressBase, phase: 'failed', attempt, success: false, error: error?.message || String(error) });
-      if (attempt >= policy.maxAttempts || error?.errorCode === 'RUN_CANCELLED') throw error;
+      if (attempt >= policy.maxAttempts || error?.errorCode === 'RUN_CANCELLED' || error?.retryable === false) throw error;
       const delay = policy.exponential ? policy.delayMs * (2 ** (attempt - 1)) : policy.delayMs;
       await waitForRetry(Math.min(60000, delay), context.signal);
     }
@@ -279,11 +280,12 @@ function stepResultError(step, result) {
   const failedCondition = conditionMustPass(step) && result?.success !== true;
   const failedTool = toolResultFailed(step, result);
   if (!failedCondition && !failedTool) return null;
-  const error = /** @type {Error & {errorCode?: string}} */ (
+  const error = /** @type {Error & {errorCode?: string,retryable?:boolean}} */ (
     new Error(resultErrorMessage(step, result, failedCondition))
   );
   error.errorCode = text(result?.errorCode || result?.code)
     || (failedCondition ? 'CARD_CONDITION_FAILED' : 'CARD_STEP_FAILED');
+  error.retryable = result?.retryable;
   return error;
 }
 
@@ -458,6 +460,7 @@ class NativeAutomationCardService {
     const action = text(args.action).toLowerCase();
     if (!ACTIONS.has(action)) throw new Error(`未知的 manage_card action: ${action || '(空)'}`);
     if (action === 'rules') return { success: true, rules: RULES, stepTypes: Array.from(STEP_TYPES) };
+    if (action === 'template') return { success: true, template: videoEditingRegressionCard(args.overrides || {}) };
     const state = this.state();
     const direct = this.directAction(action, args, state);
     if (direct) return direct();

@@ -39,6 +39,17 @@ depot_tools Python/CIPD bootstrap，再启动并行 gclient 任务，避免首�
 
 ## 启动自检与故障诊断
 
+### HTML5 媒体支持
+
+`args.gn` 启用 `proprietary_codecs = true` 和 `ffmpeg_branding = "Chrome"`，
+提供常见 MP4/H.264、AAC 支持；产品品牌仍保持 AI-FREE。修改编译参数后必须
+重新构建 Fork 并运行 `stage-runtime.ps1`，仅刷新网页或修改启动参数不会更新解码能力。
+
+stage 完成后运行 `node test/acceptance/scripts/check-chromium-media.js`，
+通过隔离的临时 Profile 检查随包内核的 H.264、AAC、VP8 HTML5 与 MediaSource
+支持，退出时清理浏览器和 Profile。此检查不等同于实际视频解码验收。
+`enable_widevine` 仍关闭，普通媒体编码支持不代表 DRM 视频支持。
+
 `stage-runtime.ps1` 和 `build:win` 都会生成 `runtime-manifest.json`，记录
 `ai-free-browser.exe`、`chrome.dll`、`chrome_elf.dll`、`icudtl.dat` 与
 `resources.pak` 的大小和 SHA-256。启动 Chromium 前，主进程自动检查 Windows

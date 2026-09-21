@@ -11,8 +11,8 @@
     "noEmitOnError": true
   },
   "include": [
-    "src/app/renderer/**/*.ts",
-    "src/app/sidebar/**/*.ts"
+    "src/app/frontend/renderer/**/*.ts",
+    "src/app/frontend/sidebar/**/*.ts"
   ],
   "exclude": ["src/assets", "node_modules", "appbuild", ".generated"]
 }

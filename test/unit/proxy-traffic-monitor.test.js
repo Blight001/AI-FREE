@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const {
   createBillableTrafficTracker,
   isBillableProxyConnection,
-} = require('../../src/app/main/ipc/register/proxy-traffic-monitor');
+} = require('../../src/app/backend/ipc/register/proxy-traffic-monitor');
 
 function connection(id, chains, upload, download) {
   return { id, chains, upload, download };

@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const http = require('node:http');
 const test = require('node:test');
 
-const { getJson, httpGetUniversal, postEventStream, postJson } = require('../../src/app/main/lib/http');
+const { getJson, httpGetUniversal, postEventStream, postJson } = require('../../src/app/backend/lib/http');
 
 let server;
 let baseUrl;

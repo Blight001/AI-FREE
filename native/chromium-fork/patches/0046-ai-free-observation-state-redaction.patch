@@ -1,0 +1,42 @@
+diff --git a/chrome/browser/ui/views/frame/ai_free_accessibility_observe.cc b/chrome/browser/ui/views/frame/ai_free_accessibility_observe.cc
+--- a/chrome/browser/ui/views/frame/ai_free_accessibility_observe.cc
++++ b/chrome/browser/ui/views/frame/ai_free_accessibility_observe.cc
+@@ -175,6 +175,8 @@
+ void MergeAccessibilityItems(const base::DictValue& command,
+                              base::DictValue* response,
+                              ui::AXTreeUpdate& update) {
++  if (command.FindBool("includeAccessibilityTree").value_or(false))
++    response->Set("accessibilityTreeSupported", true);
+   base::ListValue* items = response->FindList("items");
+   const base::DictValue* viewport = response->FindDict("viewport");
+   if (!items || !viewport || update.nodes.empty()) {
+@@ -238,7 +240,7 @@
+     }
+     std::string text =
+         data.GetStringAttribute(ax::mojom::StringAttribute::kName);
+-    if (text.empty()) {
++    if (text.empty() && !ProtectedNode(node)) {
+       text = data.GetStringAttribute(ax::mojom::StringAttribute::kValue);
+     }
+     if (text.empty()) {
+diff --git a/chrome/browser/ui/views/frame/ai_free_page_automation.cc b/chrome/browser/ui/views/frame/ai_free_page_automation.cc
+--- a/chrome/browser/ui/views/frame/ai_free_page_automation.cc
++++ b/chrome/browser/ui/views/frame/ai_free_page_automation.cc
+@@ -152,7 +152,7 @@
+         if(!kind)continue;
+         const point=exposedPoint(el,r,clickable,kind==='media');if(!point)continue;
+         const inputType=tag==='input'?String(el.type||'').toLowerCase():'';
+-        const rawText=String(el.innerText||el.textContent||el.value||el.getAttribute('aria-label')||'').trim().replace(/\s+/g,' ');
++        const rawText=String(el.innerText||el.textContent||(/password/i.test(el.type||'')?'':el.value)||el.getAttribute('aria-label')||'').trim().replace(/\s+/g,' ');
+         const safeText=inputType==='password'?'':rawText;
+         const formLabel=labelOf(el),accessible=accessibleName(el,formLabel),semantic=controlInfo(el,tag,inputType,clickable,accessible);
+         const searchable=[safeText,accessible.text,el.getAttribute('placeholder'),el.getAttribute('aria-label')].filter(Boolean).join(' ').toLowerCase();
+@@ -190,7 +190,7 @@
+     const pointRequested=a.x!==undefined||a.y!==undefined;const mouseAction=action==='click'||action==='double_click'||action==='right_click'||action==='drag'||action==='upload_file';
+     if(mouseAction&&pointRequested){const x=Number(a.x),y=Number(a.y);if(!validPoint(x,y))return {success:false,action,error:'目标坐标超出当前视口',errorCode:'TARGET_COORDINATE_INVALID'};if(action==='drag'){const toX=Number(a.toX),toY=Number(a.toY);if(!validPoint(toX,toY))return {success:false,action,error:'拖拽终点超出当前视口',errorCode:'TARGET_COORDINATE_INVALID'};return {success:true,action,ref:String(a.ref||''),targetMode:'viewport-drag',target:{x,y,toX,toY},nativeDrag:{x,y,toX,toY,viewportWidth:innerWidth,viewportHeight:innerHeight}};}return {success:true,action,ref:String(a.ref||''),targetMode:'viewport-coordinate',target:{x,y},nativeInput:{x,y,viewportWidth:innerWidth,viewportHeight:innerHeight}};}
+     const visible=el=>{if(!el)return false;const r=el.getBoundingClientRect(),c=getComputedStyle(el);return r.width>=1&&r.height>=1&&c.display!=='none'&&c.visibility!=='hidden'&&c.visibility!=='collapse'&&Number(c.opacity)!==0&&!el.hidden;};
+-    const elementValue=el=>String(el?.value??el?.innerText??el?.textContent??'').trim().replace(/\s+/g,' ');
++    const elementValue=el=>String(el?.type==='password'?'':(el?.value??el?.innerText??el?.textContent??'')).trim().replace(/\s+/g,' ');
+     const waitState=()=>{const condition=String(a.condition||'attached'),el=find(),currentValue=condition==='url_matches'?location.href:elementValue(el),expected=String(a.expectedValue??''),hasInitial=Object.prototype.hasOwnProperty.call(a,'initialValue'),initial=String(a.initialValue??'');const matched=condition==='visible'?visible(el):condition==='hidden'?!visible(el):condition==='text_contains'?!!el&&currentValue.includes(expected):condition==='text_changed'?hasInitial&&!!el&&currentValue!==initial:condition==='url_matches'?currentValue.includes(expected):!!el;return {condition,el,currentValue,matched};};
+     if(action==='wait'){const state=waitState();return state.matched?{success:true,action,condition:state.condition,found:!!state.el,currentValue:state.currentValue,url:location.href}:{success:false,action,condition:state.condition,currentValue:state.currentValue,url:location.href,error:'等待条件中',errorCode:'WAIT_PENDING'};}
+     const el=find();if(!el)return {success:false,action,error:'未找到目标元素',errorCode:'ELEMENT_NOT_FOUND'};el.scrollIntoView({block:'center',inline:'center'});el.focus();

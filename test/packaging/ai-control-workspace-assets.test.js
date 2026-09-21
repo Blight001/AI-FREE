@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
-const sidebarRoot = path.join(__dirname, '../../src/app/sidebar');
+const sidebarRoot = path.join(__dirname, '../../src/app/frontend/sidebar');
 
 test('AI 控制页装配上传、工作文件和 @ 引用资源', () => {
   const html = fs.readFileSync(path.join(sidebarRoot, 'ai-control.html'), 'utf8');

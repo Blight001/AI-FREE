@@ -6,7 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { CrashWatchdogWorker } = require('../../../src/app/main/runtime/crash-watchdog/worker');
+const { CrashWatchdogWorker } = require('../../../src/app/backend/runtime/crash-watchdog/worker');
 
 function createFixture(t) {
   const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-watchdog-recovery-'));

@@ -1,0 +1,15 @@
+--- a/chrome/browser/ui/views/frame/ai_free_page_automation.cc
++++ b/chrome/browser/ui/views/frame/ai_free_page_automation.cc
+@@ -680,8 +680,11 @@
+   const role=e=>e.getAttribute('role')||({BUTTON:'button',TEXTAREA:'textbox',SELECT:'combobox',A:e.hasAttribute('href')?'link':'generic',INPUT:({checkbox:'checkbox',radio:'radio',range:'slider',number:'spinbutton',button:'button',submit:'button'}[e.type]||'textbox')}[e.tagName]||e.tagName.toLowerCase());
+   const label=e=>normalizedLabel(e.getAttribute('aria-label')||String(e.getAttribute('aria-labelledby')||'').split(/\s+/).map(id=>e.getRootNode().getElementById?.(id)?.textContent||'').join(' ').trim()||e.labels?.[0]?.innerText||e.innerText||e.textContent||e.getAttribute('title'));
+   const t=a.target||{};
+-  const choices=[t.test_id&&(()=>elements.filter(e=>e.getAttribute('data-testid')===t.test_id)),t.id&&(()=>elements.filter(e=>e.id===t.id)),t.role&&t.name&&(()=>elements.filter(e=>role(e)===t.role&&label(e)===normalizedLabel(t.name))),t.text&&(()=>elements.filter(e=>label(e)===normalizedLabel(t.text)&&!Array.from(e.children).some(c=>label(c)===normalizedLabel(t.text)))),t.selector&&(()=>query(t.selector)||[])];
++  const choices=[t.test_id&&(()=>elements.filter(e=>e.getAttribute('data-testid')===t.test_id)),t.id&&(()=>elements.filter(e=>e.id===t.id)),t.role&&t.name&&(()=>elements.filter(e=>role(e)===t.role&&label(e)===(t.exact===false?label(e).includes(normalizedLabel(t.name)):normalizedLabel(t.name)))),t.text&&(()=>elements.filter(e=>(t.exact===false?label(e).includes(normalizedLabel(t.text)):label(e)===normalizedLabel(t.text))&&!Array.from(e.children).some(c=>label(c)===normalizedLabel(t.text)))),t.selector&&(()=>query(t.selector)||[])];
+   let matches=[];for(const choose of choices){if(!choose)continue;matches=choose();if(matches.length)break;}
++  if(t.scope){const scoped=query(String(t.scope));if(!scoped||scoped.length!==1)matches=[];else matches=matches.filter(e=>scoped[0]===e||scoped[0].contains(e));}
++  if(t.has_text!==undefined){const needle=normalizedLabel(t.has_text);matches=matches.filter(e=>normalizedLabel(e.innerText||e.textContent).includes(needle));}
++  if(Number.isInteger(Number(t.nth))){const index=Number(t.nth);matches=index>=0&&index<matches.length?[matches[index]]:[];}
+   const selectorFor=e=>{
+     const candidates=[e.getAttribute('data-testid')&&'[data-testid="'+CSS.escape(e.getAttribute('data-testid'))+'"]',e.id&&'#'+CSS.escape(e.id),t.selector];
+     let node=e,parts=[];for(let depth=0;node&&depth<12;depth++,node=node.parentElement){let part=node.tagName.toLowerCase();if(node.parentElement)part+=':nth-child('+([...node.parentElement.children].indexOf(node)+1)+')';parts.unshift(part);candidates.push(parts.join(' > '));}

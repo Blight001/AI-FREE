@@ -19,13 +19,13 @@ let spawnImpl = null;
 const purges = [];
 const debugLogs = [];
 
-const contextPath = require.resolve('../../../src/app/main/runtime/app-context');
-const assetsPath = require.resolve('../../../src/app/main/features/network/clash-mini-assets');
-const controlPath = require.resolve('../../../src/app/main/features/network/clash-mini-control');
-const configPath = require.resolve('../../../src/app/main/features/network/clash-mini-config');
-const debugPath = require.resolve('../../../src/app/main/runtime/debug-console-log');
-const systemProxyPath = require.resolve('../../../src/app/main/features/network/windows-system-proxy');
-const targetPath = require.resolve('../../../src/app/main/features/network/clash-mini-process');
+const contextPath = require.resolve('../../../src/app/backend/runtime/app-context');
+const assetsPath = require.resolve('../../../src/app/backend/features/network/clash-mini-assets');
+const controlPath = require.resolve('../../../src/app/backend/features/network/clash-mini-control');
+const configPath = require.resolve('../../../src/app/backend/features/network/clash-mini-config');
+const debugPath = require.resolve('../../../src/app/backend/runtime/debug-console-log');
+const systemProxyPath = require.resolve('../../../src/app/backend/features/network/windows-system-proxy');
+const targetPath = require.resolve('../../../src/app/backend/features/network/clash-mini-process');
 
 require.cache[contextPath] = { exports: { appContext: { isShuttingDown: () => shuttingDown } } };
 require.cache[assetsPath] = { exports: {

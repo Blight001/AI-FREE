@@ -22,7 +22,7 @@ fs.writeFileSync(legacyPath, JSON.stringify({
 }), 'utf8');
 
 app.whenReady().then(() => {
-  const sessionStorage = require('../../../src/app/main/lib/session-storage');
+  const sessionStorage = require('../../../src/app/backend/lib/session-storage');
   const accountId = '豆包::7-8-19-11=38@self.com';
 
   assert.equal(sessionStorage.saveSession(accountId, {

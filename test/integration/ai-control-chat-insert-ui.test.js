@@ -7,7 +7,7 @@ const vm = require('node:vm');
 function readController(name) {
   return fs.readFileSync(path.join(
     __dirname,
-    '../../src/app/sidebar/client/app/side/controllers/pages/ai-control',
+    '../../src/app/frontend/sidebar/client/app/side/controllers/pages/ai-control',
     name,
   ), 'utf8');
 }

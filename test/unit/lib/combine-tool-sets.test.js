@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { combineToolSets } = require('../../../src/app/main/services/combine-tool-sets');
+const { combineToolSets } = require('../../../src/app/backend/services/combine-tool-sets');
 
 test('combineToolSets merges catalogs and routes execution', async () => {
   const first = {

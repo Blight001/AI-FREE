@@ -9,8 +9,8 @@ const test = require('node:test');
 const {
   createAiSandboxFileTools,
   resolveInside,
-} = require('../../../src/app/main/services/ai-sandbox-file-tools');
-const { ProfileRuntimeStore } = require('../../../src/app/main/browser-runtime/profile-runtime-store');
+} = require('../../../src/app/backend/services/ai-sandbox-file-tools');
+const { ProfileRuntimeStore } = require('../../../src/app/backend/browser-runtime/profile-runtime-store');
 
 test('run_command executes in an AI-Workspace subdirectory and returns bounded output', async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-workspace-command-'));

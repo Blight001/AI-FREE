@@ -1,0 +1,17 @@
+diff --git a/chrome/browser/ui/views/frame/ai_free_page_automation.cc b/chrome/browser/ui/views/frame/ai_free_page_automation.cc
+--- a/chrome/browser/ui/views/frame/ai_free_page_automation.cc
++++ b/chrome/browser/ui/views/frame/ai_free_page_automation.cc
+@@ -677,6 +677,13 @@
+   if (!type) {
+     return false;
+   }
++  // Session/profile commands belong to the authenticated Runtime Bridge.
++  // Do not consume them through the page-only takeover guard.
++  if (*type != "automation-takeover" && *type != "observe-page" &&
++      *type != "perform-action" && *type != "get-session-data" &&
++      *type != "capture-screenshot") {
++    return false;
++  }
+   if (*type == "automation-takeover") {
+     const std::string action = command.FindString("action")
+                                    ? *command.FindString("action")

@@ -7,9 +7,9 @@ const path = require('node:path');
 const test = require('node:test');
 const YAML = require('yaml');
 
-const assetsPath = require.resolve('../../../src/app/main/features/network/clash-mini-assets');
-const geoPath = require.resolve('../../../src/app/main/features/network/clash-mini-geo-config');
-const targetPath = require.resolve('../../../src/app/main/features/network/clash-mini-subscription');
+const assetsPath = require.resolve('../../../src/app/backend/features/network/clash-mini-assets');
+const geoPath = require.resolve('../../../src/app/backend/features/network/clash-mini-geo-config');
+const targetPath = require.resolve('../../../src/app/backend/features/network/clash-mini-subscription');
 require.cache[assetsPath] = { exports: {
   purgeClashMiniRuntimeConfigFiles: () => ({ removed: ['old.yaml'] }),
   syncLocalGeoAssets: () => ({ ok: true, missing: [] }),

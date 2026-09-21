@@ -1,0 +1,88 @@
+diff --git a/chrome/browser/ui/views/frame/ai_free_page_automation.cc b/chrome/browser/ui/views/frame/ai_free_page_automation.cc
+index bcb7674..16a8046 100644
+--- a/chrome/browser/ui/views/frame/ai_free_page_automation.cc
++++ b/chrome/browser/ui/views/frame/ai_free_page_automation.cc
+@@ -33,6 +33,7 @@
+ #include "content/public/browser/web_contents.h"
++#include "content/public/common/isolated_world_ids.h"
+@@ -438,7 +438,7 @@ void OnMouseDispatched(AiFreeAutomationSuccess success,
+ bool IsReadOnlyAutomationCommand(const base::DictValue& command) {
+   const std::string* type = command.FindString("type");
+   if (!type) return true;
+-  if (*type == "observe-page" || *type == "inspect-page-state" || *type == "capture-screenshot" ||
++  if (*type == "observe-page" || *type == "inspect-page-state" || *type == "inspect-page-diagnostics" || *type == "capture-screenshot" ||
+       *type == "get-session-data" || *type == "automation-takeover") {
+     return true;
+   }
+@@ -716,6 +716,46 @@ std::string InspectPageStateScript(const base::DictValue& command) {
+ } catch(error) {return {success:false,errorCode:'PAGE_STATE_FAILED',error:String(error.message).slice(0,256)};} })())JS"});
+ }
+ 
++std::string InspectPageDiagnosticsScript() {
++  return R"JS((() => { try {
++  const key='__aiFreeWorkflowPageDiagnosticsV1';
++  const clip=value=>String(value??'').replace(/\s+/g,' ').trim().slice(0,512);
++  const redact=value=>clip(value).replace(/\b(?:token|access[_-]?token|authorization|password|secret)\s*[=:]\s*[^\s,;]+/ig,'[redacted]');
++  const safeUrl=value=>{try{const url=new URL(String(value||''),location.href);return (url.origin+url.pathname).slice(0,512);}catch(_){return '';}};
++  let state=globalThis[key];
++  if(!state){
++    state={cursor:0,events:[],seen:new Set()};
++    const add=(kind,detail={})=>{state.events.push({sequence:++state.cursor,capturedAt:Date.now(),kind,...detail});if(state.events.length>128)state.events.splice(0,state.events.length-128);};
++    window.addEventListener('error',event=>{
++      const target=event.target;
++      if(target&&target!==window){add('request_failure',{message:'资源加载失败',url:safeUrl(target.currentSrc||target.src||target.href),source:String(target.tagName||'').toLowerCase()});return;}
++      add('page_error',{message:redact(event.message||'未捕获脚本异常'),url:safeUrl(event.filename),source:clip(event.lineno?String(event.lineno):'')});
++    },true);
++    window.addEventListener('unhandledrejection',event=>{add('unhandled_rejection',{message:redact(event.reason?.message||event.reason||'未处理 Promise 异常')});});
++    const resource=entry=>{
++      const status=Number(entry.responseStatus||0);if(status<400)return;
++      const id=[entry.name,entry.startTime,status].join('|');if(state.seen.has(id))return;
++      state.seen.add(id);if(state.seen.size>256)state.seen=new Set([...state.seen].slice(-128));
++      add('request_failure',{message:'请求返回失败状态',url:safeUrl(entry.name),status});
++    };
++    try{for(const entry of performance.getEntriesByType('resource'))resource(entry);new PerformanceObserver(list=>{for(const entry of list.getEntries())resource(entry);}).observe({type:'resource',buffered:true});}catch(_){/* Resource Timing is optional. */}
++    globalThis[key]=state;
++  }
++  return {success:true,cursor:state.cursor,events:state.events.slice(-64)};
++} catch(error) {return {success:false,errorCode:'PAGE_DIAGNOSTICS_FAILED',error:String(error.message).slice(0,256)};} })())JS";
++}
++
++// Diagnostics must be installed in the page's main world so page errors
++// and console calls are visible to the persistent diagnostics cursor.
++void ExecuteMainWorld(content::WebContents* web_contents,
++                      std::string script,
++                      base::OnceCallback<void(base::Value)> callback) {
++  web_contents->GetPrimaryMainFrame()->ExecuteJavaScriptForTests(
++      base::UTF8ToUTF16(script), std::move(callback),
++      content::ISOLATED_WORLD_ID_GLOBAL);
++}
++
+ }  // namespace
+ 
+ bool HandleAiFreePageAutomationCommand(Browser* browser,
+@@ -730,7 +759,7 @@ bool HandleAiFreePageAutomationCommand(Browser* browser,
+   // Session/profile commands belong to the authenticated Runtime Bridge.
+   // Do not consume them through the page-only takeover guard.
+   if (*type != "automation-takeover" && *type != "observe-page" &&
+-      *type != "inspect-page-state" &&
++      *type != "inspect-page-state" && *type != "inspect-page-diagnostics" &&
+       *type != "perform-action" && *type != "get-session-data" &&
+       *type != "capture-screenshot") {
+     return false;
+@@ -776,6 +805,16 @@ bool HandleAiFreePageAutomationCommand(Browser* browser,
+                        }, std::move(success), std::move(failure)));
+     return true;
+   }
++  if (*type == "inspect-page-diagnostics") {
++    ExecuteIsolated(web_contents, InspectPageDiagnosticsScript(),
++                   base::BindOnce(
++                       [](AiFreeAutomationSuccess done, AiFreeAutomationFailure failed, base::Value value) {
++                         const base::DictValue* result = value.GetIfDict();
++                         if (!result) return Fail(std::move(failed), "PAGE_DIAGNOSTICS_RESULT_INVALID", "页面诊断结果无效");
++                         std::move(done).Run(result->Clone());
++                       }, std::move(success), std::move(failure)));
++    return true;
++  }
+   if (*type == "observe-page") {
+     const content::GlobalRenderFrameHostId frame_id =
+         web_contents->GetPrimaryMainFrame()->GetGlobalId();

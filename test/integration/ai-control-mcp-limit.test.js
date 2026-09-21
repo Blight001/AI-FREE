@@ -5,7 +5,7 @@ const {
   DEFAULT_AI_CONTROL_MCP_CALL_LIMIT,
   getAiControlMcpCallLimit,
   normalizeAiControlMcpCallLimit,
-} = require('../../src/app/main/utils/ai-control-settings');
+} = require('../../src/app/backend/utils/ai-control-settings');
 
 test('AI 控制 MCP 调用上限默认值为 100 并限制到安全范围', () => {
   assert.equal(DEFAULT_AI_CONTROL_MCP_CALL_LIMIT, 100);

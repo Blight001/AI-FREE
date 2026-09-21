@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createAppShellBootstrap } = require('../../../src/app/main/services/app-shell-bootstrap');
+const { createAppShellBootstrap } = require('../../../src/app/backend/services/app-shell-bootstrap');
 
 function bootstrapDeps(options = {}) {
   let bootstrapped = options.bootstrapped === true;
@@ -30,6 +30,7 @@ function bootstrapDeps(options = {}) {
     getServerBase: () => '',
     initDownloadPrefs() {},
     isControlPanelOnlyModeEnabled: () => false,
+    isLaunchMinimizedStartupRequested: () => options.launchMinimized === true,
     isDevMode: false,
     licenseCache: { getRuntimeConfig: () => ({}) },
     logger: { error() {}, log() {}, warn() {} },
@@ -87,6 +88,16 @@ test('主界面已初始化但窗口缺失时只重建软件外壳', async () =>
 
   assert.equal(calls.createMainWindow, 1);
   assert.equal(calls.revealMainWindow, 1);
+  assert.equal(calls.openTutorial, 0);
+});
+
+test('开机自启时保持窗口最小化不主动显示', async () => {
+  const { calls, deps } = bootstrapDeps({ launchMinimized: true });
+
+  await createAppShellBootstrap(deps)();
+
+  assert.equal(calls.createMainWindow, 1);
+  assert.equal(calls.revealMainWindow, 0);
   assert.equal(calls.openTutorial, 0);
 });
 

@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { resolveTabBrowserProfile } = require('../../src/app/main/utils/browser-profile');
+const { resolveTabBrowserProfile } = require('../../src/app/backend/utils/browser-profile');
 
 test('BrowserProfile never requests exit IP data, including for legacy automatic modes', async () => {
   let requestCount = 0;

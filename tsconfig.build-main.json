@@ -11,7 +11,7 @@
     "noEmitOnError": true
   },
   "include": [
-    "src/app/main/**/*.ts",
+    "src/app/backend/**/*.ts",
     "src/app/preload/**/*.ts",
     "src/app/contracts/**/*.ts",
     "src/app/shared/**/*.ts"

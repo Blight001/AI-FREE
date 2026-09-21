@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { createAutomationCardService } = require('../../../src/app/main/features/ai-chat/automation-card-service');
+const { createAutomationCardService } = require('../../../src/app/backend/features/ai-chat/automation-card-service');
 
 test('card listing maps durable cache records and selection details', async () => {
   const state = { items: [

@@ -9,7 +9,7 @@ const test = require('node:test');
 const {
   buildAttachmentMessages,
   createAiWorkspaceService,
-} = require('../../../src/app/main/features/ai-chat/ai-workspace-service');
+} = require('../../../src/app/backend/features/ai-chat/ai-workspace-service');
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-workspace-'));

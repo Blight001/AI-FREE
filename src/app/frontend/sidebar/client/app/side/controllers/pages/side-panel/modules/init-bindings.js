@@ -25,4 +25,5 @@ function initSidePanelBindings() {
   bindSidebarAccountAuth();
   bindTutorialLink();
   bindSecondaryEntryButtons();
+  if (document.getElementById('VPN-switch')) bindClashMiniControls();
 }

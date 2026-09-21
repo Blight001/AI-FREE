@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
-const { buildElectronExtensionCompatShim } = require('../../../src/app/main/features/extensions/electron-compat-shim');
+const { buildElectronExtensionCompatShim } = require('../../../src/app/backend/features/extensions/electron-compat-shim');
 
 const shim = buildElectronExtensionCompatShim('test marker');
 const updated = [];

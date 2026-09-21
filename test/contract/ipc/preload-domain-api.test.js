@@ -29,7 +29,7 @@ function loadPreloadApi() {
       throw new Error(`sandboxed preload cannot require ${request}`);
     },
   });
-  const preloadPath = path.join(projectRoot, 'src/app/main/preload.js');
+  const preloadPath = path.join(projectRoot, 'src/app/backend/preload.js');
   vm.runInContext(fs.readFileSync(preloadPath, 'utf8'), context, { filename: preloadPath });
   return { calls, exposed, ipcRenderer };
 }
@@ -69,7 +69,7 @@ test('AI renderer modules cannot regress to arbitrary-channel electronAPI', () =
   // boundary, not a functional UI assertion.
   const root = path.join(
     projectRoot,
-    'src/app/sidebar/client/app/side/controllers/pages/ai-control',
+    'src/app/frontend/sidebar/client/app/side/controllers/pages/ai-control',
   );
   const files = fs.readdirSync(root)
     .filter((name) => name.endsWith('.js'))
@@ -93,7 +93,7 @@ test('account domain methods bind fixed channels and migrated account modules st
   // accepts caller-provided channel names.
   const root = path.join(
     projectRoot,
-    'src/app/sidebar/client/app/side/controllers/pages/side-panel/modules',
+    'src/app/frontend/sidebar/client/app/side/controllers/pages/side-panel/modules',
   );
   const violations = fs.readdirSync(root)
     .filter((name) => /^(?:account-auth|license).*\.js$/.test(name))
@@ -118,6 +118,8 @@ test('browser, network, content, extension and update operations bind fixed chan
   await exposed.aiFree.content.refreshTutorialUrl();
   await exposed.aiFree.extensions.setEnabled({ id: 'extension-a', enabled: true });
   await exposed.aiFree.updates.start({ version: '2.7.0' });
+  await exposed.aiFree.ui.getStartupSettings();
+  await exposed.aiFree.ui.setStartupSettings({ enabled: true });
   exposed.aiFree.ui.requestAccountCenter();
   assert.deepEqual(calls, [
     ['invoke', 'get-ai-free-browser-settings', { historyId: 'history-1' }],
@@ -125,6 +127,8 @@ test('browser, network, content, extension and update operations bind fixed chan
     ['invoke', 'refresh-tutorial-url', undefined],
     ['invoke', 'set-extension-enabled', { id: 'extension-a', enabled: true }],
     ['invoke', 'start-app-update', { version: '2.7.0' }],
+    ['invoke', 'get-startup-settings', undefined],
+    ['invoke', 'set-startup-settings', { enabled: true }],
     ['send', 'request-account-center', undefined],
   ]);
   for (const domain of ['browser', 'network', 'content', 'extensions', 'updates', 'ui']) {
@@ -136,7 +140,7 @@ test('browser, network, content, extension and update operations bind fixed chan
 });
 
 test('all sidebar scripts use named aiFree capabilities only', () => {
-  const root = path.join(projectRoot, 'src/app/sidebar');
+  const root = path.join(projectRoot, 'src/app/frontend/sidebar');
   const pending = [root];
   const files = [];
   while (pending.length) {

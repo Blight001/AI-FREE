@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { mcpToolResult } = require('./mcp-tool-result');
 const {
   addBrowserRouteToSchema,
   normalizeToolError,
@@ -13,7 +14,9 @@ const {
 } = require('./automation-tool-contract');
 
 const EXTERNAL_MCP_PREFIX = '/mcp/v1/';
+const EXTERNAL_MCP_ENDPOINT = '/mcp/v1';
 const EXTERNAL_MCP_TOKEN_HEADER = 'x-ai-free-mcp-token';
+const MCP_PROTOCOL_VERSION = '2025-06-18';
 const MAX_BODY_BYTES = 1024 * 1024;
 
 function constantTimeEquals(actual, expected) {
@@ -30,6 +33,21 @@ function jsonResponse(res, statusCode, payload) {
     'Cache-Control': 'no-store',
   });
   res.end(body);
+}
+
+function mcpResponse(res, payload, statusCode = 200) {
+  const body = Buffer.from(JSON.stringify(payload), 'utf8');
+  res.writeHead(statusCode, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Content-Length': body.length,
+    'Cache-Control': 'no-store',
+    'MCP-Protocol-Version': MCP_PROTOCOL_VERSION,
+  });
+  res.end(body);
+}
+
+function mcpError(id, code, message, data = undefined) {
+  return { jsonrpc: '2.0', id, error: { code, message, ...(data === undefined ? {} : { data }) } };
 }
 
 async function readJson(req) {
@@ -279,7 +297,8 @@ class BrowserAutomationExternalGateway {
   }
 
   async handle(req, res, url) {
-    if (!String(url?.pathname || '').startsWith(EXTERNAL_MCP_PREFIX)) return false;
+    const pathname = String(url?.pathname || '');
+    if (pathname !== EXTERNAL_MCP_ENDPOINT && !pathname.startsWith(EXTERNAL_MCP_PREFIX)) return false;
     if (!this.authorized(req)) {
       jsonResponse(res, 401, { ok: false, error: 'AI_FREE_MCP_UNAUTHORIZED', message: '外部 MCP 会话令牌无效' });
       return true;
@@ -297,6 +316,10 @@ class BrowserAutomationExternalGateway {
       return true;
     }
     try {
+      if (req.method === 'POST' && url.pathname === '/mcp/v1') {
+        await this.respondMcp(req, res);
+        return true;
+      }
       await this.handleAuthorized(req, res, url);
     } catch (error) {
       const normalized = normalizeToolError(error, {
@@ -321,6 +344,59 @@ class BrowserAutomationExternalGateway {
     return jsonResponse(res, 404, { ok: false, error: 'AI_FREE_MCP_NOT_FOUND', message: '外部 MCP 接口不存在' });
   }
 
+  async respondMcpToolCall(res, id, params) {
+    const name = String(params.name || '').trim();
+    try {
+      const result = await this.callTool(name, params.arguments || {});
+      mcpResponse(res, {
+        jsonrpc: '2.0',
+        id,
+        result: mcpToolResult(result),
+      });
+    } catch (error) {
+      const normalized = normalizeToolError(error, {
+        code: 'AI_FREE_MCP_CALL_FAILED',
+        phase: 'external_gateway',
+      });
+      mcpResponse(res, mcpError(id, -32000, normalized.message, normalized));
+    }
+  }
+
+  async respondMcp(req, res) {
+    const body = await readJson(req);
+    const id = body?.id ?? null;
+    const method = String(body?.method || '').trim();
+    const params = body?.params && typeof body.params === 'object' ? body.params : {};
+    if (method === 'notifications/initialized') {
+      res.writeHead(202, { 'Cache-Control': 'no-store', 'MCP-Protocol-Version': MCP_PROTOCOL_VERSION });
+      res.end();
+      return;
+    }
+    if (method === 'initialize') {
+      mcpResponse(res, {
+        jsonrpc: '2.0',
+        id,
+        result: {
+          protocolVersion: MCP_PROTOCOL_VERSION,
+          capabilities: { tools: { listChanged: false } },
+          serverInfo: { name: 'ai-free', version: '1.0.0' },
+          instructions: '先调用 browser_control overview 了解当前窗口，再观察页面后执行操作；页面变化后重新观察。',
+        },
+      });
+      return;
+    }
+    if (method === 'tools/list') {
+      const listed = this.listTools();
+      mcpResponse(res, { jsonrpc: '2.0', id, result: { tools: listed.tools } });
+      return;
+    }
+    if (method === 'tools/call') {
+      await this.respondMcpToolCall(res, id, params);
+      return;
+    }
+    mcpResponse(res, mcpError(id, -32601, `不支持的 MCP 方法: ${method || '(empty)'}`));
+  }
+
   respondStatus(res) {
     const access = this.access();
     const listed = access.allowed ? this.listTools() : { tools: [], connections: [] };
@@ -335,6 +411,27 @@ class BrowserAutomationExternalGateway {
       toolCount: listed.tools.length,
       connectionCount: listed.connections.length,
     });
+  }
+
+  getStatus({ host = '127.0.0.1', port = 0 } = {}) {
+    const access = this.access();
+    let listed = { tools: [], connections: [] };
+    if (access.allowed) {
+      try { listed = this.listTools(); } catch (_) {}
+    }
+    return {
+      ready: access.allowed && Boolean(this.getWindowTools?.()),
+      membershipRequired: !access.allowed,
+      endpoint: `http://${host}:${port}/mcp/v1`,
+      toolCount: listed.tools.length,
+      connectionCount: listed.connections.length,
+      published: Boolean(this.publishedPid),
+    };
+  }
+
+  getConnectionInfo() {
+    if (!this.publishedPid || !this.publishedEndpoint) return null;
+    return { endpoint: this.publishedEndpoint, token: this.token };
   }
 
   async respondCall(req, res) {
@@ -361,6 +458,7 @@ class BrowserAutomationExternalGateway {
     try { fs.chmodSync(this.descriptorPath, 0o600); } catch (_) {}
     this.publishedPid = process.pid;
     this.publishedAccessAllowed = accessAllowed;
+    this.publishedEndpoint = `http://${host}:${port}/mcp/v1`;
     this.logger.log?.(`[ExternalMCP] Codex 桥接已就绪: http://${host}:${port}/mcp/v1`);
     return true;
   }
@@ -392,6 +490,7 @@ class BrowserAutomationExternalGateway {
     } catch (_) {}
     this.publishedPid = 0;
     this.publishedAccessAllowed = false;
+    this.publishedEndpoint = '';
   }
 }
 

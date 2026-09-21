@@ -8,10 +8,10 @@
 
 | 工具组 | 数量 | 可用条件 | 代码真源 |
 | --- | ---: | --- | --- |
-| 外部软件栏目 | 1 | 软件运行期间始终可用 | [`ai-browser-window-tools.js`](../src/app/main/services/ai-browser-window-tools.js) |
-| 浏览器高级环境 | 1 | 用户消息命中环境/指纹/代理等配置意图 | [`ai-browser-window-tools.js`](../src/app/main/services/ai-browser-window-tools.js) |
-| AI 工作区命令 | 1 | 软件运行期间始终可用 | [`ai-sandbox-file-tools.js`](../src/app/main/services/ai-sandbox-file-tools.js) |
-| 浏览器自动化 | 7 | 至少有一个已完成 Runtime Bridge 握手的内置 Chromium | [`native-browser-tool-definitions.js`](../src/app/main/services/native-browser-tool-definitions.js) |
+| 外部软件栏目 | 1 | 软件运行期间始终可用 | [`ai-browser-window-tools.js`](../src/app/backend/services/ai-browser-window-tools.js) |
+| 浏览器高级环境 | 1 | 用户消息命中环境/指纹/代理等配置意图 | [`ai-browser-window-tools.js`](../src/app/backend/services/ai-browser-window-tools.js) |
+| AI 工作区命令 | 1 | 软件运行期间始终可用 | [`ai-sandbox-file-tools.js`](../src/app/backend/services/ai-sandbox-file-tools.js) |
+| 浏览器自动化 | 7 | 至少有一个已完成 Runtime Bridge 握手的内置 Chromium | [`native-browser-tool-definitions.js`](../src/app/backend/services/native-browser-tool-definitions.js) |
 
 AI-FREE 本地 AI 对话使用下表中的“内部名称”。连接 HeySure 后，设备向服务器注册时会统一添加 `aifree.` 前缀。
 
@@ -22,6 +22,7 @@ AI-FREE 本地 AI 对话使用下表中的“内部名称”。连接 HeySure �
 | `run_command` | `aifree.run+command` | 在 AI-Workspace 工作目录中执行有界命令行 |
 | `manage_card` | `aifree.manage+card` | 管理和运行浏览器自动化卡片 |
 | `browser_file` | `aifree.browser+file` | 下载文件、上传本地文件，或保存当前页面 Cookie/Storage |
+| `browser_media` | `aifree.browser+media` | 发现并下载当前页面的视频、音频和其它媒体素材 |
 | `browser_tab` | `aifree.browser+tab` | 查询、切换、导航、刷新标签页和聚焦浏览器 |
 | `browser_observe` | `aifree.browser+observe` | 获取页面中可交互或可见的元素 |
 | `browser_screenshot` | `aifree.browser+screenshot` | 截取页面可视区或指定坐标区域 |
@@ -81,7 +82,7 @@ Cookie 属于登录会话数据，不属于 `browser_environment.settings` 的�
 
 ## 浏览器自动化工具
 
-以下 7 个工具由受认证的 Chromium Runtime Bridge 提供。没有浏览器 MCP 连接时，它们不会出现在 AI 或 HeySure 的可用工具目录中。
+以下 8 个工具由受认证的 Chromium Runtime Bridge 提供。没有浏览器 MCP 连接时，它们不会出现在 AI 或 HeySure 的可用工具目录中。
 
 ### `manage_card`
 
@@ -112,10 +113,19 @@ Cookie 属于登录会话数据，不属于 `browser_environment.settings` 的�
 - 网络边界：禁止 localhost、`.local`、IPv4/IPv6 私网、链路本地、组播和保留地址。每次重定向都重新解析，并将实际连接固定到已审核 IP，防止 DNS 重绑定。
 - 写入规则：先写同目录随机 `.part` 文件，再原子提交；默认不覆盖同名文件。默认大小上限 250 MiB、硬上限 1 GiB。
 
+### `browser_media`
+
+- 作用：把网页视频、音频和其它媒体素材的发现与下载收敛到浏览器底层 MCP。
+- `action=list`：观察当前页面的媒体元素，返回短生命周期的 `observation_id` 和媒体 `ref`，以及类型、标签、尺寸和可下载状态；不会凭空猜测页面未观察到的地址。
+- `action=download`：必须传 `list` 返回的 `ref`，可附带 `filename`、`directory`、`media_type`、`transport`、`timeout_ms` 和 `max_bytes`；内部复用 `browser_file` 的 Chromium 原生下载、Cookie/Referer、代理和 AI-Workspace 原子写入策略。
+- 生命周期：导航、切换标签或页面明显变化后必须重新 `list`；过期引用返回 `OBSERVED_REF_EXPIRED` 或 `OBSERVATION_MISMATCH`，不会跨页面复用。
+- 当前范围：支持页面媒体元素和可解析直链；HLS/DASH 分片合并、DRM 和需要站点专用令牌的提取暂不在最小版本内。
+
 ### `browser_tab`
 
 - 作用：通过当前受管 Chromium Profile 管理页面导航与焦点。
-- `action`：必填，可用值为 `list`、`switch`、`replace`、`navigate`、`reload`。
+- `action`：必填，可用值为 `list`、`switch`、`replace`、`navigate`、`reload`、`close`、`back`、`forward`。
+- `close`、`back`、`forward` 支持 `index` 别名定位标签页；执行关闭后不要复用原索引，应重新调用 `list` 获取最新 TabStrip 顺序。
 - `list` 每次调用都从 Chromium TabStrip 读取全部标签页与当前活动页，不使用窗口首次打开时缓存的网址。
 - `replace` 原生覆盖当前页；`navigate` 原生打开新标签、立即激活该标签并把当前受管浏览器打开到前台；`switch` 传入 `url`、`id` 或 `index` 时切换 Chromium 内部标签页，不传目标时仅聚焦当前受管浏览器。
 
@@ -136,6 +146,8 @@ Cookie 属于登录会话数据，不属于 `browser_environment.settings` 的�
 - 快照与定位：每次结果返回新的 `observationId`，item 同时返回 `stableRef`、selector 唯一性、推荐 locator、容器归属和关联文本。`browser_action` 可同时传 `observation_id` 与 `ref`；若快照不一致会返回 `OBSERVATION_MISMATCH`，不执行页面操作。
 - 图标控件：名称依次来自 ARIA、关联 label、title、SVG title、alt 和受限图标提示；同时返回 `labelSource`、`labelConfidence`。仍无法命名时明确给出 `unresolvedReason`；疑似删除/移除操作返回 `destructiveHint=true`。
 - Closed Shadow DOM：隔离世界无法访问的 closed shadowRoot 会由 Chromium Accessibility Tree 补充其中可见、可用的交互控件，并返回 `accessibilityFallback=true` 与真实 `clickX/clickY`；这类 item 不伪造 selector，后续应直接使用其 `ref` 点击。
+- AX Tree：传入 `include_accessibility_tree=true`（兼容 `includeAccessibilityTree=true`）可请求分层 `accessibilityTree`。树最多返回 4000 个节点、单个文本最多 512 个字符；节点达到上限时返回 `truncated=true`。密码控件的名称和值会脱敏。AX 节点 `id` 只用于表达树结构，不能当作 `browser_action` 的 `ref`；操作仍须使用普通观察结果中的 item ref/observationId。
+- 观察闭环：`browser_observe` 传 `include_screenshot=true`，返回页面结构和截图；`browser_action` 传 `after="observe"` 与可选 `observation_options`，操作完成后返回新的 `observation` 和元素引用。后置观察失败会标记 `needsObservation=true`，不会重放已执行操作。标准 `/mcp/v1` 和软件内置 Codex adapter 将 PNG 转为 MCP `image` 内容；个人插件 ai-free-browser-control 已同步改为标准 MCP 转发，旧接口兼容路径也会转换图片块。
 - Fork 原生 Observe 默认在 Chromium UI 层绘制与元素 `id` 对应的边框标签，不写入网页 DOM、不接收鼠标事件；导航、滚动、窗口隐藏或超时后自动清除。最多绘制 120 个标记。
 - 路由参数：`tab_id`。
 - 下载链接：item 可保留可直接读取的 `downloadUrl`，但顶层 `downloadLinks` 只汇总显式下载或常见文件 URL。普通图片进入 `mediaResources`，不再计入 `downloadLinkCount`。
@@ -167,6 +179,8 @@ Cookie 属于登录会话数据，不属于 `browser_environment.settings` 的�
 - 参数：`condition`、`selector`、`ref`、`observation_id`、`value`、`initial_value`、`timeout_ms`、`ms`、`tab_id`。`text_changed` 省略 `initial_value` 时会自动记录首次读取值；`url_matches` 不需要元素定位参数。
 - 旧内核不会被静默兼容：若 Chromium 忽略 `condition`，应用返回 `BROWSER_RUNTIME_UPDATE_REQUIRED`，必须重新构建并替换 `resources/chromium` 后重启。
 
+页面导航、标签页切换或页面状态发生变化后，必须重新 `acquire` 当前控制目标并执行 `browser_observe`；旧的 observation/ref 不跨页面复用。旧内核未实现某项能力时返回 `BROWSER_RUNTIME_UPDATE_REQUIRED`；新内核已支持但 AX 结果尚未就绪时返回可重试的 `ACCESSIBILITY_TREE_NOT_READY`，二者不要混淆。
+
 ## 多浏览器路由
 
 AI 对话和 HeySure 设备端都会发现当前所有已连接浏览器的工具，但任一时刻只维护一个“当前控制浏览器”，不允许同时控制多个目标。AI 控制栏的浏览器选择器也是单选。
@@ -189,14 +203,16 @@ AI 对话和 HeySure 设备端都会发现当前所有已连接浏览器的工�
 
 ## HeySure 注册与可用性
 
-- HeySure 设备工具注册由 [`ai-server-device-service.js`](../src/app/main/features/ai-chat/ai-server-device-service.js) 负责，内部名称会转换为 `aifree.<工具名>`。
+- HeySure 设备工具注册由 [`ai-server-device-service.js`](../src/app/backend/features/ai-chat/ai-server-device-service.js) 负责，内部名称会转换为 `aifree.<工具名>`。
 - 设备同时上报 `remote_control` 能力，并沿用 HeySure 的 `rc:*` WebRTC 协议。手机或其他电脑在网页控制台发起远程控制后，AI-FREE 会采集当前活动 Chromium Profile 的网页画面，通过 P2P 视频轨传输，并把网页端鼠标、滚动、键盘、地址栏和标签操作注入 Chromium Runtime。只有已连接 HeySure 且当前存在活动浏览器时才能建立会话。
 - ICE 配置从已登录服务器的 `/api/rtc/ice-servers` 动态读取；读取失败时仅回退到 STUN。跨 NAT 环境要稳定使用，服务器仍需正确配置 TURN，AI-FREE 不保存或写死 TURN 凭据。
 - 注册同时上报 AI 用途说明“用于连接 AI-FREE，调用其中已启用的软件窗口、浏览器和自动化 MCP 工具”和 `catalogProtocolVersion=2`，让 HeySure AI 能把该设备与普通浏览器、桌面或 Android 执行器区分开；该说明仅是能力元数据，不是执行指令。
-- 外部调用目录由 [`browser-automation-external-gateway.js`](../src/app/main/services/browser-automation-external-gateway.js) 汇总，并执行会员权限、浏览器路由和敏感参数限制。
+- 外部调用目录由 [`browser-automation-external-gateway.js`](../src/app/backend/services/browser-automation-external-gateway.js) 汇总，并执行会员权限、浏览器路由和敏感参数限制。
 - 只有服务器实时校验为有效会员时，软件才会向 HeySure 注册为在线设备并接受调用。
 - 浏览器连接建立或断开后，设备会自动刷新工具目录。因此 HeySure 端可见工具数量可能在 9 个和 10 个之间变化（可选 `browser_environment`）。
 - 本地 AI、Codex Bridge 和 HeySure adapter 共用
-  [`automation-tool-contract.js`](../src/app/main/services/automation-tool-contract.js)
+  [`automation-tool-contract.js`](../src/app/backend/services/automation-tool-contract.js)
   中的 Schema、浏览器路由、超时、路由参数清理和错误规范化规则；三端仅保留各自的传输与鉴权适配。
+- AI-FREE 启动时会自动启动本机 Codex Bridge，并在检测到 `~/.codex/config.toml` 时写入受标记管理的 `ai_free` MCP 配置。配置使用本地 stdio adapter 动态读取桥接描述文件，因此桥接令牌刷新或应用重启后不需要重新复制令牌；个人中心的“复制连接配置”可用于手动安装或修复该配置。
+- Codex adapter 只访问 `127.0.0.1` 的 AI-FREE 网关，不把桥接令牌写入 Codex 配置；外部调用仍受现有 VIP 授权和浏览器 MCP 敏感参数限制。
 - 旧 `software_window`、`sandbox_files` 和 `browser_download` 名称只在执行层保留兼容，不再出现在公开工具目录；新调用分别使用 `windows_tab`、`run_command` 和 `browser_file`。

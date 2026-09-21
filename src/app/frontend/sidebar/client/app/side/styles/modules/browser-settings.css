@@ -62,10 +62,6 @@
   color: #e8edf6;
 }
 
-html.development-mode .tab-nav {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
 html.browser-settings-page .tab-nav { display: none; }
 html.browser-settings-page .settings-container {
   max-width: 920px;

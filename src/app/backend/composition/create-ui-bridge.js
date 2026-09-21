@@ -2,7 +2,7 @@ const { createAppConsoleBridge } = require('../runtime/app-console');
 const { appContext } = require('../runtime/app-context');
 
 // 创建/初始化：createUiBridge的具体业务逻辑。
-function createUiBridge({ getMainWindow, getSideView, getControlPanelWindow, isDevMode = false }) {
+function createUiBridge({ getMainWindow, getSideView, getControlPanelWindow, getDevConsoleWindow = () => null, isDevMode = false }) {
   let sideView = null;
   let mainWindow = null;
   let controlPanelWindow = null;
@@ -19,14 +19,21 @@ function createUiBridge({ getMainWindow, getSideView, getControlPanelWindow, isD
       if (controlPanelWindow && controlPanelWindow.webContents && !controlPanelWindow.webContents.isDestroyed()) {
         senders.push(controlPanelWindow.webContents);
       }
+      const debugWindow = isDevMode ? getDevConsoleWindow() : null;
+      if (debugWindow?.webContents && !debugWindow.webContents.isDestroyed()) senders.push(debugWindow.webContents);
       return senders;
     },
     getDebugSenders: () => {
       sideView = getSideView();
+      const senders = [];
       if (isDevMode && sideView?.webContents && !sideView.webContents.isDestroyed()) {
-        return [sideView.webContents];
+        senders.push(sideView.webContents);
       }
-      return [];
+      const debugWindow = isDevMode ? getDevConsoleWindow() : null;
+      if (debugWindow?.webContents && !debugWindow.webContents.isDestroyed()) {
+        senders.push(debugWindow.webContents);
+      }
+      return senders;
     },
   });
 

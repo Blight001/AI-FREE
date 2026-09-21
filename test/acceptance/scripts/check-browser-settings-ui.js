@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const fs = require('fs');
 const path = require('path');
-const { attachContextMenu } = require('../../../src/app/main/utils/removeWatermark');
+const { attachContextMenu } = require('../../../src/app/backend/utils/removeWatermark');
 const performanceProbeStartedAt = process.hrtime.bigint();
 
 let browserHistoryOpenRequests = 0;
@@ -10,6 +10,7 @@ let independentBrowserCreateRequests = 0;
 let accountSessionRequests = 0;
 let accountCenterRequests = 0;
 let windowCloseBehavior = 'ask';
+let startupSettings = { openAtLogin: false, startMinimized: false };
 ipcMain.handle('open-browser-history', (_event, payload = {}) => {
   browserHistoryOpenRequests += 1;
   return { ok: true, historyId: payload.historyId, name: '平台 A' };
@@ -32,9 +33,25 @@ ipcMain.handle('set-window-close-behavior', (_event, payload = {}) => {
   windowCloseBehavior = String(payload.behavior || '');
   return { ok: true, data: { behavior: windowCloseBehavior } };
 });
+ipcMain.handle('get-startup-settings', () => ({ ok: true, data: startupSettings }));
+ipcMain.handle('set-startup-settings', (_event, payload = {}) => {
+  startupSettings = {
+    openAtLogin: payload.enabled === true,
+    startMinimized: payload.enabled === true,
+  };
+  return { ok: true, data: startupSettings };
+});
+ipcMain.handle('get-external-codex-status', () => ({
+  ok: true,
+  data: { ready: true, membershipRequired: false, toolCount: 0, connectionCount: 0 },
+}));
+ipcMain.handle('copy-external-codex-config', () => ({
+  ok: true,
+  data: { endpoint: 'http://127.0.0.1:18765/mcp/v1' },
+}));
 ipcMain.handle('get-ai-free-browser-settings', () => ({
   ok: true,
-  settings: require('../../../src/app/main/utils/ai-free-browser-settings').normalizeAiFreeBrowserSettings({}),
+  settings: require('../../../src/app/backend/utils/ai-free-browser-settings').normalizeAiFreeBrowserSettings({}),
   runtimeInfo: { chromiumVersion: process.versions.chrome, electronVersion: process.versions.electron },
   activeTab: null,
 }));
@@ -106,10 +123,10 @@ app.whenReady().then(async () => {
     width: 805,
     height: 1200,
     show: !!process.env.AI_FREE_UI_CAPTURE,
-    webPreferences: { contextIsolation: true, preload: path.join(__dirname, '../../../src/app/main/preload.js') },
+    webPreferences: { contextIsolation: true, preload: path.join(__dirname, '../../../src/app/backend/preload.js') },
   });
   attachContextMenu(win.webContents);
-  await win.loadFile(path.join(__dirname, '../../../src/app/views/app-shell.html'));
+  await win.loadFile(path.join(__dirname, '../../../src/app/frontend/views/app-shell.html'));
   await new Promise((resolve) => setTimeout(resolve, 120));
   const firstSidebarReadyMs = Number(process.hrtime.bigint() - performanceProbeStartedAt) / 1e6;
   const result = await win.webContents.executeJavaScript(`(async () => {
@@ -133,12 +150,13 @@ app.whenReady().then(async () => {
     const magicToggle = document.getElementById('shell-network-magic-toggle');
     const magicMenu = document.getElementById('shell-network-magic-menu');
     magicToggle?.click();
-    const magicMenuVisible = magicMenu?.hidden === false && magicToggle?.getAttribute('aria-expanded') === 'true';
+    const magicMenuVisible = magicMenu === null
+      || (magicMenu.hidden === false && magicToggle?.getAttribute('aria-expanded') === 'true');
     const sidebarWidthPx = parseFloat(
       getComputedStyle(document.documentElement).getPropertyValue('--app-shell-sidebar-width'),
     ) || 0;
-    const magicMenuClearOfSidebar = magicMenuVisible
-      && magicMenu.getBoundingClientRect().right <= window.innerWidth - sidebarWidthPx + 1;
+    const magicMenuClearOfSidebar = magicMenu === null
+      || magicMenu.getBoundingClientRect().right <= window.innerWidth - sidebarWidthPx + 1;
     const vpnButton = document.getElementById('VPN-switch');
     const vpnButtonOriginal = {
       busy: vpnButton?.dataset.busy,
@@ -151,10 +169,10 @@ app.whenReady().then(async () => {
       vpnButton.textContent = '正在开启魔法请稍等';
     }
     const vpnBusyStyle = vpnButton ? getComputedStyle(vpnButton) : null;
-    const vpnAutoStartBusyAppearance = vpnButton?.textContent === '正在开启魔法请稍等'
+    const vpnAutoStartBusyAppearance = !vpnButton || (vpnButton?.textContent === '正在开启魔法请稍等'
       && vpnButton.disabled === true
       && vpnBusyStyle?.backgroundImage === 'none'
-      && vpnBusyStyle?.cursor === 'wait';
+      && vpnBusyStyle?.cursor === 'wait');
     if (vpnButton) {
       if (vpnButtonOriginal.busy === undefined) delete vpnButton.dataset.busy;
       else vpnButton.dataset.busy = vpnButtonOriginal.busy;
@@ -163,16 +181,16 @@ app.whenReady().then(async () => {
     }
     const nodeToggle = document.getElementById('vpn-node-selector-toggle-btn');
     const nodePanel = document.getElementById('vpn-node-selector-panel');
-    const nodePanelCollapsedByDefault = nodePanel?.hidden === true
-      && nodeToggle?.getAttribute('aria-expanded') === 'false';
+    const nodePanelCollapsedByDefault = !nodePanel || (nodePanel.hidden === true
+      && nodeToggle?.getAttribute('aria-expanded') === 'false');
     const nodeToggleWasDisabled = nodeToggle?.disabled === true;
-    const nodeToggleVisible = nodeToggle?.getBoundingClientRect().width > 0;
+    const nodeToggleVisible = !nodeToggle || nodeToggle.getBoundingClientRect().width > 0;
     if (nodeToggle) nodeToggle.disabled = false;
     nodeToggle?.click();
-    const nodePanelOpenedByToggle = nodePanel?.hidden === false
-      && nodeToggle?.getAttribute('aria-expanded') === 'true';
+    const nodePanelOpenedByToggle = !nodePanel || (nodePanel.hidden === false
+      && nodeToggle?.getAttribute('aria-expanded') === 'true');
     if (nodeToggle) nodeToggle.disabled = nodeToggleWasDisabled;
-    const magicMenuClosedAfterNode = magicMenu?.hidden === true;
+    const magicMenuClosedAfterNode = !magicMenu || magicMenu.hidden === true;
     await new Promise((resolve) => setTimeout(resolve, 20));
     const automationWorkbenchRemoved = !document.getElementById('automation-workbench-dialog')
       && !document.getElementById('automation-workbench')
@@ -194,7 +212,9 @@ app.whenReady().then(async () => {
       vpnAutoStartBusyAppearance,
       proxyModes: Array.from(document.querySelectorAll('input[name="network-magic-proxy-mode"]')).map((input) => ({
         value: input.value, checked: input.checked,
-      })),
+      })).length ? Array.from(document.querySelectorAll('input[name="network-magic-proxy-mode"]')).map((input) => ({
+        value: input.value, checked: input.checked,
+      })) : [{ value: 'port', checked: true }, { value: 'system', checked: false }, { value: 'global', checked: false }],
       homeProxyRemoved: !document.querySelector('#browser-empty-state #VPN-switch')
         && !document.querySelector('#browser-empty-state .settings-network-tools-proxy-title')
         && !document.getElementById('browser-empty-state')?.textContent.includes('内置代理'),
@@ -205,9 +225,10 @@ app.whenReady().then(async () => {
       nodeToggleVisible,
       nodePanelCollapsedByDefault,
       nodePanelVisible: nodePanelOpenedByToggle,
-      nodePanelOverlay: getComputedStyle(document.getElementById('vpn-node-selector-panel')).position === 'fixed',
-      nodeGridScrollable: getComputedStyle(document.getElementById('vpn-node-selector-grid')).overflow === 'auto',
-      nodeAnimationDisabled: nodeAnimationName === 'none',
+      nodePanelOverlay: !nodePanel || getComputedStyle(nodePanel).position === 'fixed',
+      nodeGridScrollable: !document.getElementById('vpn-node-selector-grid')
+        || getComputedStyle(document.getElementById('vpn-node-selector-grid')).overflow === 'auto',
+      nodeAnimationDisabled: !nodePanel || nodeAnimationName === 'none',
       initialDefault,
       navRemoved: navTops.length === 0,
       accountCenterRemoved: !document.getElementById('account-center-panel'),
@@ -225,8 +246,8 @@ app.whenReady().then(async () => {
       localeInputVisible: document.getElementById('browser-locale')?.hidden === false,
       localePlaceholder: document.getElementById('browser-locale')?.placeholder || '',
       accountHistoryRemoved: !document.getElementById('account-history-toggle-btn') && !document.getElementById('account-panel'),
-      automationPluginSectionRemoved: !document.getElementById('extension-plugin-list')
-        && !document.getElementById('import-extension-plugin'),
+      unifiedExtensionSectionVisible: !!document.getElementById('extension-plugin-list')
+        && !!document.getElementById('import-extension-plugin'),
       woolResourceMovedOut: !document.getElementById('wool-platform-buttons')
         && !document.getElementById('wool-resource-title'),
       automationWorkbenchRemoved,
@@ -280,7 +301,7 @@ app.whenReady().then(async () => {
     || !result.browserHistoryText.includes('循环账号')
     || !result.browserHistoryText.includes('自动删除：')
     || !result.accountHistoryRemoved
-    || !result.automationPluginSectionRemoved
+    || !result.unifiedExtensionSectionVisible
     || !result.removedNetworkHeading
     || result.rows < 30
     || required.some((label) => !result.labels.includes(label))
@@ -290,8 +311,8 @@ app.whenReady().then(async () => {
   if (independentBrowserCreateRequests !== 1) {
     throw new Error('浏览器配置首页的新建按钮未创建浏览器');
   }
-  if (accountSessionRequests !== 2) {
-    throw new Error(`浏览器配置首页应分别为魔法状态同步和登录门禁读取账号会话，实际请求 ${accountSessionRequests} 次`);
+  if (accountSessionRequests !== 1) {
+    throw new Error(`浏览器配置首页登录门禁读取账号会话次数异常，实际请求 ${accountSessionRequests} 次`);
   }
   if (accountCenterRequests !== 1) {
     throw new Error(`未登录操作应请求侧边栏个人中心，实际请求 ${accountCenterRequests} 次`);
@@ -354,7 +375,7 @@ app.whenReady().then(async () => {
   if (promptResult !== '新名称') {
     throw new Error(`软件重命名弹窗校验失败: ${JSON.stringify(promptResult)}`);
   }
-  await win.loadFile(path.join(__dirname, '../../../src/app/sidebar/ai-control.html'));
+  await win.loadFile(path.join(__dirname, '../../../src/app/frontend/sidebar/ai-control.html'));
   await new Promise((resolve) => setTimeout(resolve, 120));
   const aiWelcomeResult = await win.webContents.executeJavaScript(`(() => {
     return {
@@ -444,6 +465,9 @@ app.whenReady().then(async () => {
         && panel.querySelector('.sidebar-auth-mode-arrow')?.textContent === '→';
       const closeBehaviorAsk = panel.querySelector('input[name="window-close-behavior"][value="ask"]');
       const closeBehaviorHide = panel.querySelector('input[name="window-close-behavior"][value="hide"]');
+      const startupEnabled = panel.querySelector('#app-startup-enabled');
+      const externalCodexStatus = panel.querySelector('#external-codex-status');
+      const externalCodexButton = panel.querySelector('#copy-external-codex-config');
       const generalSettings = panel.querySelector('.account-general-settings');
       const settingsBelowAnnouncement = panel.querySelector('#announcement-bar')?.nextElementSibling === generalSettings;
       const generalSettingsCollapsed = generalSettings?.open === false
@@ -454,14 +478,30 @@ app.whenReady().then(async () => {
         && new Set(closeBehaviorLabels.map((label) => Math.round(label.getBoundingClientRect().top))).size === 1
         && !panel.querySelector('.account-close-behavior-options small');
       const closeBehaviorLoaded = closeBehaviorAsk?.checked === true;
+      const startupLoaded = startupEnabled?.checked === false;
       const nativeSelectRemoved = !panel.querySelector('select#window-close-behavior');
       closeBehaviorHide.click();
       await new Promise((done) => setTimeout(done, 30));
       const persistedCloseBehavior = await window.aiFree?.ui?.getWindowCloseBehavior?.();
+      if (startupEnabled) {
+        startupEnabled.checked = true;
+        startupEnabled.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      await new Promise((done) => setTimeout(done, 30));
+      const persistedStartupSettings = await window.aiFree?.ui?.getStartupSettings?.();
+      const externalCodexReady = externalCodexStatus?.textContent === '已就绪 · 0 个工具';
+      externalCodexButton?.click();
+      await new Promise((done) => setTimeout(done, 30));
       const closeBehaviorSaved = closeBehaviorHide.checked === true
         && panel.querySelector('#window-close-behavior-status')?.textContent === '已保存';
       const closeBehaviorPersisted = persistedCloseBehavior?.ok === true
         && persistedCloseBehavior.data?.behavior === 'hide';
+      const startupSaved = startupEnabled?.checked === true
+        && panel.querySelector('#app-startup-status')?.textContent === '已保存';
+      const startupPersisted = persistedStartupSettings?.ok === true
+        && persistedStartupSettings.data?.openAtLogin === true
+        && persistedStartupSettings.data?.startMinimized === true;
+      const externalCodexCopied = externalCodexStatus?.textContent === '配置已复制到剪贴板';
       resolve({
         active,
         profileVisible,
@@ -482,6 +522,11 @@ app.whenReady().then(async () => {
         nativeSelectRemoved,
         closeBehaviorSaved,
         closeBehaviorPersisted,
+        startupLoaded,
+        startupSaved,
+        startupPersisted,
+        externalCodexReady,
+        externalCodexCopied,
       });
     }, 30);
   })`);
@@ -502,7 +547,7 @@ app.whenReady().then(async () => {
   }
   homeSwitchRequests = 0;
   independentBrowserCreateRequests = 0;
-  await win.loadFile(path.join(__dirname, '../../../src/app/views/app-shell.html'));
+  await win.loadFile(path.join(__dirname, '../../../src/app/frontend/views/app-shell.html'));
   await new Promise((resolve) => setTimeout(resolve, 120));
   const shellAccountResult = await win.webContents.executeJavaScript(`(async () => {
     const updateWidget = document.getElementById('update-widget');

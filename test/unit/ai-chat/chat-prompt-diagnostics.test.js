@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 
 const {
   summarizeMcpTools,
-} = require('../../../src/app/main/features/ai-chat/chat-prompt-diagnostics');
+} = require('../../../src/app/backend/features/ai-chat/chat-prompt-diagnostics');
 
 test('MCP 功能摘要包含用途、操作和状态修改属性', () => {
   const summary = summarizeMcpTools([

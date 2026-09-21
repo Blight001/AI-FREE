@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { parseTextMcpCalls } = require('../../../src/app/main/features/ai-chat/chat-text-mcp-parser');
+const { parseTextMcpCalls } = require('../../../src/app/backend/features/ai-chat/chat-text-mcp-parser');
 
 function parsedCall(source) {
   const result = parseTextMcpCalls(source, 2);

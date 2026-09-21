@@ -12,7 +12,7 @@ class RemoteBrowserPeerController {
   constructor(options = {}) {
     this.BrowserWindow = options.BrowserWindow;
     this.logger = options.logger || console;
-    this.viewPath = options.viewPath || path.join(__dirname, '../../views/remote-browser-peer.html');
+    this.viewPath = options.viewPath || path.join(__dirname, '../../frontend/views/remote-browser-peer.html');
     this.onMessage = options.onMessage || (() => {});
     this.window = null;
     this.ready = null;

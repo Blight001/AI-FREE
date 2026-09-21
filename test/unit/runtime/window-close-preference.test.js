@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const {
   readWindowCloseBehavior,
   writeWindowCloseBehavior,
-} = require('../../../src/app/main/features/window/window-close-preference');
+} = require('../../../src/app/backend/features/window/window-close-preference');
 
 test('窗口关闭方式兼容缺失和损坏的旧配置', () => {
   assert.equal(readWindowCloseBehavior(() => ({})), 'ask');

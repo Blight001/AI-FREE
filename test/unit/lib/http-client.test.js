@@ -7,12 +7,12 @@ const calls = [];
 let base = '';
 let requestHandler = async (options) => ({ ok: true, status: 200, echo: options });
 let streamHandler = async (...args) => ({ ok: true, args });
-const configPath = require.resolve('../../../src/app/main/config');
-const httpPath = require.resolve('../../../src/app/main/lib/http');
-const transportPath = require.resolve('../../../src/app/main/lib/http-client/transport-request');
-const serverModePath = require.resolve('../../../src/app/main/utils/server-mode');
-const validationPath = require.resolve('../../../src/app/main/features/account/validation-runtime-config');
-const targetPath = require.resolve('../../../src/app/main/lib/http-client');
+const configPath = require.resolve('../../../src/app/backend/config');
+const httpPath = require.resolve('../../../src/app/backend/lib/http');
+const transportPath = require.resolve('../../../src/app/backend/lib/http-client/transport-request');
+const serverModePath = require.resolve('../../../src/app/backend/utils/server-mode');
+const validationPath = require.resolve('../../../src/app/backend/features/account/validation-runtime-config');
+const targetPath = require.resolve('../../../src/app/backend/lib/http-client');
 
 require.cache[configPath] = { exports: {
   NETWORK_DIAG_CONFIG: { REQUEST_TIMEOUT: 5000 },

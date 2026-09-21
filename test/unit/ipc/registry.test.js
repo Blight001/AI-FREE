@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 
 const root = path.join(__dirname, '..', '..', '..');
-const { createIpcRegistry } = require(path.join(root, 'src', 'app', 'main', 'ipc', 'registry.js'));
+const { createIpcRegistry } = require(path.join(root, 'src', 'app', 'backend', 'ipc', 'registry.js'));
 const contracts = require(path.join(root, 'src', 'app', 'contracts', 'ipc-channels.js'));
 
 const KNOWN_INVOKE = contracts.INVOKE_CHANNELS[0].channel;

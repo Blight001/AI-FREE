@@ -3,6 +3,9 @@ const { removeDirectoryWithRetries } = require('../utils/fs-cleanup');
 const { cleanupAccountProfile } = require('./account-profile-cleanup');
 const { createAppShellBootstrap } = require('./app-shell-bootstrap');
 const { createAppShellMainWindowController } = require('./app-shell-main-window');
+const {
+  isStartMinimizedArg,
+} = require('../features/window/startup-preference');
 
 class AppShellRuntime {
   constructor(deps = {}) {
@@ -121,9 +124,9 @@ class AppShellRuntime {
   resolveControlPanelHtmlPath(fileName = 'ai-control.html') {
     const { app, fs, path } = this.deps;
     const candidates = [
-      path.join(__dirname, '../../sidebar', fileName),
-      path.join(app.getAppPath ? app.getAppPath() : '', 'src', 'app', 'sidebar', fileName),
-      path.join(process.cwd(), 'src', 'app', 'sidebar', fileName),
+      path.join(__dirname, '../../frontend/sidebar', fileName),
+      path.join(app.getAppPath ? app.getAppPath() : '', 'src', 'app', 'frontend', 'sidebar', fileName),
+      path.join(process.cwd(), 'src', 'app', 'frontend', 'sidebar', fileName),
     ].filter(Boolean);
     for (const candidate of candidates) {
       try { if (fs.existsSync(candidate)) return candidate; } catch (_) {}
@@ -185,8 +188,8 @@ class AppShellRuntime {
     return window;
   }
 
-  createControlPanelWindow() {
-    if (!this.isControlPanelModeEnabled()) return null;
+  createControlPanelWindow({ force = false } = {}) {
+    if (!force && !this.isControlPanelModeEnabled()) return null;
     const existing = this.resolveControlPanelWindow();
     if (existing && !existing.isDestroyed()) return this.revealExistingControlPanel(existing);
     const window = this.createShellWindow({
@@ -206,7 +209,7 @@ class AppShellRuntime {
   }
 
   closeMissingControlPanel(window) {
-    this.deps.logger.warn?.('[启动] 未找到本地 src/app/sidebar/ai-control.html，跳过控制页窗口加载');
+    this.deps.logger.warn?.('[启动] 未找到本地 src/app/frontend/sidebar/ai-control.html，跳过控制页窗口加载');
     try { window.close(); } catch (_) {}
     return null;
   }
@@ -235,6 +238,8 @@ class AppShellRuntime {
     });
     this.createMainWindow = mainController.createMainWindow;
     this.revealMainWindow = mainController.revealMainWindow;
+    this.openAiControlSidebar = mainController.openAiControlSidebar;
+    this.openAccountCenterSidebar = mainController.openAccountCenterSidebar;
     this.setSidebarWidth = mainController.setSidebarWidth;
     this.bootstrapMainApp = this.createBootstrapMainApp();
   }
@@ -247,6 +252,7 @@ class AppShellRuntime {
       createMainWindow: this.createMainWindow,
       ensureAnnouncementPoller: this.ensureAnnouncementPoller.bind(this),
       isControlPanelOnlyModeEnabled: this.isControlPanelOnlyModeEnabled.bind(this),
+      isLaunchMinimizedStartupRequested: this.isLaunchMinimizedStartupRequested.bind(this),
       revealMainWindow: this.revealMainWindow,
       setSidebarWidth: this.setSidebarWidth,
       resolveActiveTabId: this.resolveActiveTabId.bind(this),
@@ -275,6 +281,10 @@ class AppShellRuntime {
   refreshAnnouncements() {
     return this.ensureAnnouncementPoller().refreshNow();
   }
+
+  isLaunchMinimizedStartupRequested() {
+    return isStartMinimizedArg();
+  }
 }
 
 function createAppShell(deps = {}) {
@@ -283,6 +293,9 @@ function createAppShell(deps = {}) {
     bootstrapMainApp: runtime.bootstrapMainApp,
     createMainWindow: runtime.createMainWindow,
     revealMainWindow: runtime.revealMainWindow,
+    openAiControlSidebar: runtime.openAiControlSidebar,
+    openAccountCenterSidebar: runtime.openAccountCenterSidebar,
+    isLaunchMinimizedStartupRequested: runtime.isLaunchMinimizedStartupRequested.bind(runtime),
     refreshAnnouncements: runtime.refreshAnnouncements.bind(runtime),
   };
 }

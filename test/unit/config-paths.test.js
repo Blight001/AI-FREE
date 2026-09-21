@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
-const { resolveChromiumResourcesPath } = require('../../src/app/main/config/paths');
+const { resolveChromiumResourcesPath } = require('../../src/app/backend/config/paths');
 
 test('staged development app resolves Chromium resources from the project root', () => {
   const projectRoot = path.resolve(__dirname, '../..');
@@ -14,7 +14,7 @@ test('staged development app resolves Chromium resources from the project root',
     getAppPath: () => stagedAppRoot,
   }, {
     workingDirectory: projectRoot,
-    moduleDirectory: path.join(stagedAppRoot, 'src', 'app', 'main', 'config'),
+    moduleDirectory: path.join(stagedAppRoot, 'src', 'app', 'backend', 'config'),
   });
 
   assert.equal(resourcesPath, path.join(projectRoot, 'resources'));

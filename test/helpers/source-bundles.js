@@ -10,7 +10,7 @@ function readFiles(relativePaths) {
 }
 
 function readAiControlSource() {
-  const base = 'src/app/sidebar/client/app/side/controllers/pages';
+  const base = 'src/app/frontend/sidebar/client/app/side/controllers/pages';
   return readFiles([
     `${base}/ai-control.js`,
     `${base}/ai-control/ai-control-selection.js`,
@@ -23,25 +23,26 @@ function readAiControlSource() {
     `${base}/ai-control/ai-control-messages.js`,
     `${base}/ai-control/ai-control-data-loaders.js`,
     `${base}/ai-control/ai-control-composer.js`,
+    `${base}/ai-control/ai-control-workflow.js`,
     `${base}/ai-control/ai-control-bootstrap.js`,
   ]);
 }
 
 const splitSourceFiles = {
-  'src/app/sidebar/client/app/side/controllers/pages/side-panel/modules/account-auth.js': [
+  'src/app/frontend/sidebar/client/app/side/controllers/pages/side-panel/modules/account-auth.js': [
     'account-auth.js', 'account-auth-vip-plans.js', 'account-auth-usage.js',
     'account-auth-actions.js', 'account-auth-bindings.js',
   ],
-  'src/app/sidebar/client/app/side/controllers/pages/side-panel/modules/license.js': [
+  'src/app/frontend/sidebar/client/app/side/controllers/pages/side-panel/modules/license.js': [
     'license.js', 'license-controls.js',
   ],
-  'src/app/sidebar/client/app/side/controllers/pages/side-panel/modules/vpn.js': [
+  'src/app/frontend/sidebar/client/app/side/controllers/pages/side-panel/modules/vpn.js': [
     'vpn.js', 'vpn-config.js', 'vpn-selector.js', 'vpn-lifecycle.js',
   ],
-  'src/app/sidebar/client/app/side/controllers/pages/side-panel/modules/browser-settings.js': [
+  'src/app/frontend/sidebar/client/app/side/controllers/pages/side-panel/modules/browser-settings.js': [
     'browser-settings-history-view.js', 'browser-settings-validation.js', 'browser-settings.js',
   ],
-  'src/app/sidebar/client/app/side/controllers/shared/message-modal.js': [
+  'src/app/frontend/sidebar/client/app/side/controllers/shared/message-modal.js': [
     'message-modal.js', 'message-modal-server.js', 'message-modal-dialogs.js',
   ],
 };

@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const {
   classifyStreamedContent,
   runChatConversation,
-} = require('../../../src/app/main/features/ai-chat/chat-conversation-runner');
+} = require('../../../src/app/backend/features/ai-chat/chat-conversation-runner');
 
 function createRequest(responses, overrides = {}) {
   const executed = [];

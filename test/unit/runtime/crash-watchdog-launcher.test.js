@@ -6,7 +6,7 @@ const test = require('node:test');
 const {
   buildWatchdogEnvironment,
   launchCrashWatchdog,
-} = require('../../../src/app/main/runtime/crash-watchdog/launcher');
+} = require('../../../src/app/backend/runtime/crash-watchdog/launcher');
 
 test('watchdog launcher creates a detached hidden Node-mode process', () => {
   const calls = [];

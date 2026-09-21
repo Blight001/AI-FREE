@@ -1,0 +1,10 @@
+--- a/chrome/browser/ui/views/frame/ai_free_page_automation.cc
++++ b/chrome/browser/ui/views/frame/ai_free_page_automation.cc
+@@ -734,6 +734,7 @@
+       add('page_error',{message:redact(event.message||'未捕获脚本异常'),url:safeUrl(event.filename),source:clip(event.lineno?String(event.lineno):'')});
+     },true);
+     window.addEventListener('unhandledrejection',event=>{add('unhandled_rejection',{message:redact(event.reason?.message||event.reason||'未处理 Promise 异常')});});
++    try{const originalError=console.error?.bind(console);console.error=(...args)=>{add('console_error',{message:redact(args.map(value=>value?.message||value).join(' '))});return originalError?.(...args);};}catch(_){}
+     const resource=entry=>{
+       const status=Number(entry.responseStatus||0);if(status<400)return;
+       const id=[entry.name,entry.startTime,status].join('|');if(state.seen.has(id))return;

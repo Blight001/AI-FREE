@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const parser = require('../../../src/app/main/features/account/account-import-parser');
+const parser = require('../../../src/app/backend/features/account/account-import-parser');
 
 test('cookie entries normalize aliases, flags, expiration and target URL', () => {
   assert.equal(parser.normalizeImportedCookieEntry('', ''), null);

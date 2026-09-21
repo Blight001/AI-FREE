@@ -8,7 +8,7 @@ const test = require('node:test');
 const {
   cookieHeader,
   createBrowserDownloadService,
-} = require('../../../src/app/main/services/browser-download-service');
+} = require('../../../src/app/backend/services/browser-download-service');
 
 test('browser download saves into an AI workspace subdirectory with matching cookies only', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-download-'));

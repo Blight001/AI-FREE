@@ -51,6 +51,11 @@ function createAiSupportService(deps = {}) {
     });
     return true;
   }
+  async function workflow(input = {}) {
+    const { connection_id: connectionId, action, mode } = input;
+    if (!deps.browserAutomationBridge?.dispatch) throw new Error('浏览器控制尚未就绪');
+    return deps.browserAutomationBridge.dispatch(connectionId, 'browser_workflow', { action, ...(mode !== undefined ? { mode } : {}) });
+  }
 
   return {
     broadcastBrowserSelection,
@@ -64,6 +69,7 @@ function createAiSupportService(deps = {}) {
     workspaceImport: workspaceService.importFiles,
     workspaceList: workspaceService.list,
     workspaceRead: workspaceService.read,
+    workflow,
   };
 }
 

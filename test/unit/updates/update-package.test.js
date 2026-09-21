@@ -7,7 +7,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const tar = require('tar');
-const updatePackage = require('../../../src/app/main/features/updates/update-package');
+const updatePackage = require('../../../src/app/backend/features/updates/update-package');
 
 test('update package filesystem helpers discover, copy and clean launch assets', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-update-package-'));

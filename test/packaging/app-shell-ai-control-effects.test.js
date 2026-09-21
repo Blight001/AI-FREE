@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
-const appShellRoot = path.join(__dirname, '../../src/app/renderer');
+const appShellRoot = path.join(__dirname, '../../src/app/frontend/renderer');
 const appRoot = path.join(__dirname, '../../src/app');
 
 test('应用外壳不再渲染 AI 浏览器连接粒子或标签高亮', () => {
@@ -29,10 +29,10 @@ test('网络魔法标签效果仍保持独立', () => {
 });
 
 test('浏览器窗口切换栏作为底部任务栏并使用软件 Logo', () => {
-  const html = fs.readFileSync(path.join(appRoot, 'views/app-shell.html'), 'utf8');
+  const html = fs.readFileSync(path.join(appRoot, 'frontend/views/app-shell.html'), 'utf8');
   const css = fs.readFileSync(path.join(appShellRoot, 'styles/app-shell.css'), 'utf8');
   const sidebarLayout = fs.readFileSync(path.join(
-    appRoot, 'sidebar/client/app/side/styles/modules/layout.css',
+    appRoot, 'frontend/sidebar/client/app/side/styles/modules/layout.css',
   ), 'utf8');
   const tabsController = fs.readFileSync(path.join(
     appShellRoot, 'controllers/pages/app-shell/tabs.js',
@@ -49,7 +49,7 @@ test('浏览器窗口切换栏作为底部任务栏并使用软件 Logo', () => 
 });
 
 test('底部任务栏提供独立首页入口并在主题按钮左侧显示版本号', () => {
-  const html = fs.readFileSync(path.join(appRoot, 'views/app-shell.html'), 'utf8');
+  const html = fs.readFileSync(path.join(appRoot, 'frontend/views/app-shell.html'), 'utf8');
   const shellUi = fs.readFileSync(path.join(
     appShellRoot, 'controllers/pages/app-shell/tabs-shell-ui.js',
   ), 'utf8');
@@ -65,33 +65,35 @@ test('底部任务栏提供独立首页入口并在主题按钮左侧显示版�
 });
 
 test('内置代理收进底部任务栏魔法棒，首页空白页不再展示开关', () => {
-  const html = fs.readFileSync(path.join(appRoot, 'views/app-shell.html'), 'utf8');
-  const css = fs.readFileSync(path.join(appShellRoot, 'styles/app-shell-network-magic.css'), 'utf8');
-  const vpnCss = fs.readFileSync(path.join(
-    appRoot, 'sidebar/client/app/side/styles/modules/vpn.css',
-  ), 'utf8');
+  const html = fs.readFileSync(path.join(appRoot, 'frontend/views/app-shell.html'), 'utf8');
+  const sidebarHtml = fs.readFileSync(path.join(appRoot, 'frontend/sidebar/ai-control.html'), 'utf8');
   const controller = fs.readFileSync(path.join(
     appShellRoot, 'controllers/pages/app-shell/shell-network-magic.js',
+  ), 'utf8');
+  const sidebarCss = fs.readFileSync(path.join(
+    appRoot, 'frontend/sidebar/client/app/side/styles/modules/network-magic-sidebar.css',
   ), 'utf8');
   const emptyState = html.match(/id="browser-empty-state"[\s\S]*?<\/main>/)?.[0] || '';
 
   assert.match(html, /id="shell-app-version"[\s\S]*?id="shell-network-magic"[\s\S]*?id="theme-toggle-btn"/);
   assert.match(html, /id="shell-network-magic-toggle"[\s\S]*?class="network-magic-wand-icon"/);
-  assert.match(html, /id="VPN-switch"[\s\S]*?开启魔法代理/);
-  assert.match(html, /id="vpn-node-selector-toggle-btn"[\s\S]*?切换节点/);
-  assert.match(html, /id="vpn-node-selector-panel"[\s\S]*?class="vpn-node-selector-dialog"/);
+  assert.match(sidebarHtml, /id="network-magic-sidebar-dialog"[\s\S]*?id="VPN-switch"[\s\S]*?开启魔法代理/);
+  assert.match(sidebarHtml, /id="vpn-node-selector-toggle-btn"[\s\S]*?切换节点/);
+  assert.match(sidebarHtml, /id="vpn-node-selector-panel"[\s\S]*?class="vpn-node-selector-dialog"/);
+  assert.doesNotMatch(html, /id="VPN-switch"/);
+  assert.doesNotMatch(html, /id="vpn-node-selector-panel"/);
   assert.doesNotMatch(emptyState, /id="VPN-switch"/);
   assert.doesNotMatch(emptyState, /内置代理/);
   assert.doesNotMatch(emptyState, /vpn-node-selector-toggle-btn/);
-  assert.match(css, /\.shell-network-magic-menu\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?--app-shell-sidebar-width/);
-  assert.match(vpnCss, /\.vpn-node-selector-dialog\s*\{[\s\S]*?inset:\s*0\s+var\(--app-shell-sidebar-width,\s*30%\)\s+0\s+0/);
-  assert.match(controller, /setNetworkMagicMenuOpen/);
+  assert.match(sidebarCss, /\.network-magic-sidebar-dialog\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?inset:\s*0;/);
+  assert.match(sidebarCss, /\.network-magic-sidebar-panel \.vpn-node-selector-dialog\s*\{[\s\S]*?position:\s*relative;/);
+  assert.match(controller, /toggleNetworkMagicPanel/);
 });
 
 test('个人中心不再显示教程、版本号或资料外层背景盒子', () => {
-  const accountHtml = fs.readFileSync(path.join(appRoot, 'sidebar/account-center.html'), 'utf8');
+  const accountHtml = fs.readFileSync(path.join(appRoot, 'frontend/sidebar/account-center.html'), 'utf8');
   const themeCss = fs.readFileSync(path.join(
-    appRoot, 'sidebar/client/app/side/styles/modules/website-console-theme.css',
+    appRoot, 'frontend/sidebar/client/app/side/styles/modules/website-console-theme.css',
   ), 'utf8');
 
   assert.doesNotMatch(accountHtml, /id="tutorial-link"/);
@@ -101,12 +103,12 @@ test('个人中心不再显示教程、版本号或资料外层背景盒子', ()
 });
 
 test('个人中心常规设置默认折叠在公告下方且内容宽度自适应', () => {
-  const accountHtml = fs.readFileSync(path.join(appRoot, 'sidebar/account-center.html'), 'utf8');
+  const accountHtml = fs.readFileSync(path.join(appRoot, 'frontend/sidebar/account-center.html'), 'utf8');
   const accountCss = fs.readFileSync(path.join(
-    appRoot, 'sidebar/client/app/side/styles/modules/account-auth.css',
+    appRoot, 'frontend/sidebar/client/app/side/styles/modules/account-auth.css',
   ), 'utf8');
   const layoutCss = fs.readFileSync(path.join(
-    appRoot, 'sidebar/client/app/side/styles/modules/layout.css',
+    appRoot, 'frontend/sidebar/client/app/side/styles/modules/layout.css',
   ), 'utf8');
   const announcementIndex = accountHtml.indexOf('id="announcement-bar"');
   const settingsIndex = accountHtml.indexOf('class="account-general-settings"');
@@ -126,7 +128,7 @@ test('底部浏览器任务项在文字前装配首个网站图标', () => {
     appShellRoot, 'controllers/pages/app-shell/tabs-renderer.js',
   ), 'utf8');
   const css = fs.readFileSync(path.join(appShellRoot, 'styles/app-shell.css'), 'utf8');
-  const html = fs.readFileSync(path.join(appRoot, 'views/app-shell.html'), 'utf8');
+  const html = fs.readFileSync(path.join(appRoot, 'frontend/views/app-shell.html'), 'utf8');
 
   assert.match(renderer, /createTabSiteIcon\(tab\)/);
   assert.match(renderer, /tabElement\.appendChild\(createTabSiteIcon\(tab\)\)/);

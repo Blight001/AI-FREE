@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const {
   createWindowBackgroundController,
-} = require('../../../src/app/main/features/window/window-background-controller');
+} = require('../../../src/app/backend/features/window/window-background-controller');
 
 class FakeTray extends EventEmitter {
   constructor(iconPath) {

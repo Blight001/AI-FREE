@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 
 const root = path.join(__dirname, '..', '..', '..');
-const { createAppContext, appContext } = require(path.join(root, 'src', 'app', 'main', 'runtime', 'app-context.js'));
+const { createAppContext, appContext } = require(path.join(root, 'src', 'app', 'backend', 'runtime', 'app-context.js'));
 
 test('退出标志：初始为 false，标记后为 true', () => {
   const ctx = createAppContext();

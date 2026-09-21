@@ -7,7 +7,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const axiosPath = require.resolve('axios');
-const targetPath = require.resolve('../../../src/app/main/features/network/clash-mini-control-impl');
+const targetPath = require.resolve('../../../src/app/backend/features/network/clash-mini-control-impl');
 const requests = [];
 let responder = async (options) => ({ status: 200, data: { options } });
 const axiosStub = async (options) => {
@@ -57,6 +57,8 @@ test('runtime config parsing derives proxy and controller settings', () => {
     fs.mkdirSync(otherRoot);
     fs.copyFileSync(path.join(root, 'config.yaml'), path.join(otherRoot, 'self.yaml'));
     assert.equal(clash.getClashMiniProxyEndpoint(otherRoot).port, 18080);
+    fs.writeFileSync(path.join(otherRoot, 'self.yaml'), 'socks-port: 18081\n');
+    assert.equal(clash.getClashMiniProxyEndpoint(otherRoot).protocol, 'socks5');
     assert.equal(clash.getClashMiniControlEndpoint(otherRoot).port, 9090);
     assert.deepEqual(clash.buildClashMiniControlHeaders(otherRoot), {});
   } finally {
@@ -85,16 +87,26 @@ test('control requests validate status and rule mode changes only when needed', 
   fs.writeFileSync(path.join(root, 'config.yaml'), 'external-controller: 127.0.0.1:9090\nsecret: fixture\n');
   try {
     requests.length = 0;
-    responder = async (options) => ({ status: 200, data: options.method === 'get' ? { mode: 'global' } : { ok: true } });
+    responder = async (options) => ({
+      status: 200,
+      data: options.method === 'get'
+        ? (requests.some((item) => item.method === 'patch') ? { mode: 'rule' } : { mode: 'global' })
+        : { ok: true },
+    });
     const changed = await clash.ensureClashMiniRuleMode(root);
     assert.deepEqual(changed, { ok: true, changed: true, mode: 'rule', previousMode: 'global' });
-    assert.deepEqual(requests.map((item) => item.method), ['get', 'patch']);
+    assert.deepEqual(requests.map((item) => item.method), ['get', 'patch', 'get']);
     assert.deepEqual(requests[1].data, { mode: 'rule' });
 
     responder = async () => ({ status: 200, data: { mode: 'rule' } });
     assert.deepEqual(await clash.ensureClashMiniRuleMode(root), { ok: true, changed: false, mode: 'rule' });
     requests.length = 0;
-    responder = async (options) => ({ status: 200, data: options.method === 'get' ? { mode: 'rule' } : { ok: true } });
+    responder = async (options) => ({
+      status: 200,
+      data: options.method === 'get'
+        ? (requests.some((item) => item.method === 'patch') ? { mode: 'global' } : { mode: 'rule' })
+        : { ok: true },
+    });
     assert.deepEqual(await clash.ensureClashMiniMode(root, 'global'), {
       ok: true, changed: true, mode: 'global', previousMode: 'rule',
     });

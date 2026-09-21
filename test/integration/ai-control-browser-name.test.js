@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { enrichBrowserConnectionNames } = require('../../src/app/main/features/ai-chat/connection-names');
+const { enrichBrowserConnectionNames } = require('../../src/app/backend/features/ai-chat/connection-names');
 
 test('插件连接显示对应 AI-FREE 浏览器的自定义名称', () => {
   const connections = [

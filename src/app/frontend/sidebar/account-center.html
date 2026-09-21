@@ -22,24 +22,12 @@
   <link rel="stylesheet" href="./client/styles/control-panel.css" />
   <link rel="stylesheet" href="./client/app/side/styles/side.css" />
   <link rel="stylesheet" href="./client/app/side/styles/modules/website-console-theme.css" />
-  <script defer src="./client/scripts/dev-mode-navigation.js"></script>
+  <link rel="stylesheet" href="./client/app/side/styles/modules/sidebar-navigation.css" />
+  <script defer src="./client/scripts/sidebar-navigation.js"></script>
 </head>
 <body>
   <div class="control-shell">
-    <nav class="tab-nav" aria-label="侧边栏栏目">
-      <a class="tab-button" href="./ai-control.html" data-tab="ai-control-panel" aria-controls="ai-control-panel">
-        <span class="tab-button-icon" aria-hidden="true">✦</span>
-        <span>AI 控制</span>
-      </a>
-      <a class="tab-button active" href="./account-center.html" data-tab="account-center-panel" aria-controls="account-center-panel" aria-current="page">
-        <span class="tab-button-icon" aria-hidden="true">●</span>
-        <span>个人中心</span>
-      </a>
-      <a class="tab-button" href="../main/views/dev-console.html?dev=1" data-dev-only hidden>
-        <span class="tab-button-icon" aria-hidden="true">◇</span>
-        <span>调试控制台</span>
-      </a>
-    </nav>
+    <!-- data-dev-only 保留为兼容标记；调试控制台已移到独立窗口。 -->
     <div class="main-wrapper">
 
       <section id="account-center-panel" class="account-center-panel panel active" aria-label="个人中心">
@@ -236,6 +224,26 @@
                       <span>退出</span>
                     </label>
                   </fieldset>
+                  <div class="account-startup-preference">
+                    <div>
+                      <strong>开机启动</strong>
+                      <p>登录 Windows 后自动启动，并隐藏到系统托盘。</p>
+                    </div>
+                    <p id="app-startup-status" class="account-app-preferences-status" role="status" aria-live="polite"></p>
+                    <label class="account-switch">
+                      <input id="app-startup-enabled" type="checkbox">
+                      <span aria-hidden="true"></span>
+                      <b>启用</b>
+                    </label>
+                  </div>
+                  <div class="account-codex-bridge">
+                    <div class="account-codex-bridge-copy">
+                      <strong>外部 Codex</strong>
+                      <p>桥接默认启动，让 Codex 调用 AI-FREE 已授权的 MCP 工具。</p>
+                      <span id="external-codex-status" class="account-app-preferences-status" role="status" aria-live="polite">检查中…</span>
+                    </div>
+                    <button id="copy-external-codex-config" class="account-codex-bridge-button" type="button">复制连接配置</button>
+                  </div>
                 </section>
               </details>
 
@@ -291,12 +299,22 @@
   </div>
 
 
+  <div class="sidebar-bottom-actions" aria-label="侧边栏操作">
+    <button class="sidebar-bottom-button is-active" type="button" data-open-account-center aria-current="page">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg>
+      <span>个人中心</span>
+    </button>
+    <button class="sidebar-bottom-button" type="button" data-open-ai-control>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="16" height="14" rx="4"/><path d="M12 3v3M8 11h.01M16 11h.01M8 16h8"/></svg>
+      <span>AI 控制</span>
+    </button>
+  </div>
   <script src="./client/scripts/logo-assets.js"></script>
   <script src="./client/scripts/control-panel.js"></script>
   <script src="./client/app/side/controllers/shared/sidebar-resizer.js"></script>
 
   <script src="./client/app/side/controllers/pages/side-panel/tabs.js"></script>
-  <script src="../shared/quota-display.js"></script>
+  <script src="../../shared/quota-display.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-selection.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-server-device.js"></script>
@@ -314,10 +332,10 @@
 
   <!-- 共享控制器工具 -->
   <script src="../renderer/controllers/shared/controller-utils.js"></script>
-  <script src="../shared/version-utils.js"></script>
-  <script src="../shared/message-utils.js"></script>
-  <script src="../shared/server-message-utils.js"></script>
-  <script src="../shared/text-preview-utils.js"></script>
+  <script src="../../shared/version-utils.js"></script>
+  <script src="../../shared/message-utils.js"></script>
+  <script src="../../shared/server-message-utils.js"></script>
+  <script src="../../shared/text-preview-utils.js"></script>
 
   <!-- 消息弹窗模块 -->
   <script src="./client/app/side/controllers/shared/message-modal.js"></script>
@@ -332,6 +350,8 @@
   <script src="./client/app/side/controllers/pages/side-panel/modules/account-auth-actions.js"></script>
   <script src="./client/app/side/controllers/pages/side-panel/modules/account-auth-bindings.js"></script>
   <script src="./client/app/side/controllers/pages/side-panel/modules/window-close-preference.js"></script>
+  <script src="./client/app/side/controllers/pages/side-panel/modules/app-startup-preference.js"></script>
+  <script src="./client/app/side/controllers/pages/side-panel/modules/external-codex-preference.js"></script>
   <script src="./client/app/side/controllers/pages/side-panel/modules/entry-links.js"></script>
   <script src="./client/app/side/controllers/pages/side-panel/modules/region.js"></script>
   <script src="./client/app/side/controllers/pages/side-panel/modules/vpn.js"></script>
@@ -352,5 +372,6 @@
   <script src="./client/app/side/controllers/pages/side-panel/modules/bootstrap.js"></script>
   <script src="./client/app/side/controllers/pages/side-panel/index.js"></script>
   <script src="./client/app/side/controllers/pages/side-panel/dream-opener.js"></script>
+  <script src="./client/app/side/controllers/pages/side-panel/network-magic-sidebar.js"></script>
 </body>
 </html>

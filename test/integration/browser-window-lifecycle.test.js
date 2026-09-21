@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 
-const { createTabManager } = require('../../src/app/main/services/tab-manager');
+const { createTabManager } = require('../../src/app/backend/services/tab-manager');
 
 test('Chromium 新建标签页不经过 data URL 启动占位页', async () => {
   const chromium = new EventEmitter();
@@ -694,7 +694,7 @@ test('Chromium 意外关闭时保留可恢复的错误栏目', async () => {
 });
 
 test('软件整体退出时不由崩溃回调重复关闭栏目', async () => {
-  const { appContext } = require('../../src/app/main/runtime/app-context');
+  const { appContext } = require('../../src/app/backend/runtime/app-context');
   const previousShutdownState = appContext.isShuttingDown();
   appContext.setShuttingDown(true);
   try {

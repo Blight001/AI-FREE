@@ -7,8 +7,8 @@ const os = require('os');
 const path = require('path');
 const { once } = require('events');
 const { app, BrowserWindow } = require('electron');
-const { createBrowserRuntimeManager } = require('../../../src/app/main/browser-runtime');
-const { MAX_MESSAGE_BYTES, PROTOCOL_VERSION } = require('../../../src/app/main/browser-runtime/chromium-command-client');
+const { createBrowserRuntimeManager } = require('../../../src/app/backend/browser-runtime');
+const { MAX_MESSAGE_BYTES, PROTOCOL_VERSION } = require('../../../src/app/backend/browser-runtime/chromium-command-client');
 
 const acceptanceChromiumPath = String(process.env.AI_FREE_ACCEPTANCE_CHROMIUM_PATH || '').trim();
 if (acceptanceChromiumPath) {
@@ -347,6 +347,7 @@ app.whenReady().then(async () => {
   assert.equal(new URLSearchParams(inputRequest.query || '').get('trusted'), 'true');
 
   const coordinatePage = await manager.navigate('phase3_b', 'chromium', `${origin}/coordinate-input`);
+  assert.equal((await manager.dispatchAutomationByProcessId(b.state.pid, 'automation-takeover', { action: 'acquire' })).result.takeoverActive, true);
   assert.equal(coordinatePage.result.title, 'COORDINATE_INPUT_READY');
   const topmostObserved = await manager.dispatchAutomationByProcessId(b.state.pid, 'observe-page', {
     limit: 50, text_limit: 40, show_highlights: false,
@@ -438,6 +439,7 @@ app.whenReady().then(async () => {
   assert(inputsOnly.result.items.every((item) => item.editable === true));
 
   const mediaPage = await manager.navigate('phase3_b', 'chromium', `${origin}/media-grid`);
+  assert.equal((await manager.dispatchAutomationByProcessId(b.state.pid, 'automation-takeover', { action: 'acquire' })).result.takeoverActive, true);
   assert.equal(mediaPage.result.title, 'MEDIA_GRID_READY');
   const mediaObserved = await manager.dispatchAutomationByProcessId(b.state.pid, 'observe-page', {
     filter: 'media', limit: 20, show_highlights: false,
@@ -451,7 +453,8 @@ app.whenReady().then(async () => {
   assert(mediaItems.find((item) => item.selector === '#two')?.mediaUrls.includes(`${origin}/asset-two-large.svg`));
   assert.equal(mediaItems.find((item) => item.selector === '#three')?.mediaType, 'background-image');
   assert(mediaItems.find((item) => item.selector === '#four')?.mediaUrls.includes(`${origin}/asset-four.svg`));
-  assert.equal(mediaObserved.result.downloadLinks.filter((item) => item.kind === 'media').length, 4);
+  assert.equal(mediaObserved.result.mediaResources.length, 4);
+  assert.equal(mediaObserved.result.mediaResourceCount, 4);
 
   const downloadObserved = await manager.dispatchAutomationByProcessId(b.state.pid, 'observe-page', {
     keyword: '下载测试', limit: 10, show_highlights: false,
@@ -492,6 +495,7 @@ app.whenReady().then(async () => {
   await manager.navigate('phase3_b', 'chromium', `${origin}/page?profile=b`);
 
   const nativePage = await manager.navigate('phase3_b', 'chromium', `${origin}/native-input?profile=b`);
+  assert.equal((await manager.dispatchAutomationByProcessId(b.state.pid, 'automation-takeover', { action: 'acquire' })).result.takeoverActive, true);
   assert.equal(nativePage.result.title, 'NATIVE_INPUT_READY');
   const waited = await manager.dispatchAutomationByProcessId(b.state.pid, 'perform-action', {
     action: 'wait', selector: '#delayed-native-target', timeout: 3000,

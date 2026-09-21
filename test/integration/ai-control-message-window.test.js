@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { limitAiControlMessages } = require('../../src/app/main/lib/ai-control-message-window');
+const { limitAiControlMessages } = require('../../src/app/backend/lib/ai-control-message-window');
 
 test('AI 控制保留超过 40 条的完整对话和大段内容', () => {
   const messages = Array.from({ length: 150 }, (_, index) => ({

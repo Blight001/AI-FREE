@@ -5,7 +5,7 @@ const test = require('node:test');
 const {
   startChromiumPreflightWarmup,
   waitForChromiumPreflightWarmup,
-} = require('../../../src/app/main/browser-runtime/chromium-preflight-warmup');
+} = require('../../../src/app/backend/browser-runtime/chromium-preflight-warmup');
 
 test('background preflight is shared with a launch that starts while it is running', async () => {
   let finishWorker;

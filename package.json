@@ -1,9 +1,9 @@
 {
   "name": "ai-free",
-  "version": "2.6.44",
+  "version": "2.6.48",
   "private": true,
   "description": "Assistant to help creators use AI more conveniently",
-  "main": "src/app/main/main.js",
+  "main": "src/app/backend/main.js",
   "workspaces": [],
   "scripts": {
     "prepare:source": "node scripts/build-source.js",
@@ -16,6 +16,7 @@
     "accept:chromium-phase2": "node scripts/run-electron.js scripts/accept-chromium-phase2.js",
     "accept:chromium-input": "node scripts/run-electron.js scripts/accept-chromium-input.js",
     "accept:chromium-phase3": "node scripts/run-electron.js scripts/accept-chromium-phase3.js",
+    "accept:codex-browser": "node scripts/run-electron.js test/acceptance/scripts/accept-native-browser-codex-alignment.js",
     "check:account-session": "node --test test/unit/account/account-service.test.js test/integration/account-device-login.test.js",
     "check:session-storage": "node scripts/run-electron.js scripts/check-session-storage.js",
     "check:announcements": "node scripts/check-announcement-polling.js",
@@ -42,7 +43,7 @@
     "test:acceptance": "npm run check:extension-compat && npm run check:extension-refresh && npm run check:chromium-handshake && npm run check:browser-runtime && npm run check:browser-observe && npm run check:remote-browser-peer && npm run check:browser-settings-ui && npm run check:session-storage",
     "test:coverage": "node --test --experimental-test-coverage --test-coverage-exclude=test/** --test-coverage-exclude=scripts/** --test-coverage-exclude=native/** --test-coverage-exclude=.generated/** --test-coverage-lines=75 --test-coverage-branches=65 --test-coverage-functions=70 \"test/**/*.test.js\"",
     "format:check": "git diff --check -- .",
-    "check:architecture": "node --test test/contract/ipc/channels-registry.test.js test/packaging/assets/source-build.test.js",
+    "check:architecture": "node --test test/contract/architecture/directory-layout.test.js test/contract/ipc/channels-registry.test.js test/packaging/assets/source-build.test.js",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "guardrails": "node scripts/check-guardrails.js",
@@ -153,7 +154,8 @@
     },
     "asarUnpack": [
       "**/assets/extensions/**/*",
-      "**/app/main/runtime/crash-watchdog/**/*"
+      "**/app/backend/runtime/crash-watchdog/**/*",
+      "**/app/backend/runtime/codex-mcp/**/*"
     ],
     "compression": "maximum",
     "electronLanguages": [

@@ -3,8 +3,8 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { registerMiscIPC } = require('../../../src/app/main/ipc/register/misc');
-const { createLicenseCache } = require('../../../src/app/main/runtime/license-cache');
+const { registerMiscIPC } = require('../../../src/app/backend/ipc/register/misc');
+const { createLicenseCache } = require('../../../src/app/backend/runtime/license-cache');
 
 test('羊毛平台缓存和 IPC 保留全部子链接与仅启动标记', async () => {
   const handlers = new Map();

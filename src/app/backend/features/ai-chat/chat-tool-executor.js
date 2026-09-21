@@ -1,6 +1,7 @@
 'use strict';
 
 const { withBrowserRouteParam } = require('./chat-tool-context');
+const { mcpToolResult } = require('../../services/mcp-tool-result');
 const {
   browserReference,
   normalizeToolError,
@@ -145,7 +146,7 @@ function syncWindowToolControl(context, toolName, args, toolResult) {
 function isPreviewImageResult(toolName, result) {
   if (!result || result.success === false) return false;
   if (!/^data:image\/[a-z0-9.+-]+;base64,/i.test(String(result.dataUrl || ''))) return false;
-  return toolName === 'browser_screenshot' || result.send_to_user === true;
+  return ['browser_screenshot', 'browser_observe', 'browser_action'].includes(toolName) || result.send_to_user === true;
 }
 
 function buildToolImageMessage(toolName, dataUrl) {
@@ -163,6 +164,16 @@ function buildToolImageMessage(toolName, dataUrl) {
 function serializeToolResult(result, toolName) {
   let serializedResult = result ?? null;
   let imageMessage = null;
+  if (Array.isArray(result?.images) || result?.observation?.dataUrl) {
+    const converted = mcpToolResult(result);
+    serializedResult = converted.structuredContent;
+    const pictures = converted.content.filter((item) => item.type === 'image');
+    if (pictures.length) imageMessage = {
+      role: 'user', ai_free_transient_image: true,
+      content: [{ type: 'text', text: '以下为本次操作的页面快照，顺序对应报告中的图片标签。' },
+        ...pictures.map((item) => ({ type: 'image_url', image_url: { url: `data:${item.mimeType};base64,${item.data}` } }))],
+    };
+  }
   if (isPreviewImageResult(toolName, result)) {
     const { dataUrl, ...metadata } = result;
     serializedResult = { ...metadata, image_attached: true };
@@ -179,6 +190,7 @@ function serializeToolResult(result, toolName) {
 }
 
 function compactToolActivityResult(context, result, toolName) {
+  if (Array.isArray(result?.images) || result?.observation?.dataUrl) return context.compactToolValue(mcpToolResult(result).structuredContent);
   if (isPreviewImageResult(toolName, result) || (toolName === 'browser_screenshot' && result?.dataUrl)) {
     const { dataUrl: _dataUrl, ...metadata } = result;
     return context.compactToolValue({ ...metadata, image_attached: true });

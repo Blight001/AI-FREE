@@ -3,11 +3,11 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const target = require.resolve('../../../src/app/main/services/ai-browser-window-tools');
-const historyDependency = require.resolve('../../../src/app/main/features/browser/browser-history-service');
-const storeDependency = require.resolve('../../../src/app/main/ipc/register/store-utils');
-const settingsDependency = require.resolve('../../../src/app/main/utils/ai-free-browser-settings');
-const vipDependency = require.resolve('../../../src/app/main/utils/vip-access');
+const target = require.resolve('../../../src/app/backend/services/ai-browser-window-tools');
+const historyDependency = require.resolve('../../../src/app/backend/features/browser/browser-history-service');
+const storeDependency = require.resolve('../../../src/app/backend/ipc/register/store-utils');
+const settingsDependency = require.resolve('../../../src/app/backend/utils/ai-free-browser-settings');
+const vipDependency = require.resolve('../../../src/app/backend/utils/vip-access');
 
 let history;
 let nextId;

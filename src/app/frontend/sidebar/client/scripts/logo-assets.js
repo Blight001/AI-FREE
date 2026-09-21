@@ -1,7 +1,7 @@
 (function initLogoAssets() {
   'use strict';
 
-  const SOURCE_LOGO_PATH = '../../assets/logo.ico';
+  const SOURCE_LOGO_PATH = '../../../assets/logo.ico';
   const PACKAGED_LOGO_PATH = '../../../../resource/logo.ico';
 
   function isPackagedSidebarUrl(url = window.location.href) {

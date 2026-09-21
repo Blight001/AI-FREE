@@ -8,7 +8,7 @@ const test = require('node:test');
 
 const {
   prepareChromiumPreflight,
-} = require('../../../src/app/main/browser-runtime/chromium-launch-preflight');
+} = require('../../../src/app/backend/browser-runtime/chromium-launch-preflight');
 
 test('启动前发现关键文件损坏时阻止启动并生成诊断包', (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-preflight-failure-'));

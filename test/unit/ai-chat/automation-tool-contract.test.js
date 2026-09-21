@@ -10,7 +10,7 @@ const {
   resolveBrowserConnection,
   resolveDispatchTimeout,
   sanitizeBrowserRoutingArgs,
-} = require('../../../src/app/main/services/automation-tool-contract');
+} = require('../../../src/app/backend/services/automation-tool-contract');
 
 test('统一工具契约兼容本地 AI 与外部网关的 schema 字段', () => {
   const local = normalizeToolSchema({

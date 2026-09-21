@@ -335,6 +335,7 @@ function bindNetworkMagicAccountSession() {
 // 同步/连接：bindClashMiniControls的具体业务逻辑。
 function bindClashMiniControls() {
   const controls = resolveClashMiniControls();
+  if (!controls.vpnBtn && !controls.startBtn && !vpnNodeSelectorPanel) return;
   bindNetworkMagicAccountSession();
   bindNetworkMagicProxyMode(controls);
   bindClashToggleButtons(controls);

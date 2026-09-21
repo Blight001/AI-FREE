@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { createExtensionMutationService } = require('../../../src/app/main/features/extensions/extension-mutation-service');
+const { createExtensionMutationService } = require('../../../src/app/backend/features/extensions/extension-mutation-service');
 
 function createFixture(overrides = {}) {
   const state = { plugins: [

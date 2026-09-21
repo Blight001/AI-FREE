@@ -6,10 +6,10 @@ const test = require('node:test');
 let clashStatus = { running: true, enabled: true, coreDir: 'fixture-core' };
 let endpoint = { host: '127.0.0.2', port: 17890 };
 let shuttingDown = false;
-const runtimePath = require.resolve('../../../src/app/main/features/network/clash-mini-control-runtime');
-const contextPath = require.resolve('../../../src/app/main/runtime/app-context');
-const environmentPath = require.resolve('../../../src/app/main/features/browser/browser-environment');
-const targetPath = require.resolve('../../../src/app/main/features/browser/browser-network-controller');
+const runtimePath = require.resolve('../../../src/app/backend/features/network/clash-mini-control-runtime');
+const contextPath = require.resolve('../../../src/app/backend/runtime/app-context');
+const environmentPath = require.resolve('../../../src/app/backend/features/browser/browser-environment');
+const targetPath = require.resolve('../../../src/app/backend/features/browser/browser-network-controller');
 
 require.cache[runtimePath] = { exports: {
   getClashMiniStatus: () => clashStatus,

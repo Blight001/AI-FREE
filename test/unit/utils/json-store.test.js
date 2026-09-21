@@ -11,7 +11,7 @@ const {
   readStoreConfigFile,
   writeJsonFileSafe,
   writeStoreConfigFile,
-} = require('../../../src/app/main/utils/json-store');
+} = require('../../../src/app/backend/utils/json-store');
 
 test('JSON store round-trips nested files and applies explicit fallbacks', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-json-store-'));

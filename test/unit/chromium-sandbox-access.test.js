@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { ensureChromiumSandboxAccess } = require('../../src/app/main/browser-runtime/chromium-launcher');
+const { ensureChromiumSandboxAccess } = require('../../src/app/backend/browser-runtime/chromium-launcher');
 
 test('Windows Chromium 目录授予 AppContainer 只读执行权限', () => {
   let invocation = null;
@@ -55,7 +55,7 @@ test('Chromium 版本未变化时跨软件重启复用持久 ACL 结果', (t) =>
   };
 
   assert.equal(ensureChromiumSandboxAccess(executable, console, options).ok, true);
-  const modulePath = require.resolve('../../src/app/main/browser-runtime/chromium-sandbox-access');
+  const modulePath = require.resolve('../../src/app/backend/browser-runtime/chromium-sandbox-access');
   delete require.cache[modulePath];
   const fresh = require(modulePath);
   const cached = fresh.ensureChromiumSandboxAccess(executable, console, options);

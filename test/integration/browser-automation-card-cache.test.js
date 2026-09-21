@@ -10,7 +10,7 @@ const {
   CARD_CACHE_FILE_NAME,
   createBrowserAutomationBridge,
   createCardCacheStore,
-} = require('../../src/app/main/services/browser-automation-bridge');
+} = require('../../src/app/backend/services/browser-automation-bridge');
 test('automation cards persist in the software data directory', (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-card-cache-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));

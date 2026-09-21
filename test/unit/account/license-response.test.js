@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const response = require('../../../src/app/main/utils/license-response');
+const response = require('../../../src/app/backend/utils/license-response');
 
 test('license response text extraction respects top-level and nested precedence', () => {
   assert.equal(response.pickFirstText('', '  first  ', 'second'), 'first');

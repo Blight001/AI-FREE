@@ -1,0 +1,5 @@
+.ai-control-workflow { display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:8px 12px; border-bottom:1px solid #8883; font-size:12px; flex-shrink:0; }
+.ai-control-workflow button,.ai-control-workflow select { color:inherit; background:transparent; border:1px solid #8885; border-radius:6px; padding:4px 7px; font:inherit; cursor:pointer; }
+.ai-control-workflow button:disabled { opacity:.4; cursor:default; }
+.ai-control-workflow p { width:100%; margin:2px 0 0; opacity:.75; }
+.ai-control-workflow pre { width:100%; max-height:180px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; font:inherit; margin:4px 0; }

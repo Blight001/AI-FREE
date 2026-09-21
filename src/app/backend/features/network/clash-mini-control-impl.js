@@ -124,8 +124,15 @@ function getClashMiniProxyEndpoint(coreDir) {
   const mixedPort = Number(config['mixed-port'] || config.mixed_port);
   const httpPort = Number(config.port || config.http_port);
   const socksPort = Number(config['socks-port'] || config.socks_port);
-  const port = [mixedPort, httpPort, socksPort, 7890].find((n) => Number.isFinite(n) && n > 0) || 7890;
-  return { host, port };
+  const selected = [
+    { port: mixedPort, protocol: 'http' },
+    { port: httpPort, protocol: 'http' },
+    { port: socksPort, protocol: 'socks5' },
+    { port: 7890, protocol: 'http' },
+  ].find((item) => Number.isFinite(item.port) && item.port > 0) || { port: 7890, protocol: 'http' };
+  const endpoint = { host, port: selected.port };
+  Object.defineProperty(endpoint, 'protocol', { value: selected.protocol, enumerable: false });
+  return endpoint;
 }
 
 function getClashMiniControlEndpoint(coreDir) {
@@ -412,6 +419,14 @@ async function ensureClashMiniMode(coreDir, requestedMode = CLASH_MINI_RULE_MODE
       data: { mode: targetMode },
       timeoutMs: 5000,
     });
+    const updated = await invokeClashMiniControl(coreDir, 'get', '/configs', { timeoutMs: 5000 });
+    const updatedMode = String(updated?.mode || '').trim().toLowerCase();
+    if (updatedMode !== targetMode) {
+      return {
+        ok: false,
+        error: `Mihomo 已接受模式切换请求，但当前模式仍为 ${updatedMode || '未知'}`,
+      };
+    }
     return { ok: true, changed: true, mode: targetMode, previousMode: currentMode };
   } catch (error) {
     return { ok: false, error: error?.message || String(error) };

@@ -7,13 +7,13 @@ let store = {};
 const accounts = [
   { id: 'account-1', displayName: 'Person', platform: 'dream', currentAccountType: 'shared', lastUsedAt: '2026-01-01' },
 ];
-const accountStoragePath = require.resolve('../../../src/app/main/lib/account-storage');
-const storeUtilsPath = require.resolve('../../../src/app/main/ipc/register/store-utils');
-const settingsPath = require.resolve('../../../src/app/main/utils/ai-free-browser-settings');
-const tabCommonPath = require.resolve('../../../src/app/main/services/tab-common');
-const cleanupPath = require.resolve('../../../src/app/main/utils/accountCleanup');
-const normalizersPath = require.resolve('../../../src/app/main/utils/normalizers');
-const targetPath = require.resolve('../../../src/app/main/features/browser/browser-history-service');
+const accountStoragePath = require.resolve('../../../src/app/backend/lib/account-storage');
+const storeUtilsPath = require.resolve('../../../src/app/backend/ipc/register/store-utils');
+const settingsPath = require.resolve('../../../src/app/backend/utils/ai-free-browser-settings');
+const tabCommonPath = require.resolve('../../../src/app/backend/services/tab-common');
+const cleanupPath = require.resolve('../../../src/app/backend/utils/accountCleanup');
+const normalizersPath = require.resolve('../../../src/app/backend/utils/normalizers');
+const targetPath = require.resolve('../../../src/app/backend/features/browser/browser-history-service');
 
 require.cache[accountStoragePath] = { exports: {
   getAllAccounts: () => accounts.map((account) => ({ ...account })),

@@ -7,7 +7,7 @@ const {
   createAiServerDeviceService,
   normalizeLoginConfig,
   normalizeToolCatalog,
-} = require('../../../src/app/main/features/ai-chat/ai-server-device-service');
+} = require('../../../src/app/backend/features/ai-chat/ai-server-device-service');
 
 class FakeSocket {
   constructor() {

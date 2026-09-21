@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const {
   createLicenseService,
   createVipSession,
-} = require('../../../src/app/main/features/account/license-service');
+} = require('../../../src/app/backend/features/account/license-service');
 
 function fixture(overrides = {}) {
   const writes = [];

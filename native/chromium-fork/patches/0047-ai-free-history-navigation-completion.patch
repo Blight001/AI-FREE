@@ -1,0 +1,40 @@
+diff --git a/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc b/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
+--- a/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
++++ b/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
+@@ -55,6 +55,7 @@
+ #include "content/public/browser/web_contents.h"
+ #include "content/public/browser/web_contents_observer.h"
+ #include "content/public/browser/reload_type.h"
++#include "content/public/browser/navigation_handle.h"
+ #include "net/base/net_errors.h"
+ #include "net/cookies/canonical_cookie.h"
+ #include "net/cookies/cookie_access_result.h"
+@@ -305,6 +306,20 @@
+                    &NavigationResponseObserver::OnTimeout);
+   }
+ 
++  void DidFinishNavigation(content::NavigationHandle* handle) override {
++    // Back/forward may restore BFCache or move within the same document;
++    // neither path is guaranteed to emit a new document onload event.
++    if (command_ != "history-back" && command_ != "history-forward") return;
++    if (!handle->IsInPrimaryMainFrame() || !handle->HasCommitted()) return;
++    if (handle->IsErrorPage())
++      return FinishError("NAVIGATION_FAILED", "历史导航加载失败");
++    DocumentOnLoadCompletedInPrimaryMainFrame();
++  }
++
++  void WebContentsDestroyed() override {
++    FinishError("WEB_CONTENTS_UNAVAILABLE", "导航目标标签已关闭");
++  }
++
+   void DocumentOnLoadCompletedInPrimaryMainFrame() override {
+     if (finished_ || !web_contents()) return;
+     // Navigation completion is not a user focus request. In embedded mode,
+@@ -312,6 +327,7 @@
+     // sidebar even though the navigation was initiated asynchronously. Keep
+     // the current native target; an actual browser click restores page focus.
+     base::DictValue result;
++    result.Set("success", true);
+     result.Set("url", web_contents()->GetLastCommittedURL().spec());
+     result.Set("title", base::UTF16ToUTF8(web_contents()->GetTitle()));
+     FinishSuccess(std::move(result));

@@ -6,7 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { createChromiumLaunchLog } = require('../../../src/app/main/browser-runtime/chromium-launch-log');
+const { createChromiumLaunchLog } = require('../../../src/app/backend/browser-runtime/chromium-launch-log');
 
 test('Chromium 独立启动日志记录环境并清理启动 token 和代理凭据', (t) => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-chromium-log-'));
@@ -40,7 +40,7 @@ test('Chromium 独立启动日志记录环境并清理启动 token 和代理凭�
 });
 
 test('Chromium 启动参数默认强制开启 stderr 内核日志', () => {
-  const { buildChromiumArgs } = require('../../../src/app/main/browser-runtime/chromium-launcher');
+  const { buildChromiumArgs } = require('../../../src/app/backend/browser-runtime/chromium-launcher');
   const args = buildChromiumArgs({
     profile: {},
     paths: { chromiumData: 'profile-data', downloads: 'downloads' },

@@ -37,6 +37,8 @@ function observedMetadata(item, context = {}) {
   const requiresFileUpload = fileUploadMetadata(source, tag, inputType);
   const metadata = {
     stableRef: text(source.stableRef),
+    testId: text(source.testId),
+    elementId: text(source.elementId),
     observedRole: text(source.role).toLowerCase(),
     observedLabel: firstText([source.label, source.ariaLabel, source.placeholder, source.text]),
     observedUrl: text(context.url),

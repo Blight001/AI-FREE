@@ -8,7 +8,7 @@ const path = require('path');
 const { EventEmitter } = require('node:events');
 const {
   createAppShellWindowStateController,
-} = require('../../../src/app/main/services/app-shell-window-state');
+} = require('../../../src/app/backend/services/app-shell-window-state');
 
 function createFixture(t, storedState) {
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-window-state-'));

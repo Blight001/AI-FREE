@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { RemoteBrowserPeerController } = require('../../../src/app/main/features/browser/remote-browser-peer-controller');
+const { RemoteBrowserPeerController } = require('../../../src/app/backend/features/browser/remote-browser-peer-controller');
 
 class FakeBrowserWindow {
   static latest = null;

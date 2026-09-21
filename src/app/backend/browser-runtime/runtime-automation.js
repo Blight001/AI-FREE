@@ -3,12 +3,12 @@
 const { findProfileIdByProcessId } = require('./runtime-input');
 
 const AUTOMATION_COMMANDS = new Set([
-  'observe-page', 'capture-screenshot', 'perform-action', 'download-element',
-  'get-session-data', 'list-tabs', 'activate-tab', 'automation-takeover',
+  'observe-page', 'inspect-page-state', 'inspect-page-diagnostics', 'capture-screenshot', 'perform-action', 'download-element',
+  'get-session-data', 'list-tabs', 'activate-tab', 'close-tab', 'history-back', 'history-forward', 'automation-takeover',
 ]);
 const ACTIONS = new Set([
   'click', 'double_click', 'right_click', 'drag', 'upload_file', 'scroll',
-  'type', 'insert_text', 'set_selection', 'press_key', 'wait',
+  'type', 'insert_text', 'set_selection', 'press_key', 'select_option', 'set_checked', 'wait',
 ]);
 const OBSERVE_FILTERS = new Set([
   'interactive', 'media', 'text', 'input', 'form',
@@ -19,7 +19,7 @@ const OBSERVE_FILTERS = new Set([
   'rich-text-input', 'icon-button', 'disclosure',
 ]);
 const WAIT_CONDITIONS = new Set([
-  'attached', 'visible', 'hidden', 'text_contains', 'text_changed', 'url_matches',
+  'attached', 'visible', 'hidden', 'text_contains', 'text_changed', 'value_equals', 'attribute_equals', 'checked', 'count', 'url_matches',
 ]);
 
 function automationError(code, message) {
@@ -159,6 +159,8 @@ function normalizeSelection(source) {
 function normalizeObservePayload(source) {
   return {
     ...normalizeRegionOptions(source),
+    ...(source.include_accessibility_tree === true || source.includeAccessibilityTree === true
+      ? { includeAccessibilityTree: true } : {}),
     limit: boundedInteger(source.limit ?? source.max_items, 200, 1, 1000),
     textLimit: boundedInteger(source.text_limit ?? source.textLimit, 120, 20, 500),
     keyword: optionalText(source.keyword, 512),
@@ -225,6 +227,9 @@ function normalizeActionPayload(source) {
     action,
     selector: optionalText(source.selector, 4096),
     text: optionalText(source.text ?? source.value, 1024 * 1024),
+    ...(action === 'select_option' ? { value: optionalText(source.value ?? source.text, 1024) } : {}),
+    ...(action === 'set_checked' ? { checked: source.checked === true } : {}),
+    ...(action === 'set_checked' ? { force_event: source.force_event === true } : {}),
     ...keyboard,
     ...coordinates,
     ...selection,
@@ -238,7 +243,7 @@ function normalizeActionPayload(source) {
 }
 
 function normalizeTabTarget(source) {
-  const index = Number(source.index ?? source.tab_index ?? source.id ?? source.tab_id);
+  const index = Number(source.index ?? source.tab_index ?? source.id ?? source.tab_id ?? source.tabId);
   return {
     url: optionalText(source.url, 8192).trim(),
     index: Number.isInteger(index) && index >= 0 ? index : -1,
@@ -272,17 +277,33 @@ function normalizeKeyboardInput(source) {
   };
 }
 
+function normalizeInspectPageStatePayload(source) {
+  const probes = (source.probes || []).slice(0, 32).map((probe) => ({
+    name: optionalText(probe?.name, 128), selector: optionalText(probe?.selector, 4096),
+    read: optionalText(probe?.read, 32), attribute: optionalText(probe?.attribute, 256),
+  }));
+  const target = asObject(source.target);
+  return { probes, target: Object.fromEntries(Object.entries(target).slice(0, 8).map(([key, value]) => [key, optionalText(value, 4096)])) };
+}
+
+function normalizeInspectPageDiagnosticsPayload() { return {}; }
+
 function normalizeRuntimeAutomation(command, source = {}) {
   const name = String(command || '').trim();
   if (!AUTOMATION_COMMANDS.has(name)) {
     throw automationError('AUTOMATION_COMMAND_INVALID', `不支持的 Chromium 自动化命令: ${name || '<empty>'}`);
   }
   const input = asObject(source);
-  if (name === 'observe-page') return normalizeObservePayload(input);
+  const readOnlyNormalizer = {
+    'observe-page': normalizeObservePayload,
+    'inspect-page-state': normalizeInspectPageStatePayload,
+    'inspect-page-diagnostics': normalizeInspectPageDiagnosticsPayload,
+  }[name];
+  if (readOnlyNormalizer) return readOnlyNormalizer(input);
   if (name === 'capture-screenshot') return normalizeScreenshotPayload(input);
   if (name === 'perform-action') return normalizeActionPayload(input);
   if (name === 'download-element') return normalizeDownloadElementPayload(input);
-  if (name === 'activate-tab') return normalizeTabTarget(input);
+  if (['activate-tab', 'close-tab', 'history-back', 'history-forward'].includes(name)) return normalizeTabTarget(input);
   if (name === 'automation-takeover') {
     const action = optionalText(input.action || 'status', 16).toLowerCase();
     if (!['status', 'acquire', 'release'].includes(action)) {

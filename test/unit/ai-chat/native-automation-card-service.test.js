@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { createNativeAutomationCardService } = require('../../../src/app/main/services/native-automation-card-service');
+const { createNativeAutomationCardService } = require('../../../src/app/backend/services/native-automation-card-service');
 
 function fixture() {
   let state = { items: [], selectedId: '' };

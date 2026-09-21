@@ -17,6 +17,7 @@ const { dispatchRuntimeAutomationByProcessId } = require('./runtime-automation')
 const { openChromiumTabs } = require('./chromium-tab-actions');
 const { waitForBrowserWindow } = require('./chromium-handshake-waiter');
 const { startChromiumPreflightWarmup } = require('./chromium-preflight-warmup');
+const { assertRuntimeCommandSuccess } = require('./runtime-command-result');
 
 class ChromiumRuntime extends BrowserRuntime {
   constructor(options = {}) {
@@ -382,26 +383,29 @@ class ChromiumRuntime extends BrowserRuntime {
 
   async clearImportedSession(profileId, commandClient) {
     this.logger?.info?.(`[ChromiumRuntime] importSession ${profileId}: clear-session`);
-    return commandClient.send('clear-session', {}, { timeoutMs: 30000 });
+    return assertRuntimeCommandSuccess(
+      'clear-session', await commandClient.send('clear-session', {}, { timeoutMs: 30000 }));
   }
 
   async importPreparedCookies(profileId, commandClient, prepared) {
     if (!prepared.cookies.length) return { result: { imported: 0 } };
     this.logger?.info?.(`[ChromiumRuntime] importSession ${profileId}: set-cookies (${prepared.cookies.length})`);
-    return commandClient.send('set-cookies', {
+    const response = await commandClient.send('set-cookies', {
       cookies: prepared.cookies,
       targetUrl: prepared.targetUrl,
     }, { timeoutMs: 30000 });
+    return assertRuntimeCommandSuccess('set-cookies', response);
   }
 
   async importPreparedStorage(profileId, commandClient, prepared) {
     const storageResults = [];
     for (const entry of prepared.browserStorage) {
       this.logger?.info?.(`[ChromiumRuntime] importSession ${profileId}: set-storage ${entry.origin}`);
-      storageResults.push(await commandClient.send('set-storage', {
+      const response = await commandClient.send('set-storage', {
         ...entry,
         targetUrl: prepared.targetUrl,
-      }, { timeoutMs: 30000 }));
+      }, { timeoutMs: 30000 });
+      storageResults.push(assertRuntimeCommandSuccess('set-storage', response));
     }
     return storageResults;
   }
@@ -409,7 +413,8 @@ class ChromiumRuntime extends BrowserRuntime {
   async navigateAfterSessionImport(profileId, commandClient, targetUrl) {
     this.logger?.info?.(`[ChromiumRuntime] importSession ${profileId}: navigate ${targetUrl}`);
     try {
-      return await commandClient.send('navigate', { url: targetUrl }, { timeoutMs: 30000 });
+      const response = await commandClient.send('navigate', { url: targetUrl }, { timeoutMs: 30000 });
+      return assertRuntimeCommandSuccess('navigate', response);
     } catch (error) {
       return this.normalizeImportNavigationError(profileId, error);
     }
@@ -464,10 +469,10 @@ class ChromiumRuntime extends BrowserRuntime {
       const prepared = prepareSessionImport({ targetUrl, cookies });
       skipped += prepared.skippedCookies;
       if (!prepared.cookies.length) continue;
-      const response = await instance.commandClient.send('set-cookies', {
+      const response = assertRuntimeCommandSuccess('set-cookies', await instance.commandClient.send('set-cookies', {
         cookies: prepared.cookies,
         targetUrl: prepared.targetUrl,
-      }, { timeoutMs: 30000 });
+      }, { timeoutMs: 30000 }));
       imported += Number(response?.result?.imported || 0);
     }
     return { ok: true, imported, skipped };

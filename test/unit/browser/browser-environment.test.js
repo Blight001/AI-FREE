@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { resolveChromiumExtensionPaths } = require('../../../src/app/main/features/browser/browser-environment');
+const { resolveChromiumExtensionPaths } = require('../../../src/app/backend/features/browser/browser-environment');
 
 test('Chromium launch excludes the legacy automation extension while preserving regular extensions', () => {
   const manager = {

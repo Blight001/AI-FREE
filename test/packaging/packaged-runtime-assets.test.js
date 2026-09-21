@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const packageJson = require('../../package.json');
-const { resolveBindingCandidates } = require('../../src/app/main/browser-runtime/chromium-window-bridge');
+const { resolveBindingCandidates } = require('../../src/app/backend/browser-runtime/chromium-window-bridge');
 const { assertStaticVCRuntime } = require('../../scripts/verify-packaged-runtime');
 
 test('packaged native browser host resolves from external resources first', () => {
@@ -58,13 +58,13 @@ test('native host has no external VC++ redistributable dependency', () => {
 });
 
 test('sidebar logos use the runtime asset resolver in source and packaged apps', () => {
-  const sidebarRoot = path.join(__dirname, '../../src/app/sidebar');
+  const sidebarRoot = path.join(__dirname, '../../src/app/frontend/sidebar');
   const index = fs.readFileSync(path.join(sidebarRoot, 'index.html'), 'utf8');
   const aiControlPage = fs.readFileSync(path.join(sidebarRoot, 'ai-control.html'), 'utf8');
   const accountCenterPage = fs.readFileSync(path.join(sidebarRoot, 'account-center.html'), 'utf8');
-  const devConsolePage = fs.readFileSync(path.join(__dirname, '../../src/app/main/views/dev-console.html'), 'utf8');
-  const appShellSource = fs.readFileSync(path.join(__dirname, '../../src/app/main/services/app-shell.js'), 'utf8');
-  const appShell = fs.readFileSync(path.join(__dirname, '../../src/app/views/app-shell.html'), 'utf8');
+  const devConsolePage = fs.readFileSync(path.join(__dirname, '../../src/app/backend/views/dev-console.html'), 'utf8');
+  const appShellSource = fs.readFileSync(path.join(__dirname, '../../src/app/backend/services/app-shell.js'), 'utf8');
+  const appShell = fs.readFileSync(path.join(__dirname, '../../src/app/frontend/views/app-shell.html'), 'utf8');
   const accountAuthCss = fs.readFileSync(
     path.join(sidebarRoot, 'client/app/side/styles/modules/account-auth.css'),
     'utf8',
@@ -74,7 +74,7 @@ test('sidebar logos use the runtime asset resolver in source and packaged apps',
     'utf8',
   );
   const logoResolver = fs.readFileSync(
-    path.join(__dirname, '../../src/app/sidebar/client/scripts/logo-assets.js'),
+    path.join(__dirname, '../../src/app/frontend/sidebar/client/scripts/logo-assets.js'),
     'utf8',
   );
   const aiControl = readAiControlSource();
@@ -85,20 +85,23 @@ test('sidebar logos use the runtime asset resolver in source and packaged apps',
   }
   assert.equal((aiControlPage.match(/<img[^>]*data-app-logo/g) || []).length, 1);
   assert.equal((accountCenterPage.match(/<img[^>]*data-app-logo/g) || []).length, 1);
-  assert.ok(logoResolver.includes("const SOURCE_LOGO_PATH = '../../assets/logo.ico';"));
+  assert.ok(logoResolver.includes("const SOURCE_LOGO_PATH = '../../../assets/logo.ico';"));
   assert.ok(logoResolver.includes("const PACKAGED_LOGO_PATH = '../../../../resource/logo.ico';"));
   assert.ok(aiControl.includes('window.aiFreeLogoAssets?.url'));
   assert.equal(appShell.includes('id="account-center-btn"'), false);
-  assert.ok(aiControlPage.includes('data-tab="account-center-panel"'));
+  assert.ok(accountCenterPage.includes('data-open-ai-control'));
   assert.ok(accountCenterPage.includes('id="account-center-panel"'));
   assert.ok(aiControlPage.includes('data-dev-only'));
   assert.ok(accountCenterPage.includes('data-dev-only'));
-  assert.ok(devConsolePage.includes('../../sidebar/ai-control.html?dev=1'));
+  assert.ok(devConsolePage.includes('../../frontend/sidebar/ai-control.html?dev=1'));
   assert.equal(appShellSource.includes('createDevConsoleWindow'), false);
   assert.ok(appShell.includes('../sidebar/client/scripts/logo-assets.js'));
   assert.ok(appShell.includes('app-shell-network-magic.css'));
   assert.ok(appShell.includes('shell-network-magic.js'));
   assert.ok(appShell.includes('id="shell-network-magic-toggle"'));
+  assert.ok(aiControlPage.includes('id="network-magic-sidebar-dialog"'));
+  assert.ok(aiControlPage.includes('network-magic-sidebar.js'));
+  assert.ok(aiControlPage.includes('id="vpn-node-selector-panel"'));
   assert.equal(appShell.includes('settings-network-tools-proxy-title'), false);
   assert.equal((appShell.match(/<img[^>]*data-app-logo/g) || []).length, 2);
   assert.ok(appShell.includes('id="ai-free-settings-panel"'));
@@ -114,6 +117,16 @@ test('sidebar logos use the runtime asset resolver in source and packaged apps',
   assert.match(layoutCss, /#browser-empty-state::\-webkit-scrollbar-thumb/);
 });
 
+test('runtime logo URLs resolve from both frontend page hosts to the source asset', () => {
+  const logoPath = path.resolve(__dirname, '../../src/assets/logo.ico');
+  for (const pageDirectory of ['sidebar', 'views']) {
+    assert.equal(
+      path.resolve(__dirname, '../../src/app/frontend', pageDirectory, '../../../assets/logo.ico'),
+      logoPath,
+    );
+  }
+});
+
 test('embedded Chromium clears hover tooltips when hidden or deactivated', () => {
   const focusManager = fs.readFileSync(path.join(
     __dirname, '../../native/browser-host/src/focus_manager.cc',
@@ -122,7 +135,7 @@ test('embedded Chromium clears hover tooltips when hidden or deactivated', () =>
     __dirname, '../../native/browser-host/src/browser_host_window.cc',
   ), 'utf8');
   const shellWindow = fs.readFileSync(path.join(
-    __dirname, '../../src/app/main/services/app-shell-main-window.js',
+    __dirname, '../../src/app/backend/services/app-shell-main-window.js',
   ), 'utf8');
 
   assert.match(focusManager, /DismissBrowserTransientUi\(child\)/);

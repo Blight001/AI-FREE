@@ -1,0 +1,20 @@
+diff --git a/chrome/browser/ui/views/frame/ai_free_page_automation.cc b/chrome/browser/ui/views/frame/ai_free_page_automation.cc
+--- a/chrome/browser/ui/views/frame/ai_free_page_automation.cc
++++ b/chrome/browser/ui/views/frame/ai_free_page_automation.cc
+@@ -671,13 +671,14 @@
+   return base::StrCat({R"JS((() => { try {
+   const a=)JS", CommandJson(command), R"JS(;
+   const clip=v=>String(v??'').slice(0,512).trim();
++  const normalizedLabel=v=>clip(v).replace(/\s+/g,' ');
+   const roots=[document],elements=[];
+   for(let i=0;i<roots.length&&elements.length<20000;i++)for(const e of roots[i].querySelectorAll('*')){elements.push(e);if(e.shadowRoot)roots.push(e.shadowRoot);if(elements.length>=20000)break;}
+   const query=s=>{try{return elements.filter(e=>e.matches(s));}catch(_){return null;}};
+   const role=e=>e.getAttribute('role')||({BUTTON:'button',TEXTAREA:'textbox',SELECT:'combobox',A:e.hasAttribute('href')?'link':'generic',INPUT:({checkbox:'checkbox',radio:'radio',range:'slider',number:'spinbutton',button:'button',submit:'button'}[e.type]||'textbox')}[e.tagName]||e.tagName.toLowerCase());
+-  const label=e=>clip(e.getAttribute('aria-label')||String(e.getAttribute('aria-labelledby')||'').split(/\s+/).map(id=>e.getRootNode().getElementById?.(id)?.textContent||'').join(' ').trim()||e.labels?.[0]?.innerText||e.innerText||e.textContent||e.getAttribute('title'));
++  const label=e=>normalizedLabel(e.getAttribute('aria-label')||String(e.getAttribute('aria-labelledby')||'').split(/\s+/).map(id=>e.getRootNode().getElementById?.(id)?.textContent||'').join(' ').trim()||e.labels?.[0]?.innerText||e.innerText||e.textContent||e.getAttribute('title'));
+   const t=a.target||{};
+-  const choices=[t.test_id&&(()=>elements.filter(e=>e.getAttribute('data-testid')===t.test_id)),t.id&&(()=>elements.filter(e=>e.id===t.id)),t.role&&t.name&&(()=>elements.filter(e=>role(e)===t.role&&label(e)===t.name)),t.text&&(()=>elements.filter(e=>label(e)===t.text&&!Array.from(e.children).some(c=>label(c)===t.text))),t.selector&&(()=>query(t.selector)||[])];
++  const choices=[t.test_id&&(()=>elements.filter(e=>e.getAttribute('data-testid')===t.test_id)),t.id&&(()=>elements.filter(e=>e.id===t.id)),t.role&&t.name&&(()=>elements.filter(e=>role(e)===t.role&&label(e)===normalizedLabel(t.name))),t.text&&(()=>elements.filter(e=>label(e)===normalizedLabel(t.text)&&!Array.from(e.children).some(c=>label(c)===normalizedLabel(t.text)))),t.selector&&(()=>query(t.selector)||[])];
+   let matches=[];for(const choose of choices){if(!choose)continue;matches=choose();if(matches.length)break;}
+   const selectorFor=e=>{
+     const candidates=[e.getAttribute('data-testid')&&'[data-testid="'+CSS.escape(e.getAttribute('data-testid'))+'"]',e.id&&'#'+CSS.escape(e.id),t.selector];

@@ -24,7 +24,7 @@ app.whenReady().then(async () => {
   win.webContents.on('console-message', (details) => {
     if (details?.level === 'error') consoleErrors.push(String(details.message || ''));
   });
-  const sidebar = path.join(__dirname, '..', '..', '..', 'src', 'app', 'sidebar', 'index.html');
+  const sidebar = path.join(__dirname, '..', '..', '..', 'src', 'app', 'frontend', 'sidebar', 'index.html');
   let result;
   try {
     await win.webContents.loadFile(sidebar);
@@ -155,13 +155,13 @@ app.whenReady().then(async () => {
       fs.writeFileSync(process.env.AI_FREE_WORKSPACE_CAPTURE, image.toPNG());
     }
     const devWin = new BrowserWindow({ show: false, webPreferences: { sandbox: false } });
-    const devPage = path.join(__dirname, '..', '..', '..', 'src', 'app', 'sidebar', 'ai-control.html');
+    const devPage = path.join(__dirname, '..', '..', '..', 'src', 'app', 'frontend', 'sidebar', 'ai-control.html');
     await devWin.webContents.loadFile(devPage, { query: { dev: '1' } });
     const devNavigation = await devWin.webContents.executeJavaScript(`({
       tabButtons: Array.from(document.querySelectorAll('.tab-button')).filter((item) => !item.hidden).length,
       consoleVisible: !document.querySelector('[data-dev-only]')?.hidden,
     })`);
-    const devConsolePage = path.join(__dirname, '..', '..', '..', 'src', 'app', 'main', 'views', 'dev-console.html');
+    const devConsolePage = path.join(__dirname, '..', '..', '..', 'src', 'app', 'backend', 'views', 'dev-console.html');
     await devWin.webContents.loadFile(devConsolePage, { query: { dev: '1' } });
     devNavigation.consolePageIntegrated = await devWin.webContents.executeJavaScript(`(
       document.querySelectorAll('.sidebar-nav .sidebar-tab').length === 3

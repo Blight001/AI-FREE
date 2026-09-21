@@ -5,7 +5,7 @@ const test = require('node:test');
 const {
   calculateBrowserCapacity,
   deviceLimitForMemory,
-} = require('../../../src/app/main/features/browser/browser-capacity-policy');
+} = require('../../../src/app/backend/features/browser/browser-capacity-policy');
 
 test('maps physical memory tiers to conservative device limits', () => {
   assert.equal(deviceLimitForMemory(null), 1);

@@ -7,7 +7,7 @@ const {
   fetchIceServers,
   normalizeAddress,
   normalizeTabs,
-} = require('../../../src/app/main/features/browser/remote-browser-control');
+} = require('../../../src/app/backend/features/browser/remote-browser-control');
 
 function tick() {
   return new Promise((resolve) => setImmediate(resolve));

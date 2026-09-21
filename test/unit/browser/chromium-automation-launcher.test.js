@@ -4,13 +4,13 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
   buildChromiumArgs,
-} = require('../../../src/app/main/browser-runtime/chromium-launcher');
+} = require('../../../src/app/backend/browser-runtime/chromium-launcher');
 const {
   normalizePermissionOrigins,
-} = require('../../../src/app/main/browser-runtime/chromium-permission-origins');
+} = require('../../../src/app/backend/browser-runtime/chromium-permission-origins');
 const {
   normalizeAiFreeBrowserSettings,
-} = require('../../../src/app/main/utils/ai-free-browser-settings');
+} = require('../../../src/app/backend/utils/ai-free-browser-settings');
 
 test('normalizePermissionOrigins accepts exact HTTPS and loopback origins only', () => {
   assert.deepEqual(normalizePermissionOrigins([

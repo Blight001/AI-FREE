@@ -8,10 +8,10 @@ const path = require('node:path');
 const { buildRoot, buildSource, moduleKindFor } = require('../../../scripts/build-source');
 
 test('统一源码构建按 Electron 进程边界选择模块格式', () => {
-  assert.equal(moduleKindFor('app/main/main.ts'), 'commonjs');
+  assert.equal(moduleKindFor('app/backend/main.ts'), 'commonjs');
   assert.equal(moduleKindFor('app/preload/index.ts'), 'commonjs');
-  assert.equal(moduleKindFor('app/sidebar/client/bootstrap.ts'), 'esmodule');
-  assert.equal(moduleKindFor('app/renderer/index.ts'), 'esmodule');
+  assert.equal(moduleKindFor('app/frontend/sidebar/client/bootstrap.ts'), 'esmodule');
+  assert.equal(moduleKindFor('app/frontend/renderer/index.ts'), 'esmodule');
 });
 
 test('统一源码构建生成可加载主进程模块和可追踪 manifest', () => {
@@ -22,7 +22,7 @@ test('统一源码构建生成可加载主进程模块和可追踪 manifest', ()
   assert.equal(manifest.rendererFormat, 'esmodule');
   assert.match(manifest.sourceHash, /^[a-f0-9]{64}$/);
   assert.equal(manifest.extensionServiceWorkers.some((entry) => entry.extension === 'browser_automation'), false);
-  const registryPath = path.join(buildRoot, 'src/app/main/features/ai-chat/chat-run-registry.js');
+  const registryPath = path.join(buildRoot, 'src/app/backend/features/ai-chat/chat-run-registry.js');
   delete require.cache[require.resolve(registryPath)];
   assert.equal(typeof require(registryPath).createChatRunRegistry, 'function');
 });

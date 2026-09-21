@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createSidebarFocusHandler } = require('../../../src/app/main/features/browser/sidebar-focus-controller');
+const { createSidebarFocusHandler } = require('../../../src/app/backend/features/browser/sidebar-focus-controller');
 
 function createHarness(options = {}) {
   const calls = [];

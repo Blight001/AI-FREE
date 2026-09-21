@@ -2,7 +2,7 @@
 
 const assert = require('assert');
 const net = require('net');
-const { ChromiumCommandClient, encodeFrame, PROTOCOL_VERSION } = require('../../../src/app/main/browser-runtime/chromium-command-client');
+const { ChromiumCommandClient, encodeFrame, PROTOCOL_VERSION } = require('../../../src/app/backend/browser-runtime/chromium-command-client');
 
 function readFrame(socket) {
   return new Promise((resolve, reject) => {

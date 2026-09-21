@@ -9,6 +9,6 @@
     "resolveJsonModule": true,
     "strict": false
   },
-  "include": ["src/app/main/**/*.js", "src/app/contracts/**/*.ts", "src/app/shared/**/*.js", "scripts/**/*.js"],
+  "include": ["src/app/backend/**/*.js", "src/app/contracts/**/*.ts", "src/app/shared/**/*.js", "scripts/**/*.js"],
   "exclude": ["node_modules", "appbuild", "src/assets"]
 }

@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 
 const {
   createLicenseIpcHandlers,
-} = require('../../../src/app/main/features/account/license-ipc-handlers');
+} = require('../../../src/app/backend/features/account/license-ipc-handlers');
 
 function fixture(overrides = {}) {
   const runtimeUpdates = [];

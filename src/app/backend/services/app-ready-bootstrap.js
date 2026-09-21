@@ -1,3 +1,4 @@
+const { createDevConsoleWindowController } = require('../features/window/dev-console-window');
 const { createAiSupportService } = require('../features/ai-chat/ai-support-service');
 const { registerAiHistoryIpc } = require('../features/ai-chat/register-history-ipc');
 const { createAiChatHistoryRepository } = require('../features/ai-chat/history-repository');
@@ -9,6 +10,10 @@ const { createLicenseService } = require('../features/account/license-service');
 const { registerLicenseIpc } = require('../features/account/register-license-ipc');
 const { createMembershipService } = require('../features/account/membership-service');
 const { registerAiServerDeviceIpc } = require('../features/ai-chat/register-ai-server-device-ipc');
+const {
+  applyStartupSettings,
+  readStartupSettings,
+} = require('../features/window/startup-preference');
 
 function registerConsoleHistoryIpc(deps, ipc) {
   try {
@@ -61,6 +66,16 @@ function scheduleDeviceIdLog(deps) {
       deps.logger.warn?.('[启动] 打印设备号失败:', error?.message || error);
     }
   });
+}
+
+function synchronizeAppStartupSettings(deps) {
+  if (typeof deps.app?.setLoginItemSettings !== 'function') return;
+  const result = applyStartupSettings(
+    deps.app,
+    readStartupSettings(deps.readStoreConfigSafe, deps.app),
+    { platform: process.platform, execPath: process.execPath },
+  );
+  if (!result.ok) deps.logger.warn?.('[启动] 同步开机自启设置失败:', result.error?.message || result.error);
 }
 
 function createAndRegisterAccountServices(deps, ipc) {
@@ -163,6 +178,9 @@ async function restoreMembership(deps) {
 
 async function bootstrapReadyApp(deps, ipc) {
   registerConsoleHistoryIpc(deps, ipc);
+  const devConsole = createDevConsoleWindowController(deps);
+  ipc.handle('open-dev-console', () => devConsole.open());
+  synchronizeAppStartupSettings(deps);
   scheduleCoreDirectoryInitialization(deps);
   scheduleUpdateStorageCleanup(deps);
   scheduleDeviceIdLog(deps);

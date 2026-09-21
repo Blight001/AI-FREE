@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createChatRunRegistry } = require('../../../src/app/main/features/ai-chat/chat-run-registry');
+const { createChatRunRegistry } = require('../../../src/app/backend/features/ai-chat/chat-run-registry');
 
 test('停止只影响同一渲染进程和 requestId，连续停止保持幂等', () => {
   const registry = createChatRunRegistry();

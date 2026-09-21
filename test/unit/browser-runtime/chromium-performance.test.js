@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { createChromiumPerformanceSpan } = require('../../../src/app/main/browser-runtime/chromium-performance');
+const { createChromiumPerformanceSpan } = require('../../../src/app/backend/browser-runtime/chromium-performance');
 
 test('Chromium performance span reports phase and total durations without profile data', () => {
   const messages = [];

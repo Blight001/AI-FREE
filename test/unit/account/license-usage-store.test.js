@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { createLicenseUsageStore } = require('../../../src/app/main/features/account/license-usage-store');
+const { createLicenseUsageStore } = require('../../../src/app/backend/features/account/license-usage-store');
 
 function fixture(snapshot = {}) {
   const states = [];

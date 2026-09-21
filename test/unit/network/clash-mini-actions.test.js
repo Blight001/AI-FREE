@@ -6,9 +6,9 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const corePath = require.resolve('../../../src/app/main/ipc/register/clash-mini-core');
-const actionsPath = require.resolve('../../../src/app/main/ipc/register/clash-mini-actions');
-const proxyOptionsPath = require.resolve('../../../src/app/main/ipc/register/clash-mini-proxy-options');
+const corePath = require.resolve('../../../src/app/backend/ipc/register/clash-mini-core');
+const actionsPath = require.resolve('../../../src/app/backend/ipc/register/clash-mini-actions');
+const proxyOptionsPath = require.resolve('../../../src/app/backend/ipc/register/clash-mini-proxy-options');
 const runtimeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-clash-actions-'));
 const controlCalls = [];
 const collectedNames = [];

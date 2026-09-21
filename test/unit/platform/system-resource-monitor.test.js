@@ -5,7 +5,7 @@ const test = require('node:test');
 const {
   createSystemResourceMonitor,
   deepFreeze,
-} = require('../../../src/app/main/platform/system-resource-monitor');
+} = require('../../../src/app/backend/platform/system-resource-monitor');
 
 const MB = 1024 * 1024;
 

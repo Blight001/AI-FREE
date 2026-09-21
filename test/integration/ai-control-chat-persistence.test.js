@@ -6,7 +6,7 @@ const vm = require('node:vm');
 
 const composerPath = path.join(
   __dirname,
-  '../../src/app/sidebar/client/app/side/controllers/pages/ai-control/ai-control-composer.js',
+  '../../src/app/frontend/sidebar/client/app/side/controllers/pages/ai-control/ai-control-composer.js',
 );
 
 function createComposerFixture(chatResult) {

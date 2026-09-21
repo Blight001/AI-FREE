@@ -4,10 +4,10 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const clashRuntimePath = require.resolve(
-  '../../../src/app/main/features/network/clash-mini-control-runtime',
+  '../../../src/app/backend/features/network/clash-mini-control-runtime',
 );
 const launcherPath = require.resolve(
-  '../../../src/app/main/features/browser/browser-tab-launcher',
+  '../../../src/app/backend/features/browser/browser-tab-launcher',
 );
 
 require.cache[clashRuntimePath] = {

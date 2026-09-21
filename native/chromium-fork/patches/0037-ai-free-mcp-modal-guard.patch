@@ -66,12 +66,14 @@ diff --git a/chrome/browser/ui/views/frame/ai_free_page_automation.cc b/chrome/b
 index 01e6b64..81ffa8d 100644
 --- a/chrome/browser/ui/views/frame/ai_free_page_automation.cc
 +++ b/chrome/browser/ui/views/frame/ai_free_page_automation.cc
-@@ -22,6 +22,7 @@
+@@ -22,8 +22,9 @@
  #include "chrome/browser/ui/views/frame/ai_free_accessibility_observe.h"
  #include "chrome/browser/ui/views/frame/ai_free_automation_pointer.h"
  #include "chrome/browser/ui/views/frame/ai_free_observe_highlight.h"
 +#include "chrome/browser/ui/views/frame/ai_free_takeover_guard.h"
  #include "chrome/common/chrome_isolated_world_ids.h"
+ #include "components/download/public/common/download_interrupt_reasons.h"
+ #include "components/download/public/common/download_item.h"
  #include "components/input/native_web_keyboard_event.h"
  #include "components/viz/common/frame_sinks/copy_output_result.h"
 @@ -376,6 +377,20 @@ void OnMouseDispatched(AiFreeAutomationSuccess success,

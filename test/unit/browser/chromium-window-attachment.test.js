@@ -5,7 +5,7 @@ const test = require('node:test');
 
 const {
   attachChildWindowWithRetry,
-} = require('../../../src/app/main/browser-runtime/chromium-window-attachment');
+} = require('../../../src/app/backend/browser-runtime/chromium-window-attachment');
 
 test('HWND attach retries a transient native race and confirms the parent relationship', async () => {
   let attempts = 0;

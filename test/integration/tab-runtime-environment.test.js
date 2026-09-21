@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createTabHelpers } = require('../../src/app/main/services/tab-helpers');
+const { createTabHelpers } = require('../../src/app/backend/services/tab-helpers');
 
 function createWindowSink() {
   const messages = [];

@@ -12,9 +12,9 @@
 
 ```
 package.json main
-└─ src/app/main/main.js          （仅 1 行 require）
-   └─ src/app/main/entry/start-app.js  （日志初始化、更新缓存清理）
-      └─ src/app/main/bootstrap.js     （startMainApp：组装全部 deps 并启动）
+└─ src/app/backend/main.js          （仅 1 行 require）
+   └─ src/app/backend/entry/start-app.js  （日志初始化、更新缓存清理）
+      └─ src/app/backend/bootstrap.js     （startMainApp：组装全部 deps 并启动）
 ```
 
 ## 目录职责（src/app/）
@@ -57,7 +57,7 @@ clash-mini-actions / clash-mini-core（Clash 代理核心与进程管理）/ cla
 
 ## TCP 命名遗留
 
-原 TCP 长连接通道已整体迁移纯 HTTP，但 `config/index.js` 中 `getTcpConfig`/`setRuntimeTcpConfig`/`RUNTIME_TCP_CONFIG` 等命名保留——它们现在仅承载服务器下发的 `address_TCP`（host:port）元数据，供 `getServerBase()` 兜底反推 HTTP 地址。详见 `src/app/main/config/index.js` 头部注释。**不要**据此认为存在真实 TCP socket。
+原 TCP 长连接通道已整体迁移纯 HTTP，但 `config/index.js` 中 `getTcpConfig`/`setRuntimeTcpConfig`/`RUNTIME_TCP_CONFIG` 等命名保留——它们现在仅承载服务器下发的 `address_TCP`（host:port）元数据，供 `getServerBase()` 兜底反推 HTTP 地址。详见 `src/app/backend/config/index.js` 头部注释。**不要**据此认为存在真实 TCP socket。
 
 ## 超大文件地图（后续拆分候选，按行数降序）
 

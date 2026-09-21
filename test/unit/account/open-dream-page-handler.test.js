@@ -5,10 +5,10 @@ const assert = require('node:assert/strict');
 
 const {
   createOpenDreamPageHandler,
-} = require('../../../src/app/main/features/account/open-dream-page-handler');
+} = require('../../../src/app/backend/features/account/open-dream-page-handler');
 const {
   resolveRuntimeConnectionConfig,
-} = require('../../../src/app/main/features/account/dream-platform-support');
+} = require('../../../src/app/backend/features/account/dream-platform-support');
 
 function fixture(overrides = {}) {
   const events = [];

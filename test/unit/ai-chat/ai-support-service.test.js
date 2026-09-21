@@ -3,8 +3,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createAiSupportService } = require('../../../src/app/main/features/ai-chat/ai-support-service');
-const { markVipServerVerified } = require('../../../src/app/main/utils/vip-access');
+const { createAiSupportService } = require('../../../src/app/backend/features/ai-chat/ai-support-service');
+const { markVipServerVerified } = require('../../../src/app/backend/utils/vip-access');
 
 function vipLicenseCache() {
   return { getSnapshot: () => ({ result: markVipServerVerified({ is_vip: true }) }) };

@@ -67,10 +67,10 @@ function relaySidebarConsole(deps, details) {
   deps.logger[methods[details.level] || 'log']?.(message);
 }
 
-function loadSidebar(deps, sideView) {
-  const sidebarLocalPath = deps.resolveControlPanelHtmlPath('ai-control.html');
+function loadSidebar(deps, sideView, fileName = 'account-center.html') {
+  const sidebarLocalPath = deps.resolveControlPanelHtmlPath(fileName);
   if (!sidebarLocalPath) {
-    deps.logger.error?.('[启动] 未找到本地 src/app/sidebar/ai-control.html，侧边栏无法加载');
+    deps.logger.error?.(`[启动] 未找到本地侧边栏页面 ${fileName}，侧边栏无法加载`);
     return;
   }
   deps.logger.log?.('[启动] 加载本地侧边栏:', sidebarLocalPath);
@@ -181,8 +181,34 @@ function dismissActiveBrowserTransientUi(deps) {
   } catch (_) {}
 }
 
+async function restoreEmbeddedBrowserWindows(deps, mainWindow) {
+  const manager = deps.browserRuntimeManager;
+  const states = manager?.listStates?.() || [];
+  const restores = states
+    .filter((state) => state?.runtimeType === 'chromium' && state?.status === 'ready')
+    .map((state) => manager.show(state.profileId, state.runtimeType).catch((error) => {
+      deps.logger.warn?.('[ChromiumRuntime] 主窗口恢复后显示浏览器失败:', error?.message || error);
+    }));
+  await Promise.all(restores);
+  updateMainWindowLayout(deps, mainWindow);
+}
+
 function bindMainWindowEvents(deps, mainWindow) {
   const updateLayout = () => updateMainWindowLayout(deps, mainWindow);
+  const restoreTimers = new Set();
+  const scheduleEmbeddedBrowserRestore = () => {
+    for (const timer of restoreTimers) clearTimeout(timer);
+    restoreTimers.clear();
+    for (const delayMs of [0, 80, 240]) {
+      const timer = setTimeout(() => {
+        restoreTimers.delete(timer);
+        if (mainWindow.isDestroyed?.() || mainWindow.isMinimized?.()) return;
+        void restoreEmbeddedBrowserWindows(deps, mainWindow);
+      }, delayMs);
+      timer.unref?.();
+      restoreTimers.add(timer);
+    }
+  };
   mainWindow.webContents.on('did-finish-load', () => {
     setTimeout(() => deps.updateTabs(true), 0);
     mainWindow.setTitle(deps.APP_DISPLAY_NAME);
@@ -190,9 +216,18 @@ function bindMainWindowEvents(deps, mainWindow) {
   });
   mainWindow.on('focus', () => setTimeout(() => deps.updateTabs(true), 0));
   mainWindow.on('blur', () => dismissActiveBrowserTransientUi(deps));
+  mainWindow.on('restore', scheduleEmbeddedBrowserRestore);
+  // Some Windows shell paths (taskbar activation and tray reveal) emit
+  // `show`/`focus` after `restore`. Reasserting at those points covers the
+  // native child-window transition without changing hidden tab state.
+  mainWindow.on('show', scheduleEmbeddedBrowserRestore);
   mainWindow.on('resize', updateLayout);
   mainWindow.on('ready-to-show', updateLayout);
-  mainWindow.on('closed', () => handleMainWindowClosed(deps));
+  mainWindow.on('closed', () => {
+    for (const timer of restoreTimers) clearTimeout(timer);
+    restoreTimers.clear();
+    handleMainWindowClosed(deps);
+  });
 }
 
 function scheduleControlPanel(deps) {
@@ -209,7 +244,7 @@ function scheduleControlPanel(deps) {
 function createMainWindow(deps, backgroundController, windowStateController) {
   const mainWindow = createWindowInstance(deps, windowStateController);
   deps.setMainWindow?.(mainWindow);
-  mainWindow.loadFile(deps.path.join(__dirname, '../../views/app-shell.html'));
+  mainWindow.loadFile(deps.path.join(__dirname, '../../frontend/views/app-shell.html'), { query: { dev: deps.isDevMode ? '1' : '0' } });
   configureWindowMenu(deps, mainWindow);
   mainWindow.setTitle(deps.APP_DISPLAY_NAME);
   bindMainWindowEvents(deps, mainWindow);
@@ -236,6 +271,7 @@ function revealMainWindow(deps) {
 function createAppShellMainWindowController(deps = {}) {
   const backgroundController = createWindowBackgroundController(deps);
   const windowStateController = createAppShellWindowStateController(deps);
+  let sidebarPage = 'account-center.html';
   let preferredSidebarWidth = windowStateController.getSidebarWidth();
   const controllerDeps = {
     ...deps,
@@ -254,8 +290,32 @@ function createAppShellMainWindowController(deps = {}) {
   return {
     createMainWindow: () => createMainWindow(controllerDeps, backgroundController, windowStateController),
     revealMainWindow: () => backgroundController.revealWindow() || revealMainWindow(deps),
+    openAiControlSidebar: () => {
+      return toggleSidebarPage('ai-control.html');
+    },
+    openAccountCenterSidebar: () => toggleSidebarPage('account-center.html'),
+    toggleSidebarPage,
     setSidebarWidth,
   };
+
+  function toggleSidebarPage(fileName) {
+    const sideView = deps.getSideView?.();
+    if (!sideView) return false;
+    const visible = deps.getIsSidebarVisible?.() === true;
+    if (visible && sidebarPage === fileName) {
+      deps.toggleSidebar?.();
+      return false;
+    }
+    sidebarPage = fileName;
+    loadSidebar(controllerDeps, sideView, fileName);
+    if (!visible) deps.toggleSidebar?.();
+    else sideView.setVisible?.(true);
+    return true;
+  }
 }
 
-module.exports = { createAppShellMainWindowController };
+module.exports = {
+  bindMainWindowEvents,
+  createAppShellMainWindowController,
+  restoreEmbeddedBrowserWindows,
+};

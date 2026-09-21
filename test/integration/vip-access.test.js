@@ -4,13 +4,13 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const test = require('node:test');
 
-const { createTabManager } = require('../../src/app/main/services/tab-manager');
+const { createTabManager } = require('../../src/app/backend/services/tab-manager');
 const {
   FREE_BROWSER_WINDOW_LIMIT,
   clearVipServerVerification,
   markVipServerVerified,
   resolveVipAccess,
-} = require('../../src/app/main/utils/vip-access');
+} = require('../../src/app/backend/utils/vip-access');
 
 test('VIP 状态支持永久、有效期和过期判断', () => {
   const now = Date.parse('2026-01-01T00:00:00');

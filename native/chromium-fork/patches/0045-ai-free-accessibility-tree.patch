@@ -1,0 +1,121 @@
+diff --git a/chrome/browser/ui/views/frame/ai_free_accessibility_observe.cc b/chrome/browser/ui/views/frame/ai_free_accessibility_observe.cc
+--- a/chrome/browser/ui/views/frame/ai_free_accessibility_observe.cc
++++ b/chrome/browser/ui/views/frame/ai_free_accessibility_observe.cc
+@@ -5,6 +5,7 @@
+ #include <algorithm>
+ #include <cmath>
+ #include <optional>
++#include <set>
+ #include <string>
+ #include <utility>
+ #include <vector>
+@@ -25,6 +26,100 @@
+ 
+ namespace {
+ 
++constexpr size_t kMaxAccessibilityNodes = 4000;
++constexpr size_t kMaxAccessibilityText = 512;
++std::string ClipUtf8(std::string_view value, size_t limit);
++
++bool ProtectedNode(const ui::AXNode* node) {
++  for (const ui::AXNode* current = node; current; current = current->parent()) {
++    if (current->data().HasState(ax::mojom::State::kProtected) ||
++        current->data().GetStringAttribute(ax::mojom::StringAttribute::kInputType) == "password")
++      return true;
++  }
++  return false;
++}
++
++base::DictValue AccessibilityStates(const ui::AXNodeData& data, bool focused) {
++  base::DictValue states;
++  states.Set("disabled", data.GetRestriction() == ax::mojom::Restriction::kDisabled);
++  states.Set("readOnly", data.GetRestriction() == ax::mojom::Restriction::kReadOnly);
++  states.Set("focused", focused);
++  states.Set("focusable", data.HasState(ax::mojom::State::kFocusable));
++  states.Set("editable", data.HasState(ax::mojom::State::kEditable));
++  states.Set("multiline", data.HasState(ax::mojom::State::kMultiline));
++  if (data.HasState(ax::mojom::State::kExpanded)) states.Set("expanded", true);
++  if (data.HasState(ax::mojom::State::kCollapsed)) states.Set("expanded", false);
++  if (data.HasBoolAttribute(ax::mojom::BoolAttribute::kSelected))
++    states.Set("selected", data.GetBoolAttribute(ax::mojom::BoolAttribute::kSelected));
++  const auto checked = data.GetCheckedState();
++  if (checked == ax::mojom::CheckedState::kMixed) states.Set("checked", "mixed");
++  else if (checked != ax::mojom::CheckedState::kNone)
++    states.Set("checked", checked == ax::mojom::CheckedState::kTrue);
++  return states;
++}
++
++base::DictValue SerializeAccessibilityNode(ui::AXTree& tree, ui::AXNode* node,
++                                           const std::set<int32_t>& included) {
++  const auto& data = node->data();
++  const bool protected_text = ProtectedNode(node);
++  bool offscreen = false;
++  const gfx::RectF bounds = tree.GetTreeBounds(node, &offscreen, true);
++  base::DictValue item;
++  item.Set("id", node->id());
++  item.Set("role", ui::ToString(data.role));
++  item.Set("name", protected_text ? "" : ClipUtf8(
++      data.GetStringAttribute(ax::mojom::StringAttribute::kName), kMaxAccessibilityText));
++  if (!protected_text && data.HasStringAttribute(ax::mojom::StringAttribute::kValue))
++    item.Set("value", ClipUtf8(data.GetStringAttribute(ax::mojom::StringAttribute::kValue), kMaxAccessibilityText));
++  item.Set("redacted", protected_text);
++  item.Set("states", AccessibilityStates(data, node->id() == tree.data().focus_id));
++  item.Set("ignored", data.IsInvisibleOrIgnored());
++  item.Set("offscreen", offscreen);
++  if (node->parent() && included.contains(node->parent()->id()))
++    item.Set("parentId", node->parent()->id());
++  base::DictValue rect;
++  rect.Set("x", static_cast<double>(bounds.x()));
++  rect.Set("y", static_cast<double>(bounds.y()));
++  rect.Set("width", static_cast<double>(bounds.width()));
++  rect.Set("height", static_cast<double>(bounds.height()));
++  item.Set("bounds", std::move(rect));
++  base::ListValue children;
++  for (ui::AXNode* child : node->children())
++    if (included.contains(child->id())) children.Append(child->id());
++  item.Set("children", std::move(children));
++  item.Set("childCount", static_cast<int>(node->children().size()));
++  return item;
++}
++
++void AddAccessibilityTree(const base::DictValue& command,
++                          base::DictValue* response, ui::AXTree& tree) {
++  if (!command.FindBool("includeAccessibilityTree").value_or(false)) return;
++  std::vector<ui::AXNode*> pending{tree.root()};
++  std::vector<ui::AXNode*> selected;
++  std::set<int32_t> included;
++  while (!pending.empty() && selected.size() < kMaxAccessibilityNodes) {
++    ui::AXNode* node = pending.back();
++    pending.pop_back();
++    selected.push_back(node);
++    included.insert(node->id());
++    for (auto it = node->children().rbegin(); it != node->children().rend(); ++it)
++      pending.push_back(*it);
++  }
++  base::ListValue nodes;
++  for (ui::AXNode* node : selected)
++    nodes.Append(SerializeAccessibilityNode(tree, node, included));
++  base::DictValue snapshot;
++  snapshot.Set("format", "ax-tree-v1");
++  snapshot.Set("rootId", tree.root()->id());
++  snapshot.Set("focusId", tree.data().focus_id);
++  snapshot.Set("nodes", std::move(nodes));
++  snapshot.Set("nodeCount", static_cast<int>(selected.size()));
++  snapshot.Set("truncated", !pending.empty());
++  snapshot.Set("coordinateSpace", "viewport-css-pixels");
++  response->Set("accessibilityTree", std::move(snapshot));
++}
++
++
+ std::optional<double> Number(const base::DictValue& value,
+                              std::string_view key) {
+   if (std::optional<double> number = value.FindDouble(key)) {
+@@ -93,6 +188,8 @@
+     response->Set("closedShadowSupported", true);
+     return;
+   }
++
++  AddAccessibilityTree(command, response, tree);
+ 
+   const int limit = std::clamp(command.FindInt("limit").value_or(200), 1, 1000);
+   const size_t text_limit = static_cast<size_t>(

@@ -7,8 +7,8 @@ const test = require('node:test');
 const {
   dispatchRuntimeAutomationByProcessId,
   normalizeRuntimeAutomation,
-} = require('../../../src/app/main/browser-runtime/runtime-automation');
-const { ALLOWED_COMMANDS } = require('../../../src/app/main/browser-runtime/chromium-command-client');
+} = require('../../../src/app/backend/browser-runtime/runtime-automation');
+const { ALLOWED_COMMANDS } = require('../../../src/app/backend/browser-runtime/chromium-command-client');
 
 test('normalizes bounded native observe and action payloads', () => {
   assert.deepEqual(normalizeRuntimeAutomation('observe-page', {
@@ -94,6 +94,8 @@ test('normalizes bounded native observe and action payloads', () => {
   assert.deepEqual(normalizeRuntimeAutomation('activate-tab', {
     url: ' https://example.test/page ', id: '2',
   }), { url: 'https://example.test/page', index: 2 });
+  assert.deepEqual(normalizeRuntimeAutomation('close-tab', { tab_id: 3 }), { url: '', index: 3 });
+  assert.deepEqual(normalizeRuntimeAutomation('history-back', {}), { url: '', index: -1 });
   assert.deepEqual(normalizeRuntimeAutomation('download-element', {
     ref: 'e2', selector: 'img', x: 160.5, y: 55.25,
     target_path: 'C:\\AI-Workspace\\.image.native-download', timeout_ms: 999999,
@@ -139,6 +141,7 @@ test('fork automation commands are allowlisted without an automation extension',
   for (const command of [
     'observe-page', 'capture-screenshot', 'perform-action', 'download-element',
     'get-session-data', 'list-tabs', 'activate-tab',
+    'close-tab', 'history-back', 'history-forward',
   ]) {
     assert.equal(ALLOWED_COMMANDS.has(command), true);
   }
@@ -426,5 +429,19 @@ test('fork observe highlights stay in the native event-transparent UI layer', ()
   assert.match(patch, /kMaximumHighlightCount = 120/);
   assert.match(patch, /chromium-native-overlay/);
   assert.match(patch, /OnVisibilityChanged/);
-  assert.doesNotMatch(patch, /^\+.*(?:document\.body\.append|createElement)/m);
+assert.doesNotMatch(patch, /^\+.*(?:document\.body\.append|createElement)/m);
+});
+
+test('normalizes restricted inspect-page-state payload', () => {
+  const payload = normalizeRuntimeAutomation('inspect-page-state', {
+    probes: Array.from({ length: 40 }, (_, i) => ({ name: `p${i}`, selector: '#x', read: 'text' })),
+    target: { test_id: 'login', selector: '#login' },
+  });
+  assert.equal(payload.probes.length, 32);
+  assert.equal(payload.target.test_id, 'login');
+});
+
+test('page diagnostics is a payload-free read-only command', () => {
+  assert.deepEqual(normalizeRuntimeAutomation('inspect-page-diagnostics', { ignored: 'value' }), {});
+  assert.equal(ALLOWED_COMMANDS.has('inspect-page-diagnostics'), true);
 });

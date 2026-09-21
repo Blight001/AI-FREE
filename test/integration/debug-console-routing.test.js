@@ -1,10 +1,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createAppConsoleBridge } = require('../../src/app/main/runtime/app-console');
+const { createAppConsoleBridge } = require('../../src/app/backend/runtime/app-console');
 const {
   isClashMiniNetworkRequestLog,
-} = require('../../src/app/main/ipc/register/clash-mini-core');
+} = require('../../src/app/backend/ipc/register/clash-mini-core');
 
 test('debug-only network logs are isolated from regular console history and senders', () => {
   const regularLines = [];

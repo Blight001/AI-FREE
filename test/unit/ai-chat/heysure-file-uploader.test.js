@@ -9,7 +9,7 @@ const {
   attachHeySureDownloadedFile,
   createHeySureFileUploader,
   resolveSandboxFile,
-} = require('../../../src/app/main/features/ai-chat/heysure-file-uploader');
+} = require('../../../src/app/backend/features/ai-chat/heysure-file-uploader');
 
 function temporaryWorkspace(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'heysure-upload-'));

@@ -7,7 +7,7 @@ const {
   extractCurrentAccountTypeInfo,
   extractServerRecycleDebugInfo,
   extractServerRecycleTimeInfo,
-} = require('../../../src/app/main/features/account/account-response-normalizer');
+} = require('../../../src/app/backend/features/account/account-response-normalizer');
 
 test('account response normalization reads snake/camel fields from nested response envelopes', () => {
   assert.deepEqual(extractCurrentAccountTypeInfo({

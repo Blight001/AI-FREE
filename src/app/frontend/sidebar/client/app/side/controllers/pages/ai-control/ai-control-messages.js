@@ -252,7 +252,7 @@
     logoFrame.className = 'ai-chat-welcome-logo';
     const logo = document.createElement('img');
     logo.className = 'ai-chat-welcome-icon';
-    logo.src = window.aiFreeLogoAssets?.url || '../../assets/logo.ico';
+    logo.src = window.aiFreeLogoAssets?.url || '../../../assets/logo.ico';
     logo.alt = '';
     logo.setAttribute('aria-hidden', 'true');
     logo.setAttribute('data-app-logo', '');

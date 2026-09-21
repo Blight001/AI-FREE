@@ -8,7 +8,7 @@ const vm = require('node:vm');
 
 const controllerPath = path.join(
   __dirname,
-  '../../src/app/sidebar/client/app/side/controllers/pages/ai-control/ai-control-prompt-diagnostics.js',
+  '../../src/app/frontend/sidebar/client/app/side/controllers/pages/ai-control/ai-control-prompt-diagnostics.js',
 );
 
 function createFixture() {

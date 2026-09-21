@@ -216,6 +216,9 @@ async function syncSystemProxy(coreDir, proxyMode) {
     return;
   }
   const endpoint = getClashMiniProxyEndpoint(coreDir);
+  if (String(endpoint?.protocol || 'http').toLowerCase() === 'socks5') {
+    throw new Error('当前 Clash 配置只有 SOCKS 代理端口，无法启用 Windows 系统代理；请配置 mixed-port 或 port');
+  }
   const result = await enableSystemProxy(endpoint.host, endpoint.port);
   if (!result?.ok) throw new Error(result?.error || '启用 Windows 系统代理失败');
   clashMiniSystemProxyApplied = true;
@@ -237,7 +240,14 @@ async function reuseRunningProcess(ui, startCancelled, options = {}) {
   if (startCancelled()) return buildClashMiniStartCancelledResult();
   if (ruleFailure) return ruleFailure;
   const proxyResult = await syncBrowserProxy(ui, true);
-  await syncSystemProxy(coreDir, clashMiniProxyMode);
+  try {
+    await syncSystemProxy(coreDir, clashMiniProxyMode);
+  } catch (error) {
+    const message = error?.message || String(error);
+    emitClashMiniLog(ui, 'error', message);
+    await stopClashMiniProcess(ui, { waitForPendingStart: false });
+    return { ok: false, error: message, controlApiReady: true };
+  }
   if (startCancelled()) return buildClashMiniStartCancelledResult();
   clashMiniProxyAppliedByApp = proxyResult?.ok === true;
   emitClashMiniLog(ui, 'info', `Clash Mini 已重新运行${formatBrowserProxyMessage(proxyResult)}`);

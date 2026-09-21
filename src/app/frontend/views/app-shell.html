@@ -9,10 +9,14 @@
   <link rel="stylesheet" href="../sidebar/client/app/side/styles/side.css" />
   <link rel="stylesheet" href="../renderer/styles/app-shell.css" />
   <link rel="stylesheet" href="../renderer/styles/app-shell-home.css" />
+  <link rel="stylesheet" href="../renderer/styles/app-shell-extensions.css" />
   <link rel="stylesheet" href="../renderer/styles/app-shell-network-magic.css" />
+  <link rel="stylesheet" href="../renderer/styles/app-shell-layout.css" />
+  <script defer src="../sidebar/client/scripts/dev-mode-navigation.js"></script>
 </head>
 <body>
   <div id="app-container">
+    <footer id="taskbar-module" aria-label="浏览器任务栏">
     <div id="tab-bar">
       <div class="tabs" id="tabs-container">
         <button id="home-tab-btn" type="button" title="首页" aria-label="返回首页">
@@ -36,7 +40,7 @@
       </div>
       <span id="shell-app-version" class="shell-app-version" aria-label="软件版本" hidden></span>
       <div id="shell-network-magic" class="shell-network-magic">
-        <button id="shell-network-magic-toggle" class="shell-theme-toggle-btn shell-network-magic-btn" type="button" aria-expanded="false" aria-controls="shell-network-magic-menu" aria-haspopup="true" aria-label="内置代理" title="内置代理">
+        <button id="shell-network-magic-toggle" class="shell-theme-toggle-btn shell-network-magic-btn" type="button" aria-expanded="false" aria-controls="network-magic-sidebar-dialog" aria-haspopup="dialog" aria-label="内置代理" title="内置代理">
           <svg class="network-magic-wand-icon" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M4.2 19.8 13.8 10.2"></path>
             <path d="m12.4 8.8 2.8 2.8"></path>
@@ -45,18 +49,6 @@
             <path d="M20.1 4.8v1.6M19.3 5.6h1.6"></path>
           </svg>
         </button>
-        <div id="shell-network-magic-menu" class="shell-network-magic-menu" hidden>
-          <div class="shell-network-magic-menu-primary">
-            <button id="VPN-switch" class="shell-network-magic-action VPN-btn" type="button" disabled>开启魔法代理</button>
-            <button id="vpn-node-selector-toggle-btn" class="shell-network-magic-action" type="button" aria-expanded="false" aria-controls="vpn-node-selector-panel" disabled>切换节点</button>
-          </div>
-          <fieldset id="network-magic-proxy-mode" class="network-magic-proxy-mode shell-network-magic-menu-modes" aria-label="网络魔法代理模式">
-            <legend>代理模式</legend>
-            <label><input type="radio" name="network-magic-proxy-mode" value="port" checked><span>端口代理</span></label>
-            <label><input type="radio" name="network-magic-proxy-mode" value="system"><span>系统代理</span></label>
-            <label><input type="radio" name="network-magic-proxy-mode" value="global"><span>全局代理</span></label>
-          </fieldset>
-        </div>
       </div>
       <button id="theme-toggle-btn" class="shell-theme-toggle-btn" type="button" aria-pressed="false" aria-label="切换主题" title="切换到白色模式">
         <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" aria-hidden="true">
@@ -71,7 +63,10 @@
       <div id="add-tab-btn" title="单击收起或展开 AI 控制，双击打开网页控制台" role="button" aria-label="收起或展开 AI 控制">
         <img class="shell-app-logo" data-app-logo alt="AI-FREE">
       </div>
+      <button id="shell-ai-control-btn" class="shell-action-btn" type="button" aria-label="打开 AI 控制" title="打开 AI 控制">AI 控制</button>
     </div>
+    </footer>
+    <section id="browser-page-module" aria-label="浏览器页面区域">
     <div id="content-area">
       <main id="browser-empty-state" aria-label="AI-FREE 首页">
 
@@ -86,6 +81,9 @@
             <button id="browser-settings-tutorial" class="browser-settings-home-button browser-settings-tutorial" type="button">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5h10.5A3.5 3.5 0 0 1 19 8v11.5H8.5A3.5 3.5 0 0 1 5 16V4.5Z"></path><path d="M8.5 16H19M9 8h6M9 11h5"></path></svg>
               <span>使用教程</span>
+            </button>
+            <button id="browser-settings-dev-console" class="browser-settings-home-button" type="button" data-dev-only hidden>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 7 5 5-5 5M13 17h6"/></svg><span>调试控制台</span>
             </button>
           </div>
         </header>
@@ -105,6 +103,20 @@
               <div id="browser-history-list" class="browser-history-list" aria-live="polite">
                 <div class="browser-history-empty">正在读取浏览器记录…</div>
               </div>
+            </section>
+
+            <section class="extension-manager-inline" aria-labelledby="extension-manager-title">
+              <div class="extension-manager-heading">
+                <div>
+                  <h2 id="extension-manager-title">统一浏览器插件</h2>
+                  <p>这里启用的插件会安装到全部 AI-FREE 浏览器，独立浏览器已有的插件不会被修改。</p>
+                </div>
+                <button id="import-extension-plugin" class="browser-default-settings-btn" type="button">手动导入插件</button>
+              </div>
+              <div id="extension-plugin-list" class="extension-plugin-list" aria-live="polite">
+                <div class="extension-plugin-empty">正在读取统一插件…</div>
+              </div>
+              <div id="extension-manager-status" class="extension-manager-status" role="status" aria-live="polite"></div>
             </section>
 
           </section>
@@ -192,27 +204,14 @@
       </section>
       </main>
     </div>
-    <div id="vpn-node-selector-panel" class="vpn-node-selector-dialog" hidden>
-      <button class="vpn-node-selector-dialog-backdrop" type="button" data-vpn-node-selector-close aria-label="关闭节点选择"></button>
-      <div class="vpn-node-selector-panel vpn-node-selector-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="vpn-node-selector-group">
-        <div class="vpn-node-selector-panel-head">
-          <span id="vpn-node-selector-group" class="vpn-node-selector-panel-subtitle">节点选择</span>
-          <div class="vpn-node-selector-panel-heading">
-            <button id="vpn-node-retest-all-btn" class="vpn-node-retest-all" type="button" disabled>重新测速</button>
-            <button class="vpn-node-selector-dialog-close" type="button" data-vpn-node-selector-close aria-label="关闭节点选择">&times;</button>
-          </div>
-        </div>
-        <div id="vpn-node-selector-grid" class="vpn-node-selector-grid"></div>
-      </div>
-    </div>
-    <button id="start-clash-mini-btn" class="main-button btn-large-teal" type="button" data-loading-text="启动中..." hidden>启动 Clash Mini</button>
+    </section>
   </div>
   <script src="../sidebar/client/scripts/logo-assets.js"></script>
   <script src="../renderer/controllers/shared/controller-utils.js"></script>
-  <script src="../shared/version-utils.js"></script>
-  <script src="../shared/message-utils.js"></script>
-  <script src="../shared/server-message-utils.js"></script>
-  <script src="../shared/text-preview-utils.js"></script>
+  <script src="../../shared/version-utils.js"></script>
+  <script src="../../shared/message-utils.js"></script>
+  <script src="../../shared/server-message-utils.js"></script>
+  <script src="../../shared/text-preview-utils.js"></script>
   <script src="../sidebar/client/app/side/controllers/pages/side-panel/tabs.js"></script>
   <script src="../sidebar/client/app/side/controllers/shared/message-modal.js"></script>
   <script src="../sidebar/client/app/side/controllers/shared/message-modal-server.js"></script>
@@ -238,6 +237,7 @@
   <script src="../sidebar/client/app/side/controllers/pages/side-panel/modules/browser-settings-validation.js"></script>
   <script src="../sidebar/client/app/side/controllers/pages/side-panel/modules/browser-settings-form.js"></script>
   <script src="../sidebar/client/app/side/controllers/pages/side-panel/modules/browser-settings-bindings.js"></script>
+  <script src="../renderer/controllers/pages/app-shell/shell-extensions.js"></script>
   <script src="../sidebar/client/app/side/controllers/pages/side-panel/modules/browser-settings.js"></script>
   <script src="../sidebar/client/app/side/controllers/pages/side-panel/modules/init-core.js"></script>
   <script src="../sidebar/client/app/side/controllers/pages/side-panel/modules/init-bindings.js"></script>

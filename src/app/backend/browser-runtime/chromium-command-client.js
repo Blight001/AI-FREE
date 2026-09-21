@@ -5,9 +5,9 @@ const { EventEmitter } = require('events');
 const PROTOCOL_VERSION = 1;
 const MAX_MESSAGE_BYTES = 4 * 1024 * 1024;
 const ALLOWED_COMMANDS = new Set([
-  'navigate', 'reload', 'open-tabs', 'list-tabs', 'activate-tab', 'dispatch-input', 'close-browser',
+  'navigate', 'reload', 'open-tabs', 'list-tabs', 'activate-tab', 'close-tab', 'history-back', 'history-forward', 'dispatch-input', 'close-browser',
   'set-cookies', 'set-storage', 'clear-session', 'select-files',
-  'observe-page', 'capture-screenshot', 'perform-action', 'download-element', 'get-session-data',
+  'observe-page', 'inspect-page-state', 'inspect-page-diagnostics', 'capture-screenshot', 'perform-action', 'download-element', 'get-session-data',
   'automation-takeover',
 ]);
 

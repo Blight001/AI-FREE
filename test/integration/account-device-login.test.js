@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { getHardwareFingerprint } = require('../../src/app/main/utils/hardware-js');
+const { getHardwareFingerprint } = require('../../src/app/backend/utils/hardware-js');
 
 test('账号认证使用原始系统 machine-id 生成稳定 SHA-256 设备号', async () => {
   const calls = [];

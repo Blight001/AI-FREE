@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { createTabManager } = require('../../../src/app/main/services/tab-manager');
+const { createTabManager } = require('../../../src/app/backend/services/tab-manager');
 
 let chromiumRestarts = 0;
 let sidebarEvent = null;

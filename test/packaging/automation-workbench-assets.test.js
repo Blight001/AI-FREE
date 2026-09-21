@@ -12,18 +12,18 @@ function source(relativePath) {
 }
 
 const removedAssets = [
-  'src/app/renderer/styles/app-shell-automation.css',
-  'src/app/renderer/styles/app-shell-automation-canvas.css',
-  'src/app/renderer/styles/app-shell-automation-workflow.css',
-  'src/app/renderer/controllers/pages/app-shell/automation-canvas-history.js',
-  'src/app/renderer/controllers/pages/app-shell/automation-workbench-view-model.js',
-  'src/app/renderer/controllers/pages/app-shell/automation-workbench-upgrade.js',
-  'src/app/renderer/controllers/pages/app-shell/shell-automation-canvas.js',
-  'src/app/renderer/controllers/pages/app-shell/shell-automation-workbench.js',
+  'src/app/frontend/renderer/styles/app-shell-automation.css',
+  'src/app/frontend/renderer/styles/app-shell-automation-canvas.css',
+  'src/app/frontend/renderer/styles/app-shell-automation-workflow.css',
+  'src/app/frontend/renderer/controllers/pages/app-shell/automation-canvas-history.js',
+  'src/app/frontend/renderer/controllers/pages/app-shell/automation-workbench-view-model.js',
+  'src/app/frontend/renderer/controllers/pages/app-shell/automation-workbench-upgrade.js',
+  'src/app/frontend/renderer/controllers/pages/app-shell/shell-automation-canvas.js',
+  'src/app/frontend/renderer/controllers/pages/app-shell/shell-automation-workbench.js',
 ];
 
 test('homepage no longer ships the native Chromium automation workbench', () => {
-  const html = source('src/app/views/app-shell.html');
+  const html = source('src/app/frontend/views/app-shell.html');
   for (const token of [
     'automation-workbench', 'automation-workbench-open', 'automation-flow-canvas',
     '原生 Chromium 控制', 'AI 自动化工作台', 'shell-automation-workbench.js',
@@ -32,7 +32,7 @@ test('homepage no longer ships the native Chromium automation workbench', () => 
 });
 
 test('sidebar pages do not reload the removed workbench assets', () => {
-  for (const page of ['src/app/sidebar/ai-control.html', 'src/app/sidebar/account-center.html']) {
+  for (const page of ['src/app/frontend/sidebar/ai-control.html', 'src/app/frontend/sidebar/account-center.html']) {
     const html = source(page);
     assert.equal(html.includes('app-shell-automation'), false, `${page} 仍引用工作台样式`);
     assert.equal(html.includes('shell-automation-'), false, `${page} 仍引用工作台脚本`);

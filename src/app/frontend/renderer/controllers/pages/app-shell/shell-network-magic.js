@@ -1,56 +1,28 @@
-function setNetworkMagicMenuOpen(open) {
-  const menu = document.getElementById('shell-network-magic-menu');
-  const toggle = document.getElementById('shell-network-magic-toggle');
-  if (!menu || !toggle) return;
-  const nextOpen = open === true;
-  menu.hidden = !nextOpen;
-  toggle.classList.toggle('is-open', nextOpen);
-  toggle.setAttribute('aria-expanded', String(nextOpen));
-}
-
-function closeVpnNodeSelectorDialog() {
-  if (typeof setVpnNodeSelectorOpen === 'function') setVpnNodeSelectorOpen(false);
-}
-
-function bindNetworkMagicMenuToggle(toggle, menu) {
-  toggle.addEventListener('click', (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setNetworkMagicMenuOpen(menu.hidden);
-  });
-}
-
-function bindNetworkMagicMenuDismiss(root, menu) {
-  document.addEventListener('click', (event) => {
-    if (menu.hidden) return;
-    if (root.contains(event.target)) return;
-    setNetworkMagicMenuOpen(false);
-  });
-  document.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape') return;
-    setNetworkMagicMenuOpen(false);
-    closeVpnNodeSelectorDialog();
-  });
-}
-
-function bindNetworkMagicNodeDialog() {
-  document.getElementById('vpn-node-selector-toggle-btn')?.addEventListener('click', () => {
-    setNetworkMagicMenuOpen(false);
-  });
-  document.querySelectorAll('[data-vpn-node-selector-close]').forEach((button) => {
-    button.addEventListener('click', () => closeVpnNodeSelectorDialog());
-  });
-}
-
 function bindNetworkMagicShell() {
   const root = document.getElementById('shell-network-magic');
   const toggle = document.getElementById('shell-network-magic-toggle');
-  const menu = document.getElementById('shell-network-magic-menu');
-  if (!root || !toggle || !menu || toggle.dataset.bound === '1') return;
-  bindNetworkMagicMenuToggle(toggle, menu);
-  bindNetworkMagicMenuDismiss(root, menu);
-  bindNetworkMagicNodeDialog();
+  if (!root || !toggle || toggle.dataset.bound === '1') return;
+  toggle.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const open = toggle.getAttribute('aria-expanded') !== 'true';
+    setNetworkMagicLauncherOpen(open);
+    window.aiFree?.shell?.toggleNetworkMagicPanel?.({ open });
+  });
+  window.aiFree?.ui?.onNetworkMagicPanelToggle?.((payload) => {
+    setNetworkMagicLauncherOpen(payload?.open === true);
+  });
+  window.aiFree?.network?.onClashStatus?.((status) => {
+    syncNetworkMagicLauncherState(Boolean(status?.running && (status?.enabled || status?.proxyAppliedByApp)));
+  });
   toggle.dataset.bound = '1';
+}
+
+function setNetworkMagicLauncherOpen(open) {
+  const toggle = document.getElementById('shell-network-magic-toggle');
+  if (!toggle) return;
+  toggle.classList.toggle('is-open', open === true);
+  toggle.setAttribute('aria-expanded', String(open === true));
 }
 
 function syncNetworkMagicLauncherState(enabled) {

@@ -7,7 +7,7 @@ const path = require('path');
 const test = require('node:test');
 const {
   createAiServerDeviceCredentialStore,
-} = require('../../../src/app/main/features/ai-chat/ai-server-device-credential-store');
+} = require('../../../src/app/backend/features/ai-chat/ai-server-device-credential-store');
 
 function fakeSafeStorage() {
   return {

@@ -32,6 +32,10 @@ function registerAiSupportIpc({ ipc, service }) {
       return { ok: false, message: error?.message || String(error), cards: [], selectedId: '' };
     }
   });
+  ipc.handle('ai-control-workflow', async (_event, input = {}) => {
+    try { return { ok: true, data: await service.workflow(input) }; }
+    catch (error) { return { ok: false, message: error?.message || String(error) }; }
+  });
 
   ipc.handle('ai-control-workspace-list', async () => {
     try {

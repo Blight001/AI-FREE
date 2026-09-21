@@ -6,7 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const { createDeviceHallUpdateChecker, validatedReleasePage } = require(
-  '../../../src/app/main/features/updates/device-hall-update-checker',
+  '../../../src/app/backend/features/updates/device-hall-update-checker',
 );
 
 test('统一更新检查每个服务器版本只询问一次并打开设备大厅', async (t) => {

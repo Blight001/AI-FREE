@@ -216,13 +216,13 @@ app2.1/
 
 ### Key Entry Points
 
-- `src/app/main/main.js`: Electron entry point.
-- `src/app/main/bootstrap.js`: main-process composition and application lifecycle.
-- `src/app/main/browser-runtime/`: Chromium launch, handshake, profiles, and window bridge.
-- `src/app/main/services/tab-manager.js`: browser-environment and top-tab lifecycle.
-- `src/app/main/services/extension-manager.js`: extension discovery, loading, and refresh.
-- `src/app/main/services/browser-automation-bridge.js`: local AI automation bridge.
-- `src/app/main/ipc/`: IPC between the sidebar and main process.
+- `src/app/backend/main.js`: Electron entry point.
+- `src/app/backend/bootstrap.js`: main-process composition and application lifecycle.
+- `src/app/backend/browser-runtime/`: Chromium launch, handshake, profiles, and window bridge.
+- `src/app/backend/services/tab-manager.js`: browser-environment and top-tab lifecycle.
+- `src/app/backend/services/extension-manager.js`: extension discovery, loading, and refresh.
+- `src/app/backend/services/browser-automation-bridge.js`: local AI automation bridge.
+- `src/app/backend/ipc/`: IPC between the sidebar and main process.
 - `scripts/build-windows.js`: official Windows build, resource staging, and verification.
 
 ## Related Documentation

@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createAiSettingsService } = require('../../../src/app/main/features/ai-chat/ai-settings-service');
+const { createAiSettingsService } = require('../../../src/app/backend/features/ai-chat/ai-settings-service');
 
 function vipSnapshot() {
   return { is_vip: true, vip_active: true, vip_server_verified: true, vip_verified_at: new Date().toISOString() };

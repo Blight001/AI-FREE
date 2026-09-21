@@ -18,20 +18,20 @@ const {
   restoreChromiumSessionFiles,
   shouldIgnoreChromiumDiagnostic,
   snapshotHasRestorableSession,
-} = require('../../../src/app/main/browser-runtime/chromium-launcher');
-const { encodeFrame, MAX_MESSAGE_BYTES, PROTOCOL_VERSION } = require('../../../src/app/main/browser-runtime/chromium-command-client');
+} = require('../../../src/app/backend/browser-runtime/chromium-launcher');
+const { encodeFrame, MAX_MESSAGE_BYTES, PROTOCOL_VERSION } = require('../../../src/app/backend/browser-runtime/chromium-command-client');
 const {
   legacySafeProfileId,
   ProfileRuntimeStore,
   safeProfileId,
-} = require('../../../src/app/main/browser-runtime/profile-runtime-store');
-const { RUNTIME_STATUS } = require('../../../src/app/main/browser-runtime/runtime-types');
-const { prepareSessionImport } = require('../../../src/app/main/browser-runtime/session-import');
-const { ChromiumRuntime } = require('../../../src/app/main/browser-runtime/chromium-runtime');
-const { createTabManager, resolveChromiumExtensionPaths } = require('../../../src/app/main/services/tab-manager');
-const { createBrowserPartitionCleaner } = require('../../../src/app/main/services/browser-partitions');
-const { cleanupAccountProfile } = require('../../../src/app/main/services/account-profile-cleanup');
-const { initializeAccountCleanup } = require('../../../src/app/main/utils/accountCleanup');
+} = require('../../../src/app/backend/browser-runtime/profile-runtime-store');
+const { RUNTIME_STATUS } = require('../../../src/app/backend/browser-runtime/runtime-types');
+const { prepareSessionImport } = require('../../../src/app/backend/browser-runtime/session-import');
+const { ChromiumRuntime } = require('../../../src/app/backend/browser-runtime/chromium-runtime');
+const { createTabManager, resolveChromiumExtensionPaths } = require('../../../src/app/backend/services/tab-manager');
+const { createBrowserPartitionCleaner } = require('../../../src/app/backend/services/browser-partitions');
+const { cleanupAccountProfile } = require('../../../src/app/backend/services/account-profile-cleanup');
+const { initializeAccountCleanup } = require('../../../src/app/backend/utils/accountCleanup');
 
 function buildSnssSession({ url = 'https://example.com/work', closed = false } = {}) {
   const command = (id, payload) => {

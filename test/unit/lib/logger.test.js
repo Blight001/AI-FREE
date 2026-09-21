@@ -5,14 +5,14 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { appContext } = require('../../../src/app/main/runtime/app-context');
+const { appContext } = require('../../../src/app/backend/runtime/app-context');
 const {
   createLogger,
   initializeRunFileLogger,
   installShutdownUncaughtExceptionGuard,
   isExpectedShutdownNetworkError,
   pruneRunLogs,
-} = require('../../../src/app/main/utils/logger');
+} = require('../../../src/app/backend/utils/logger');
 
 function writeRunLog(dir, name, size, mtimeMs) {
   const file = path.join(dir, name);

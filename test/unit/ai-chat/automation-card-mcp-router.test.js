@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { createAutomationCardMcpRouter } = require('../../../src/app/main/services/automation-card-mcp-router');
+const { createAutomationCardMcpRouter } = require('../../../src/app/backend/services/automation-card-mcp-router');
 
 function fixture() {
   const calls = [];

@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const test = require('node:test');
-const { resolveAiSandboxDir } = require('../../../src/app/main/config/paths');
+const { resolveAiSandboxDir } = require('../../../src/app/backend/config/paths');
 
 test('AI workspace resolves to the desktop instead of the packaged install directory', () => {
   const exe = path.join('C:\\Program Files', 'AI-FREE', 'AI-FREE.exe');

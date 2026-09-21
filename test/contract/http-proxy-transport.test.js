@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
 
-const { httpGetUniversal } = require('../../src/app/main/lib/http');
+const { httpGetUniversal } = require('../../src/app/backend/lib/http');
 
 test('HTTPS proxy detection sends TLS through the CONNECT tunnel instead of opening a direct socket', async () => {
   let tunnelReceivedTls = false;

@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { createNativeBrowserAutomation } = require('../../../src/app/main/services/native-browser-automation');
+const { createNativeBrowserAutomation } = require('../../../src/app/backend/services/native-browser-automation');
 
 function fixture() {
   const calls = [];
@@ -56,6 +56,8 @@ function fixture() {
       }),
     },
   });
+  // This suite verifies the primitive ref/input contract; browser-workflow.test covers the checked pipeline.
+  service.browserAction = service.browserActionRaw.bind(service);
   service.takeoverConnections.add('native:profile-a');
   return {
     calls,
@@ -74,8 +76,9 @@ test('native automation publishes ready managed Chromium as the browser connecti
   assert.equal(connections[0].name, '工作浏览器');
   assert.equal(connections[0].platform, 'ai-free-chromium-native');
   const tools = service.getConnection(connections[0].id).tools;
-  assert.equal(tools.length, 8);
+  assert.equal(tools.length, 10);
   assert.equal(tools.some((tool) => tool.name === 'browser_file'), true);
+  assert.equal(tools.some((tool) => tool.name === 'browser_media'), true);
   assert.equal(tools.some((tool) => tool.name === 'browser_download'), false);
   assert.equal(
     tools.find((tool) => tool.name === 'browser_action').input_schema.properties.action.enum.includes('upload_file'),
@@ -84,6 +87,13 @@ test('native automation publishes ready managed Chromium as the browser connecti
   const tabProperties = tools.find((tool) => tool.name === 'browser_tab').input_schema.properties;
   assert.equal(tabProperties.id.type, 'string');
   assert.equal(tabProperties.index.type, 'number');
+  assert.deepEqual(
+    tools.find((tool) => tool.name === 'browser_tab').input_schema.properties.action.enum,
+    ['list', 'switch', 'replace', 'navigate', 'close', 'back', 'forward', 'reload'],
+  );
+  assert.equal(tabProperties.tab_id.type, 'number');
+  assert.equal(tabProperties.tabId.type, 'number');
+  assert.equal(tabProperties.replace_current.type, 'boolean');
   const actionProperties = tools.find((tool) => tool.name === 'browser_action').input_schema.properties;
   assert.equal(actionProperties.ctrl.type, 'boolean');
   assert.equal(actionProperties.meta.type, 'boolean');
@@ -99,9 +109,26 @@ test('native automation publishes ready managed Chromium as the browser connecti
   assert.equal(actionProperties.action.enum.includes('set_selection'), true);
   const waitProperties = tools.find((tool) => tool.name === 'browser_wait').input_schema.properties;
   assert.deepEqual(waitProperties.condition.enum, [
-    'attached', 'visible', 'hidden', 'text_contains', 'text_changed', 'url_matches',
+    'attached', 'visible', 'hidden', 'text_contains', 'text_changed', 'value_equals', 'attribute_equals', 'checked', 'count', 'url_matches',
   ]);
   assert.equal(waitProperties.observation_id.type, 'string');
+});
+
+test('browser_tab exposes Codex-equivalent close and history actions through the runtime bridge', async () => {
+  const { calls, service } = fixture();
+  const closed = await service.dispatch('native:profile-a', 'browser_tab', { action: 'close', tab_id: 2 });
+  service.takeoverConnections.add('native:profile-a');
+  const back = await service.dispatch('native:profile-a', 'browser_tab', { action: 'back' });
+  service.takeoverConnections.add('native:profile-a');
+  const forward = await service.dispatch('native:profile-a', 'browser_tab', { action: 'forward', index: 1 });
+  assert.equal(closed.action, 'close');
+  assert.equal(back.action, 'back');
+  assert.equal(forward.action, 'forward');
+  assert.deepEqual(calls.filter((call) => call[0] === 'automation').map((call) => call.slice(2)), [
+    ['close-tab', { index: 2 }],
+    ['history-back', { index: -1 }],
+    ['history-forward', { index: 1 }],
+  ]);
 });
 
 test('browser_file download uses the active page as the trusted relative URL context', async () => {
@@ -113,6 +140,32 @@ test('browser_file download uses the active page as the trusted relative URL con
   assert.equal(downloads[0].args.page_url, 'http://127.0.0.1:4173/');
   assert.equal(downloads[0].args.referer, 'http://127.0.0.1:4173/');
   assert.deepEqual(downloads[0].context, { pageUrl: 'http://127.0.0.1:4173/' });
+});
+
+test('browser_media lists media refs and downloads a selected ref through the existing safe file path', async () => {
+  const { calls, downloads, service, setAutomationHandler } = fixture();
+  setAutomationHandler(async (_pid, command) => {
+    if (command === 'observe-page') return { result: { success: true, url: 'https://video.example/watch', items: [
+      { id: 'video-1', kind: 'media', tag: 'video', mediaType: 'video', mediaUrl: 'https://cdn.example/video.mp4', selector: 'video.player', x: 10, y: 20, width: 640, height: 360 },
+      { id: 'image-1', kind: 'media', tag: 'img', mediaType: 'image', mediaUrl: 'https://cdn.example/poster.jpg', selector: 'img.poster', x: 10, y: 20, width: 640, height: 360 },
+    ] } };
+  });
+  const listed = await service.dispatch('native:profile-a', 'browser_media', { action: 'list' });
+  assert.equal(listed.count, 2);
+  assert.equal(listed.media[0].ref, 'video-1');
+  assert.equal(listed.media[0].type, 'video');
+  const downloaded = await service.dispatch('native:profile-a', 'browser_media', {
+    action: 'download', ref: 'video-1', filename: 'clip.mp4', media_type: 'video',
+  });
+  assert.equal(downloaded.action, 'download_element');
+  assert.equal(downloads.length, 0);
+  assert.equal(calls.some((call) => call[2] === 'download-element'), true);
+});
+
+test('browser_media requires a fresh media ref before download', async () => {
+  const { service } = fixture();
+  const result = await service.dispatch('native:profile-a', 'browser_media', { action: 'download' });
+  assert.equal(result.errorCode, 'MEDIA_REF_REQUIRED');
 });
 
 test('browser_file download_element resolves an observed image and uses the Chromium download command', async () => {
@@ -698,4 +751,140 @@ test('browser_wait rejects an old runtime that silently ignores conditions', asy
   assert.equal(result.success, false);
   assert.equal(result.errorCode, 'BROWSER_RUNTIME_UPDATE_REQUIRED');
   assert.equal(result.retryable, false);
+});
+
+test('observe combines a native AX tree with an image and rejects silently unsupported runtimes', async () => {
+  const { service, setAutomationHandler } = fixture();
+  const tree = { format: 'ax-tree-v1', rootId: 1, nodes: [{ id: 1, role: 'RootWebArea', children: [] }] };
+  setAutomationHandler(async (_pid, command) => ({ result: command === 'observe-page'
+    ? { success: true, url: 'https://example.test/', items: [], accessibilityTree: tree }
+    : { success: true, dataUrl: 'data:image/png;base64,aGVsbG8=', width: 100, height: 100 } }));
+  const observed = await service.dispatch('native:profile-a', 'browser_observe', {
+    include_accessibility_tree: true, include_screenshot: true,
+  });
+  assert.deepEqual(observed.accessibilityTree, tree);
+  assert.equal(observed.dataUrl, 'data:image/png;base64,aGVsbG8=');
+  assert.ok(observed.observationId);
+  setAutomationHandler(async () => ({ result: { success: true, items: [] } }));
+  assert.equal((await service.dispatch('native:profile-a', 'browser_observe', {
+    include_accessibility_tree: true,
+  })).errorCode, 'BROWSER_RUNTIME_UPDATE_REQUIRED');
+});
+
+test('observe distinguishes a temporarily unavailable AX snapshot from an old kernel', async () => {
+  const { service, setAutomationHandler } = fixture();
+  setAutomationHandler(async () => ({ result: { success: true, items: [], accessibilityTreeSupported: true } }));
+  const result = await service.dispatch('native:profile-a', 'browser_observe', { include_accessibility_tree: true });
+  assert.equal(result.errorCode, 'ACCESSIBILITY_TREE_NOT_READY');
+  assert.equal(result.retryable, true);
+});
+
+test('action feedback returns fresh actionable refs and never repeats a successful mutation when the read fails', async () => {
+  const { service, calls, setAutomationHandler } = fixture();
+  setAutomationHandler(async (_pid, command) => ({ result: command === 'observe-page' ? {
+    success: true, url: 'https://example.test/', items: [{ id: 'fresh', selector: '#saved', kind: 'interactive',
+      x: 10, y: 10, width: 80, height: 30 }],
+  } : { success: true } }));
+  const result = await service.dispatch('native:profile-a', 'browser_action', {
+    action: 'click', x: 10, y: 20, after: 'observe',
+  });
+  assert.equal(result.actionExecuted, true);
+  assert.equal(result.needsObservation, false);
+  assert.equal(result.observation.items[0].id, 'fresh');
+  assert.ok(service.observeTargets.get('native:profile-a').has('fresh'));
+  setAutomationHandler(async (_pid, command) => {
+    if (command === 'observe-page') throw new Error('read failed');
+    return { result: { success: true } };
+  });
+  const before = calls.length;
+  const failedRead = await service.dispatch('native:profile-a', 'browser_action', {
+    action: 'click', x: 10, y: 20, after: 'observe',
+  });
+  assert.equal(failedRead.success, true);
+  assert.equal(failedRead.needsObservation, true);
+  assert.equal(failedRead.observationError.errorCode, 'POST_ACTION_OBSERVATION_UNAVAILABLE');
+  assert.equal(calls.slice(before).filter((call) => call[2] === 'perform-action').length, 1);
+});
+
+test('failed tab commands retain the current takeover and old kernels return a clear update requirement', async () => {
+  const { service, setAutomationHandler } = fixture();
+  setAutomationHandler(async () => ({ result: { success: false, errorCode: 'HISTORY_UNAVAILABLE' } }));
+  const failed = await service.dispatch('native:profile-a', 'browser_tab', { action: 'back' });
+  assert.equal(failed.success, false);
+  assert.equal(service.takeoverConnections.has('native:profile-a'), true);
+  setAutomationHandler(async () => { const error = new Error('old runtime'); error.code = 'COMMAND_NOT_ALLOWED'; throw error; });
+  const old = await service.dispatch('native:profile-a', 'browser_tab', { action: 'close' });
+  assert.equal(old.errorCode, 'BROWSER_RUNTIME_UPDATE_REQUIRED');
+});
+
+test('tab navigation aliases use the requested tab and clear refs across documents', async () => {
+  const { service, calls } = fixture();
+  service.observeTargets.set('native:profile-a', new Map([['old', { selector: '#old' }]]));
+  const result = await service.dispatch('native:profile-a', 'browser_tab', {
+    action: 'navigate', same_tab: true, tabId: 2, url: 'https://new.example/',
+  });
+  assert.equal(result.action, 'replace');
+  assert.deepEqual(calls[0], ['automation', 42, 'activate-tab', { index: 2, url: '' }]);
+  assert.deepEqual(calls[1], ['navigate', 'profile-a', 'chromium', 'https://new.example/']);
+  assert.equal(service.observeTargets.has('native:profile-a'), false);
+});
+
+test('tab navigation validates URLs before activating a requested tab', async () => {
+  const { service, calls } = fixture();
+  service.observeTargets.set('native:profile-a', new Map([['old', { selector: '#old' }]]));
+  await assert.rejects(
+    service.dispatch('native:profile-a', 'browser_tab', { action: 'replace', tab_id: 2, url: 'javascript:alert(1)' }),
+    /HTTP\/HTTPS/,
+  );
+  assert.deepEqual(calls, []);
+  assert.equal(service.observeTargets.has('native:profile-a'), true);
+});
+
+test('tab navigation propagates runtime failures and preserves page state', async () => {
+  const { service } = fixture();
+  service.observeTargets.set('native:profile-a', new Map([['old', { selector: '#old' }]]));
+  service.runtime.navigate = async () => ({ success: false, errorCode: 'NAVIGATION_FAILED' });
+  const replaced = await service.dispatch('native:profile-a', 'browser_tab', { action: 'replace', url: 'https://failed.example/' });
+  assert.equal(replaced.errorCode, 'NAVIGATION_FAILED');
+  assert.equal(service.observeTargets.has('native:profile-a'), true);
+  service.runtime.openTabs = async () => ({ success: false, errorCode: 'OPEN_TABS_FAILED' });
+  const opened = await service.dispatch('native:profile-a', 'browser_tab', { action: 'navigate', url: 'https://failed.example/' });
+  assert.equal(opened.errorCode, 'OPEN_TABS_FAILED');
+});
+
+test('tab navigation clears refs after a partial page change even when focus fails', async () => {
+  const { service } = fixture();
+  service.observeTargets.set('native:profile-a', new Map([['old', { selector: '#old' }]]));
+  service.runtime.openTabs = async () => ({ success: true });
+  service.runtime.focus = async () => ({ success: false, errorCode: 'FOCUS_FAILED' });
+  const result = await service.dispatch('native:profile-a', 'browser_tab', {
+    action: 'navigate', url: 'https://changed.example/',
+  });
+  assert.equal(result.errorCode, 'FOCUS_FAILED');
+  assert.equal(service.observeTargets.has('native:profile-a'), false);
+});
+
+test('switch requires an active tab and clears refs before reporting focus failure', async () => {
+  const { service, setAutomationHandler } = fixture();
+  service.observeTargets.set('native:profile-a', new Map([['old', { selector: '#old' }]]));
+  setAutomationHandler(async () => ({ result: { success: true, tabs: [], activeTab: null } }));
+  const missing = await service.dispatch('native:profile-a', 'browser_tab', { action: 'switch' });
+  assert.equal(missing.errorCode, 'ACTIVE_TAB_UNAVAILABLE');
+  assert.equal(service.observeTargets.has('native:profile-a'), true);
+  setAutomationHandler(async () => ({ result: { success: true, activeTab: { id: 1, url: 'https://x.test/' } } }));
+  service.runtime.focus = async () => ({ success: false, errorCode: 'FOCUS_FAILED' });
+  const failedFocus = await service.dispatch('native:profile-a', 'browser_tab', { action: 'switch' });
+  assert.equal(failedFocus.errorCode, 'FOCUS_FAILED');
+  assert.equal(service.observeTargets.has('native:profile-a'), false);
+});
+
+test('activation followed by navigation failure invalidates references from the former tab', async () => {
+  const { service } = fixture();
+  service.observeTargets.set('native:profile-a', new Map([['old', { selector: '#old' }]]));
+  service.runtime.navigate = async () => ({ success: false, errorCode: 'NAVIGATION_FAILED' });
+  const result = await service.dispatch('native:profile-a', 'browser_tab', {
+    action: 'replace', tab_id: 1, url: 'https://changed.example/',
+  });
+  assert.equal(result.success, false);
+  assert.equal(service.observeTargets.has('native:profile-a'), false);
 });

@@ -3,8 +3,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createMembershipService } = require('../../../src/app/main/features/account/membership-service');
-const { restoreMembership } = require('../../../src/app/main/services/app-ready-bootstrap');
+const { createMembershipService } = require('../../../src/app/backend/features/account/membership-service');
+const { restoreMembership } = require('../../../src/app/backend/services/app-ready-bootstrap');
 
 function fixture(overrides = {}) {
   const writes = [];

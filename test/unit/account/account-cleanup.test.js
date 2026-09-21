@@ -6,7 +6,7 @@ const {
   initializeAccountCleanup,
   resolveRecycleTimestamp,
   updateAccountRecycleTimer,
-} = require('../../../src/app/main/utils/accountCleanup');
+} = require('../../../src/app/backend/utils/accountCleanup');
 
 test('recycle timestamp accepts explicit, nested and relative server fields', () => {
   assert.equal(resolveRecycleTimestamp(null), null);

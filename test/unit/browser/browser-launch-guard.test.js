@@ -6,7 +6,7 @@ const {
   BROWSER_LAUNCH_CODES,
   createBrowserLaunchGuard,
   evaluateBrowserLaunch,
-} = require('../../../src/app/main/features/browser/browser-launch-guard');
+} = require('../../../src/app/backend/features/browser/browser-launch-guard');
 
 function snapshot(overrides = {}) {
   return {

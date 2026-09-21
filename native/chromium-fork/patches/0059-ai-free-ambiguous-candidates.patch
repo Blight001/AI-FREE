@@ -1,0 +1,11 @@
+--- a/chrome/browser/ui/views/frame/ai_free_page_automation.cc
++++ b/chrome/browser/ui/views/frame/ai_free_page_automation.cc
+@@ -691,7 +691,7 @@
+     return candidates.find(selector=>{if(!selector)return false;const found=query(selector);return found?.length===1&&found[0]===e;})||'';
+   };
+   const inspect=()=>{
+-    if(matches.length!==1)return {found:false,count:matches.length,reason:matches.length?'ambiguous':'not_found'};
++    if(matches.length!==1)return {found:false,count:matches.length,reason:matches.length?'ambiguous':'not_found',...(matches.length?{candidates:matches.slice(0,20).map(e=>({role:role(e),name:label(e),selector:selectorFor(e)}))}:{})};
+     const e=matches[0],r=e.getBoundingClientRect(),s=getComputedStyle(e);
+     const hidden=!r.width||!r.height||s.display==='none'||s.visibility==='hidden'||s.visibility==='collapse';
+     const offscreen=r.right<=0||r.bottom<=0||r.left>=innerWidth||r.top>=innerHeight;

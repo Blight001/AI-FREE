@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   isRendererContextMenuPoint,
-} = require('../../../src/app/main/utils/removeWatermark');
+} = require('../../../src/app/backend/utils/removeWatermark');
 
 test('指定区域可由渲染层右键菜单独占，避免原生菜单抢焦点', async () => {
   let executed = '';

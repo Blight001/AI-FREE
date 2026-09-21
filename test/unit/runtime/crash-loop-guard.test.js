@@ -11,7 +11,7 @@ const {
   RECOVERY_ACTION,
   classifyExit,
   createCrashLoopGuard,
-} = require('../../../src/app/main/runtime/crash-loop-guard');
+} = require('../../../src/app/backend/runtime/crash-loop-guard');
 
 function withGuard(callback) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-crash-loop-'));

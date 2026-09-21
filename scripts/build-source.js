@@ -16,7 +16,7 @@ function assertBuildRoot(target) {
 
 function moduleKindFor(relativePath) {
   const normalized = relativePath.replace(/\\/g, '/');
-  return /^(?:app\/renderer|app\/sidebar)\//.test(normalized)
+  return /^(?:app\/frontend\/renderer|app\/frontend\/sidebar)\//.test(normalized)
     ? 'esmodule'
     : 'commonjs';
 }
@@ -58,8 +58,8 @@ function compileTypeScriptProjects(pendingCount) {
   if (!pendingCount) return;
   const compiler = path.join(projectDir, 'node_modules', 'typescript', 'bin', 'tsc');
   const projects = [
-    { config: 'tsconfig.build-main.json', roots: ['main', 'preload', 'contracts', 'shared'] },
-    { config: 'tsconfig.build-renderer.json', roots: ['renderer', 'sidebar'] },
+    { config: 'tsconfig.build-main.json', roots: ['backend', 'preload', 'contracts', 'shared'] },
+    { config: 'tsconfig.build-renderer.json', roots: ['frontend/renderer', 'frontend/sidebar'] },
   ];
   for (const { config, roots } of projects) {
     const hasInput = roots.some((root) => {
@@ -176,8 +176,8 @@ function buildSource() {
     extensionServiceWorkers,
   };
   fs.writeFileSync(path.join(buildRoot, 'build-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
-  if (!fs.existsSync(path.join(buildRoot, 'src', 'app', 'main', 'main.js'))) {
-    throw new Error('源码构建缺少主进程入口 src/app/main/main.js');
+  if (!fs.existsSync(path.join(buildRoot, 'src', 'app', 'backend', 'main.js'))) {
+    throw new Error('源码构建缺少主进程入口 src/app/backend/main.js');
   }
   return manifest;
 }

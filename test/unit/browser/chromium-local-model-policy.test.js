@@ -9,7 +9,7 @@ const test = require('node:test');
 const {
   cleanupLocalModels,
   enforceLocalModelDisabled,
-} = require('../../../src/app/main/browser-runtime/chromium-local-model-policy');
+} = require('../../../src/app/backend/browser-runtime/chromium-local-model-policy');
 
 test('启动参数强制禁用本地模型且不能被自定义 enable-features 覆盖', () => {
   const args = enforceLocalModelDisabled([

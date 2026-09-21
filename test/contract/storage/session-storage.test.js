@@ -9,7 +9,7 @@ const test = require('node:test');
 const originalCwd = process.cwd();
 const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-session-storage-'));
 process.chdir(fixtureRoot);
-const sessionStorage = require('../../../src/app/main/lib/session-storage');
+const sessionStorage = require('../../../src/app/backend/lib/session-storage');
 
 test.after(() => {
   process.chdir(originalCwd);

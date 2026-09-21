@@ -46,6 +46,8 @@ function createBootstrapUiDeps(deps) {
     refreshActiveTabToUrl: deps.resolveRefreshActiveTabToUrl(),
     refreshActiveTab: deps.resolveRefreshActiveTab(),
     toggleSidebar: deps.toggleSidebar,
+    openAiControlSidebar: deps.openAiControlSidebar,
+    openAccountCenterSidebar: deps.openAccountCenterSidebar,
     setSidebarWidth: deps.setSidebarWidth,
     sendToSide: deps.sendToSide,
     startAppUpdate: deps.startAppUpdate,
@@ -79,6 +81,8 @@ function registerBootstrapIPC(deps) {
       http: { postJson: deps.postJson, getJson: deps.getJson, httpGetUniversal: deps.httpGetUniversal },
       httpClient: deps.resolveGlobalHttpClient(),
       extensionManager: deps.extensionManager,
+      browserAutomationBridge: deps.browserAutomationBridge,
+      externalCodexLink: deps.externalCodexLink,
       loadTranslateExtension: deps.loadTranslateExtension,
       ui: createBootstrapUiDeps(deps),
       auth: deps.resolveAuth(),
@@ -103,8 +107,18 @@ function registerBootstrapIPC(deps) {
 
 function createBootstrapWindows(deps) {
   try {
-    deps.createMainWindow();
-    if (!deps.isControlPanelOnlyModeEnabled()) deps.revealMainWindow();
+    const mainWindow = deps.createMainWindow();
+    const startMinimized = deps.isLaunchMinimizedStartupRequested?.() === true;
+    if (startMinimized) {
+      mainWindow?.hide?.();
+      mainWindow?.once?.('ready-to-show', () => {
+        if (!mainWindow.isDestroyed?.()) mainWindow.hide?.();
+      });
+      return;
+    }
+    if (!deps.isControlPanelOnlyModeEnabled()) {
+      deps.revealMainWindow();
+    }
   } catch (error) {
     deps.logger.warn?.('[启动] 创建主窗口失败:', bootstrapError(error));
   }

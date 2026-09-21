@@ -8,12 +8,12 @@ const {
   executeToolCalls,
   resolvePluginTarget,
   syncWindowToolControl,
-} = require('../../../src/app/main/features/ai-chat/chat-tool-executor');
+} = require('../../../src/app/backend/features/ai-chat/chat-tool-executor');
 const {
   buildChatToolContext,
   shouldIncludeBrowserEnvironment,
   withBrowserRouteParam,
-} = require('../../../src/app/main/features/ai-chat/chat-tool-context');
+} = require('../../../src/app/backend/features/ai-chat/chat-tool-context');
 
 test('大型浏览器环境 schema 仅在相关用户意图中注入', () => {
   assert.equal(shouldIncludeBrowserEnvironment([{ role: 'user', content: '打开一个新窗口' }]), false);

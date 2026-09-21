@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
-const { postEventStream } = require('../../src/app/main/lib/http');
+const { postEventStream } = require('../../src/app/backend/lib/http');
 
 test('流式 AI 请求可由 AbortSignal 立即停止', async (t) => {
   const server = http.createServer((_request, response) => {

@@ -42,7 +42,7 @@ module.exports = [
     ],
   },
   {
-   files: ['src/app/main/**/*.js', 'scripts/**/*.js', 'test/**/*.js', 'src/app/shared/**/*.js'],
+   files: ['src/app/backend/**/*.js', 'scripts/**/*.js', 'test/**/*.js', 'src/app/shared/**/*.js'],
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: 'commonjs',
@@ -61,12 +61,12 @@ module.exports = [
   {
     // composition root 与装配模块是声明式接线：函数行数由依赖数量决定而非
     // 逻辑复杂度，豁免 max-lines-per-function；文件总行数与复杂度门禁仍生效。
-    files: ['src/app/main/bootstrap.js', 'src/app/main/composition/**/*.js'],
+    files: ['src/app/backend/bootstrap.js', 'src/app/backend/composition/**/*.js'],
     rules: { 'max-lines-per-function': 'off' },
   },
   {
     // 渲染层/侧边栏/扩展：浏览器脚本，禁止 Node require（依赖边界初版）
-    files: ['src/app/renderer/**/*.js', 'src/app/sidebar/**/*.js', 'src/app/views/**/*.js', 'src/assets/extensions/browser_automation/**/*.js'],
+    files: ['src/app/frontend/renderer/**/*.js', 'src/app/frontend/sidebar/**/*.js', 'src/app/frontend/views/**/*.js', 'src/assets/extensions/browser_automation/**/*.js'],
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: 'script',

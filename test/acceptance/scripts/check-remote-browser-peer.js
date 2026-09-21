@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const { app, BrowserWindow } = require('electron');
 const {
   createRemoteBrowserPeerController,
-} = require('../../../src/app/main/features/browser/remote-browser-peer-controller');
+} = require('../../../src/app/backend/features/browser/remote-browser-peer-controller');
 
 const PIXEL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL9WQAAAABJRU5ErkJggg==';
 

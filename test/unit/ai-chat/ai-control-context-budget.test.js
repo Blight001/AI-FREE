@@ -6,7 +6,7 @@ const test = require('node:test');
 const {
   fitAiControlContext,
   serializedLength,
-} = require('../../../src/app/main/lib/ai-control-context-budget');
+} = require('../../../src/app/backend/lib/ai-control-context-budget');
 
 test('上下文预算保留系统消息、最近对话和完整工具配对', () => {
   const largeResult = JSON.stringify({ items: '结果'.repeat(10000) });

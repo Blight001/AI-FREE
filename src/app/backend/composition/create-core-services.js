@@ -11,6 +11,7 @@ const { createBrowserRuntimeManager } = require('../browser-runtime');
 const { createLogger } = require('../utils/logger');
 const { createBrowserPartitionCleaner } = require('../services/browser-partitions');
 const { createBrowserAutomationBridge } = require('../services/browser-automation-bridge');
+const { createExternalCodexLink } = require('../services/external-codex-link');
 const { createBrowserDownloadService } = require('../services/browser-download-service');
 const { createAiServerDeviceService } = require('../features/ai-chat/ai-server-device-service');
 const { createHeySureFileMaterializer } = require('../features/ai-chat/heysure-file-materializer');
@@ -178,12 +179,19 @@ function createCoreServices({ app, fs, path, BrowserWindow, dialog, shell, power
     externalMcpDescriptorPath: path.join(app.getPath('userData'), 'ai-free-mcp-bridge.json'),
     getExternalMcpAccess: () => resolveVipAccess(licenseCache.getSnapshot()),
   });
+  const externalCodexLink = createExternalCodexLink({
+    app,
+    descriptorPath: path.join(app.getPath('userData'), 'ai-free-mcp-bridge.json'),
+  });
   licenseCache.subscribe?.(() => {
     try { browserAutomationBridge.refreshExternalMcpAccess(); } catch (error) {
       console.warn('[ExternalMCP] 刷新会员权限失败:', error?.message || error);
     }
   });
-  app.whenReady().then(() => browserAutomationBridge.start()).catch((error) => {
+  app.whenReady().then(async () => {
+    externalCodexLink.connect();
+    await browserAutomationBridge.start();
+  }).catch((error) => {
     console.error('[AutomationBridge] 启动失败:', error?.message || error);
   });
 
@@ -198,6 +206,7 @@ function createCoreServices({ app, fs, path, BrowserWindow, dialog, shell, power
   const uiBridge = createUiBridge({
     getMainWindow: appRuntime.getMainWindow,
     getSideView: appRuntime.getSideView,
+    getDevConsoleWindow: appRuntime.getDevConsoleWindow,
     getControlPanelWindow: appRuntime.getControlPanelWindow,
     isDevMode,
   });
@@ -351,6 +360,7 @@ function createCoreServices({ app, fs, path, BrowserWindow, dialog, shell, power
     applyPluginSettings,
     logger,
     browserAutomationBridge,
+    externalCodexLink,
     aiServerDeviceService,
     isDevMode,
     sendToSide,

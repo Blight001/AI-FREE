@@ -1,10 +1,12 @@
 'use strict';
+const { BROWSER_WORKFLOW_TOOL, checkedActionProperties } = require('./browser-workflow-tool-definition');
 
 const objectSchema = (properties, required = []) => ({
   type: 'object', properties, ...(required.length ? { required } : {}),
 });
 
 const NATIVE_BROWSER_TOOL_DEFINITIONS = Object.freeze([
+  BROWSER_WORKFLOW_TOOL,
   {
     name: 'browser_control',
     description: '读取软件完整浏览器态势，或显式管理当前页面自动化接管。overview 无需先选择或打开浏览器，返回全部浏览器记录、当前打开窗口及其标签页、AI-Workspace 目录树；status 查看当前页；acquire 开始接管；release 停止接管。',
@@ -18,11 +20,12 @@ const NATIVE_BROWSER_TOOL_DEFINITIONS = Object.freeze([
     name: 'manage_card',
     description: '管理并运行原生 Chromium 自动化卡片。用户不会在 AI 控制设置中指定卡片，必须先根据系统卡片目录或 action=list 自行按名称/网站/说明筛选，再对匹配的 id 或唯一 card_name 调用 get/run。rules/list/get 可在只读模式使用；写入或 run 前必须先调用 browser_control action=acquire 接管当前活动页面，完成后允许 AI 调用 action=release 停止接管。切换或新开标签页后需要重新接管。支持 rules/list/get/write/patch_step/insert_step/delete_step/move_step/delete/run。',
     input_schema: objectSchema({
-      action: { type: 'string', enum: ['rules', 'list', 'get', 'write', 'patch_step', 'insert_step', 'delete_step', 'move_step', 'delete', 'run'] },
+      action: { type: 'string', enum: ['rules', 'list', 'get', 'write', 'patch_step', 'insert_step', 'delete_step', 'move_step', 'delete', 'run', 'template'] },
       id: { type: 'string' }, card_name: { type: 'string' }, cardData: { type: 'object' },
       step_index: { type: 'number' }, to_step_index: { type: 'number' }, insert_after: { type: 'number' },
       stepData: { type: 'object' }, stepPatch: { type: 'object' }, replace: { type: 'boolean' },
       inputs: { type: 'object' }, start_step: { type: 'number' }, timeout_seconds: { type: 'number' },
+      overrides: { type: 'object', description: 'template 可选覆盖 probes/expect 等字段' },
     }, ['action']),
   },
   {
@@ -46,10 +49,29 @@ const NATIVE_BROWSER_TOOL_DEFINITIONS = Object.freeze([
   },
   {
     name: 'browser_tab',
-    description: '通过受认证 Chromium Runtime Bridge 管理当前浏览器。replace 覆盖当前页；navigate 新建标签页、立即激活并把浏览器打开到前台。',
+    description: '通过受认证 Chromium Runtime Bridge 管理当前浏览器。先用 list 获取活动标签和 tab_id；switch 切换已有标签；replace 覆盖当前页；navigate 新建并激活标签；close 关闭标签；back/forward 执行历史导航。navigate 默认新标签，传 replace_current/current_tab/same_tab=true 时兼容转换为当前标签覆盖跳转。',
     input_schema: objectSchema({
-      action: { type: 'string', enum: ['list', 'switch', 'replace', 'navigate', 'reload'] },
-      url: { type: 'string' }, id: { type: 'string' }, index: { type: 'number' },
+      action: { type: 'string', enum: ['list', 'switch', 'replace', 'navigate', 'close', 'back', 'forward', 'reload'] },
+      url: { type: 'string' },
+      tab_id: { type: 'number', description: 'list 返回的标签 id（当前标签索引，关闭标签后请重新 list）；switch 必填，close/replace/back/forward 可选。' },
+      tabId: { type: 'number', description: 'tab_id 的兼容别名。' },
+      id: { type: 'string', description: 'Runtime Bridge 字符串标签 id 的兼容字段。' },
+      index: { type: 'number', description: '兼容旧 Runtime 的标签索引。' },
+      replace_current: { type: 'boolean' }, current_tab: { type: 'boolean' }, same_tab: { type: 'boolean' },
+    }, ['action']),
+  },
+  {
+    name: 'browser_media',
+    description: '发现并下载当前页面上的视频、音频和其他媒体素材。先用 action=list 获取带 observation_id 的媒体 ref，再用 action=download、ref 和可选 filename 下载；下载仍受当前页面 Cookie、Referer、代理和 AI-Workspace 安全边界约束。当前版本支持页面媒体元素和可解析直链，暂不负责 HLS/DASH 分片合并或 DRM 内容。',
+    input_schema: objectSchema({
+      action: { type: 'string', enum: ['list', 'download'] },
+      ref: { type: 'string', description: 'action=list 返回的媒体 ref' },
+      element: { type: 'string', description: 'ref 的兼容别名' },
+      filename: { type: 'string' }, directory: { type: 'string' },
+      overwrite: { type: 'boolean' }, timeout_ms: { type: 'number' },
+      max_bytes: { type: 'number' }, transport: { type: 'string', enum: ['auto', 'browser', 'software'] },
+      use_cookies: { type: 'boolean' }, mark: { type: 'boolean' },
+      include_text: { type: 'boolean' }, limit: { type: 'number' },
     }, ['action']),
   },
   {
@@ -58,6 +80,8 @@ const NATIVE_BROWSER_TOOL_DEFINITIONS = Object.freeze([
     input_schema: objectSchema({
       mode: { type: 'string', enum: ['overview', 'elements'], description: 'overview 只返回页面级语义区域；elements 返回元素' },
       include_regions: { type: 'boolean' }, max_depth: { type: 'number' },
+      include_accessibility_tree: { type: 'boolean', description: '同时返回 Chromium 完整 AX 树（role/name/state/父子关系/bounds）；旧内核明确报更新要求。' },
+      include_screenshot: { type: 'boolean', description: '同时截图，MCP 以图片内容返回，与页面语义一起核对。' },
       region_ref: { type: 'string', description: 'overview 返回的区域 ref；只限制观察结果，不限制后续交互' },
       region: { type: 'object', description: '语义区域 {role,label,match} 或 viewport CSS 像素矩形 {x,y,width,height}' },
       region_mode: { type: 'string', enum: ['centerInside', 'fullyInside', 'intersecting'] },
@@ -87,8 +111,15 @@ const NATIVE_BROWSER_TOOL_DEFINITIONS = Object.freeze([
     name: 'browser_action', destructive: true,
     description: '通过 Chromium 原生输入执行点击、拖拽选文、整段输入、光标/选区定位、局部插入、滚动或组合按键。必须先调用 browser_control action=acquire 接管当前活动页面；接管期间页面显示紫色发光边框，任何来源触发的文件选择器或阻塞式浏览器模态弹窗都会被阻止。ref 只属于最近一次 browser_observe，连续 observe 后必须使用最后一次返回的 ref；accessibilityFallback 元素会自动使用 clickX/clickY，无需 selector。切换或新开标签页后需要重新接管；完成后 AI 可以调用 browser_control action=release 停止接管。文件上传改用 browser_file action=upload 并附带 path/paths 与 selector/ref。',
     input_schema: objectSchema({
-      action: { type: 'string', enum: ['click', 'double_click', 'right_click', 'drag', 'scroll', 'type', 'insert_text', 'set_selection', 'press_key'] },
+      action: { type: 'string', enum: ['click', 'double_click', 'right_click', 'drag', 'scroll', 'type', 'insert_text', 'set_selection', 'press_key', 'select_option', 'set_checked'] },
+      ...checkedActionProperties,
+      scope: { type: 'string' }, nth: { type: 'integer', minimum: 0 }, exact: { type: 'boolean' }, has_text: { type: 'string' },
+      after: { type: 'string', enum: ['none', 'observe'], description: '推荐 observe：动作成功后返回新观察和可继续操作的 ref；观察失败不会重做动作。省略保留旧行为。' },
+      observation_options: { type: 'object', description: 'after=observe 的观察参数，可含 include_accessibility_tree/include_screenshot/limit/kinds。' },
       selector: { type: 'string' }, ref: { type: 'string' }, text: { type: 'string' },
+      value: { type: 'string', description: 'select_option 的 option value；也可使用 label' },
+      checked: { type: 'boolean', description: 'set_checked 的目标状态' },
+      force_event: { type: 'boolean', description: 'set_checked 即使状态未变化也强制派发事件' },
       observation_id: { type: 'string', description: 'browser_observe 返回的 observationId；与 ref 一起使用可拒绝过期快照' },
       x: { type: 'number', description: '视口起点 X；可覆盖 ref 的默认点击中心' },
       y: { type: 'number', description: '视口起点 Y；可覆盖 ref 的默认点击中心' },
@@ -109,12 +140,13 @@ const NATIVE_BROWSER_TOOL_DEFINITIONS = Object.freeze([
     input_schema: objectSchema({
       condition: {
         type: 'string',
-        enum: ['attached', 'visible', 'hidden', 'text_contains', 'text_changed', 'url_matches'],
+        enum: ['attached', 'visible', 'hidden', 'text_contains', 'text_changed', 'value_equals', 'attribute_equals', 'checked', 'count', 'url_matches'],
         description: '省略时兼容为等待 selector/ref 存在；url_matches 不需要 selector/ref',
       },
       selector: { type: 'string' }, ref: { type: 'string' },
       observation_id: { type: 'string', description: 'ref 所属 browser_observe 的 observationId' },
       value: { type: 'string', description: 'text_contains 或 url_matches 的目标内容' },
+      attribute: { type: 'string', description: 'attribute_equals 要读取的属性名' },
       initial_value: { type: 'string', description: 'text_changed 的可选初始文本；省略时自动记录首次读取值' },
       ms: { type: 'number' }, timeout_ms: { type: 'number' },
     }),

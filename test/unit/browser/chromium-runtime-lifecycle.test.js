@@ -4,9 +4,9 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const test = require('node:test');
 
-const { ChromiumRuntime } = require('../../../src/app/main/browser-runtime/chromium-runtime');
-const { createChromiumLaunchDiagnostics } = require('../../../src/app/main/browser-runtime/chromium-process-diagnostics');
-const { RUNTIME_STATUS } = require('../../../src/app/main/browser-runtime/runtime-types');
+const { ChromiumRuntime } = require('../../../src/app/backend/browser-runtime/chromium-runtime');
+const { createChromiumLaunchDiagnostics } = require('../../../src/app/backend/browser-runtime/chromium-process-diagnostics');
+const { RUNTIME_STATUS } = require('../../../src/app/backend/browser-runtime/runtime-types');
 
 function createRuntime(status = RUNTIME_STATUS.WAITING_PIPE) {
   const state = { profileId: 'slow-profile', status };

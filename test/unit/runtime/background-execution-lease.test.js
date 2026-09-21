@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   createBackgroundExecutionLeaseManager,
-} = require('../../../src/app/main/platform/background-execution-lease');
+} = require('../../../src/app/backend/platform/background-execution-lease');
 
 function createHarness(options = {}) {
   let nextTimerId = 1;

@@ -4,10 +4,10 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 let clashStatus = { running: true, enabled: true };
-const settingsPath = require.resolve('../../../src/app/main/utils/ai-free-browser-settings');
-const environmentPath = require.resolve('../../../src/app/main/features/browser/browser-environment');
-const runtimePath = require.resolve('../../../src/app/main/features/network/clash-mini-control-runtime');
-const targetPath = require.resolve('../../../src/app/main/features/browser/browser-runtime-settings-controller');
+const settingsPath = require.resolve('../../../src/app/backend/utils/ai-free-browser-settings');
+const environmentPath = require.resolve('../../../src/app/backend/features/browser/browser-environment');
+const runtimePath = require.resolve('../../../src/app/backend/features/network/clash-mini-control-runtime');
+const targetPath = require.resolve('../../../src/app/backend/features/browser/browser-runtime-settings-controller');
 
 require.cache[settingsPath] = { exports: {
   normalizeAiFreeBrowserSettings: (value) => ({ proxy: { mode: 'default' }, ...value }),

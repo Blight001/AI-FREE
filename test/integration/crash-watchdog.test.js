@@ -74,7 +74,7 @@ test('detached watchdog uploads logs and a nested Crashpad dump after the main p
   }), 'utf8');
 
   const entryPath = path.join(
-    __dirname, '..', '..', 'src', 'app', 'main', 'runtime', 'crash-watchdog', 'entry.js',
+    __dirname, '..', '..', 'src', 'app', 'backend', 'runtime', 'crash-watchdog', 'entry.js',
   );
   const child = spawn(process.execPath, [
     entryPath,

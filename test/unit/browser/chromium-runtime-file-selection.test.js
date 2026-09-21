@@ -5,12 +5,12 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { BrowserRuntimeManager } = require('../../../src/app/main/browser-runtime');
-const { ChromiumRuntime } = require('../../../src/app/main/browser-runtime/chromium-runtime');
+const { BrowserRuntimeManager } = require('../../../src/app/backend/browser-runtime');
+const { ChromiumRuntime } = require('../../../src/app/backend/browser-runtime/chromium-runtime');
 const {
   assertPathsInSandbox,
   prepareRuntimeFileSelection,
-} = require('../../../src/app/main/browser-runtime/runtime-file-selection');
+} = require('../../../src/app/backend/browser-runtime/runtime-file-selection');
 
 test('runtime file selection rejects paths outside the configured AI workspace', () => {
   const root = path.join(os.tmpdir(), 'ai-free-sandbox');

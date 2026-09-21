@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
-const { createRuntimeHelpers } = require('../../src/app/main/services/runtime-helpers');
+const { createRuntimeHelpers } = require('../../src/app/backend/services/runtime-helpers');
 
 function createHelpers({ existingDirectories = [], candidates = [] } = {}) {
   const existing = new Set(existingDirectories.map((dir) => path.normalize(dir)));

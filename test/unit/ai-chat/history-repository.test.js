@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createAiChatHistoryRepository } = require('../../../src/app/main/features/ai-chat/history-repository');
+const { createAiChatHistoryRepository } = require('../../../src/app/backend/features/ai-chat/history-repository');
 
 function fixture({ writeResult = true } = {}) {
   let store = { version: 1, sessions: [], currentId: '' };

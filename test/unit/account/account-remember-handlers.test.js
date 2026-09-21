@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 
 const {
   createAccountRememberHandlers,
-} = require('../../../src/app/main/features/account/account-remember-handlers');
+} = require('../../../src/app/backend/features/account/account-remember-handlers');
 
 function createFixture(overrides = {}) {
   const deleted = [];

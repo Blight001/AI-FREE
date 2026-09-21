@@ -7,7 +7,7 @@ const {
   createChromiumLaunchDiagnostics,
   createChromiumProcessFailure,
   formatWindowsExitCode,
-} = require('../../../src/app/main/browser-runtime/chromium-process-diagnostics');
+} = require('../../../src/app/backend/browser-runtime/chromium-process-diagnostics');
 
 test('Windows 有符号退出码同时显示十六进制 NTSTATUS', () => {
   assert.equal(formatWindowsExitCode(-1073741515), '-1073741515 / 0xC0000135');

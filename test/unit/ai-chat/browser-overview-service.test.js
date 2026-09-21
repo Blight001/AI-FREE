@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { createBrowserOverview } = require('../../../src/app/main/services/browser-overview-service');
+const { createBrowserOverview } = require('../../../src/app/backend/services/browser-overview-service');
 
 test('browser overview combines records, open-window tabs and a bounded workspace tree', async () => {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-overview-'));

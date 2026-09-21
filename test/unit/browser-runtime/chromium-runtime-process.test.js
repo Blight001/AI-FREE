@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { stopChromiumProfile } = require('../../../src/app/main/browser-runtime/chromium-runtime-process');
+const { stopChromiumProfile } = require('../../../src/app/backend/browser-runtime/chromium-runtime-process');
 
 test('stopping an exited Chromium does not wait for a stale close command acknowledgement', async () => {
   const messages = [];

@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { app, BrowserWindow } = require('electron');
-const { createBrowserRuntimeManager } = require('../../../src/app/main/browser-runtime');
+const { createBrowserRuntimeManager } = require('../../../src/app/backend/browser-runtime');
 
 delete process.env.AI_FREE_CHROMIUM_HANDSHAKE;
 delete process.env.AI_FREE_CHROMIUM_PATH;

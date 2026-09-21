@@ -1,0 +1,108 @@
+.network-magic-sidebar-dialog[hidden] {
+  display: none !important;
+}
+
+.network-magic-sidebar-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+.network-magic-sidebar-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: rgba(6, 9, 18, 0.58);
+  cursor: pointer;
+}
+
+.network-magic-sidebar-panel {
+  position: relative;
+  width: min(420px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid var(--brand-border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--shell-panel, #111827) 96%, transparent);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.36);
+}
+
+.network-magic-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.network-magic-sidebar-header h2 {
+  margin: 0;
+  color: var(--text-primary, #f8fafc);
+  font-size: 16px;
+}
+
+.network-magic-sidebar-close {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary, #cbd5e1);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.network-magic-sidebar-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.network-magic-sidebar-panel .shell-network-magic-menu-primary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.network-magic-sidebar-panel .shell-network-magic-action {
+  min-height: 38px;
+  padding: 0 8px;
+  border: 1px solid rgba(129, 140, 248, 0.28);
+  border-radius: 8px;
+  background: var(--brand-grad, linear-gradient(135deg, #6366f1, #8b5cf6));
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.network-magic-sidebar-panel .vpn-node-selector-dialog {
+  position: relative;
+  inset: auto;
+  z-index: 1;
+  display: block;
+  padding: 0;
+  margin-top: 12px;
+}
+
+.network-magic-sidebar-panel .vpn-node-selector-dialog[hidden] {
+  display: none !important;
+}
+
+.network-magic-sidebar-panel .vpn-node-selector-dialog-panel {
+  width: auto;
+  max-height: none;
+  padding: 10px;
+  box-shadow: none;
+}
+
+html.theme-light .network-magic-sidebar-backdrop {
+  background: rgba(24, 32, 48, 0.28);
+}

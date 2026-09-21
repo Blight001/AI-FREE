@@ -20,7 +20,7 @@ async function main() {
       'ai-control.html',
     );
   const appShellPath = process.env.SIDEBAR_HTML_PATH
-    ? path.join(projectDir, 'src', 'app', 'views', 'app-shell.html')
+    ? path.join(projectDir, 'src', 'app', 'frontend', 'views', 'app-shell.html')
     : path.join(
       appOutDir,
       'resources',

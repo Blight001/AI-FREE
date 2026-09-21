@@ -7,7 +7,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { createBrowserAutomationBridge } = require('../../src/app/main/services/browser-automation-bridge');
+const { createBrowserAutomationBridge } = require('../../src/app/backend/services/browser-automation-bridge');
 
 async function reservePort() {
   const server = http.createServer();

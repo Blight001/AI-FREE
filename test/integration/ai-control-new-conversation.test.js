@@ -6,7 +6,7 @@ const vm = require('node:vm');
 
 const controllerRoot = path.join(
   __dirname,
-  '../../src/app/sidebar/client/app/side/controllers/pages/ai-control',
+  '../../src/app/frontend/sidebar/client/app/side/controllers/pages/ai-control',
 );
 
 function runController(context, file) {

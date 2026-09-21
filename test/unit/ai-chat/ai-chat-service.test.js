@@ -9,7 +9,7 @@ const path = require('node:path');
 const {
   createAiChatService,
   waitForBrowserConnection,
-} = require('../../../src/app/main/features/ai-chat/ai-chat-service');
+} = require('../../../src/app/backend/features/ai-chat/ai-chat-service');
 
 function eventFixture(id = 1) {
   const sent = [];

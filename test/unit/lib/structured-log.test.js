@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 
 const root = path.join(__dirname, '..', '..', '..');
-const { createStructuredLogger } = require(path.join(root, 'src', 'app', 'main', 'lib', 'structured-log.js'));
+const { createStructuredLogger } = require(path.join(root, 'src', 'app', 'backend', 'lib', 'structured-log.js'));
 
 function capture() {
   const lines = { log: [], warn: [], error: [] };

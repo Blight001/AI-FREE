@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { normalizeValidationRuntimeConfig } = require('../../../src/app/main/features/account/validation-runtime-config');
+const { normalizeValidationRuntimeConfig } = require('../../../src/app/backend/features/account/validation-runtime-config');
 
 test('validation runtime config merges nested results and wire aliases', () => {
   const result = normalizeValidationRuntimeConfig({

@@ -8,7 +8,7 @@ const {
   buildStoredAccountSession,
   normalizeAccountSession,
   serializeAccountSession,
-} = require('../../../src/app/main/utils/account-session');
+} = require('../../../src/app/backend/utils/account-session');
 
 test('account session normalizes session aliases and clones public payloads', () => {
   const source = {

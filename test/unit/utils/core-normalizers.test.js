@@ -5,13 +5,13 @@ const crypto = require('node:crypto');
 const os = require('node:os');
 const test = require('node:test');
 
-const browserRegion = require('../../../src/app/main/utils/browser-region');
+const browserRegion = require('../../../src/app/backend/utils/browser-region');
 const {
   normalizeAiFreeBrowserSettings,
   parseCookieJson,
-} = require('../../../src/app/main/utils/ai-free-browser-settings');
-const { getHardwareFingerprint } = require('../../../src/app/main/utils/hardware-js');
-const storeUtils = require('../../../src/app/main/ipc/register/store-utils');
+} = require('../../../src/app/backend/utils/ai-free-browser-settings');
+const { getHardwareFingerprint } = require('../../../src/app/backend/utils/hardware-js');
+const storeUtils = require('../../../src/app/backend/ipc/register/store-utils');
 
 test('browser region presets reject automatic values and preserve immutable metadata', () => {
   assert.equal(browserRegion.getBrowserRegionPreset(''), null);

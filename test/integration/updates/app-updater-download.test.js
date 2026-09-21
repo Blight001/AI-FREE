@@ -6,12 +6,12 @@ const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { appContext } = require('../../../src/app/main/runtime/app-context');
+const { appContext } = require('../../../src/app/backend/runtime/app-context');
 
 const originalCwd = process.cwd();
 const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-app-updater-'));
 process.chdir(fixtureRoot);
-const { createAppUpdater } = require('../../../src/app/main/services/app-updater');
+const { createAppUpdater } = require('../../../src/app/backend/services/app-updater');
 
 test.after(() => {
   appContext.clearPendingUpdateInstall();

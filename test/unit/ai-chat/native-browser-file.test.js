@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
   isDownloadElementUnavailable, observedRef, resolvedFileAction,
-} = require('../../../src/app/main/services/native-browser-file');
+} = require('../../../src/app/backend/services/native-browser-file');
 
 test('resolvedFileAction upgrades a ref-only download to download_element', () => {
   assert.equal(resolvedFileAction({ action: 'download', ref: 'e2' }), 'download_element');

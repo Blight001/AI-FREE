@@ -6,7 +6,7 @@ const {
   LOW_SPEC_MODES,
   normalizeLowSpecSettings,
   resolveLowSpecMode,
-} = require('../../../src/app/main/features/browser/low-spec-mode-policy');
+} = require('../../../src/app/backend/features/browser/low-spec-mode-policy');
 
 test('low spec setting normalizes auto/on/off and rejects unknown persisted values', () => {
   assert.deepEqual(normalizeLowSpecSettings(), { mode: LOW_SPEC_MODES.AUTO });

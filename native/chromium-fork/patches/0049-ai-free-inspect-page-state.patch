@@ -1,0 +1,110 @@
+diff --git a/chrome/browser/ui/views/frame/ai_free_page_automation.cc b/chrome/browser/ui/views/frame/ai_free_page_automation.cc
+--- a/chrome/browser/ui/views/frame/ai_free_page_automation.cc
++++ b/chrome/browser/ui/views/frame/ai_free_page_automation.cc
+@@ -104,7 +104,7 @@
+     const legacyMatch=(filter,kind,info)=>!filter||filter===kind||filter===info.role||filter===info.controlType||(filter==='input'&&info.editable)||(filter==='form'&&['input','select','button'].some(value=>info.controlType.includes(value)));
+     const matchesFilter=(kind,info,tag)=>legacyMatch(kindFilter,kind,info)&&(!kindFilters.length||kindFilters.includes(kind))&&(!tagFilters.length||tagFilters.includes(tag))&&(!roleFilters.length||roleFilters.includes(info.role))&&(!controlTypeFilters.length||controlTypeFilters.includes(info.controlType));
+     const localSelector=(el)=>{if(el.id)return '#'+CSS.escape(el.id);const n=el.getAttribute('name');if(n)return el.tagName.toLowerCase()+'[name="'+CSS.escape(n)+'"]';let s=el.tagName.toLowerCase();const p=el.parentElement;if(p){const same=[...p.children].filter(x=>x.tagName===el.tagName);if(same.length>1)s+=':nth-of-type('+(same.indexOf(el)+1)+')';}return s;};
+-    const selectorInfo=(el)=>{let current=el,parts=[];for(let depth=0;current&&depth<8;depth++,current=current.parentElement){parts.unshift(localSelector(current));const candidate=parts.join(' > ');let count=0;try{count=el.ownerDocument.querySelectorAll(candidate).length;}catch(_){}if(count===1)return {selector:candidate,unique:true,matchCount:1,stability:candidate.startsWith('#')?'high':'medium'};}const selector=parts.join(' > ')||localSelector(el);let count=0;try{count=el.ownerDocument.querySelectorAll(selector).length;}catch(_){}return {selector,unique:count===1,matchCount:count,stability:'low'};};
++    const selectorInfo=(el)=>{const testId=el.getAttribute('data-testid');if(testId){const selector='[data-testid="'+CSS.escape(testId)+'"]';if(el.getRootNode().querySelectorAll(selector).length===1)return {selector,unique:true,matchCount:1,stability:'high'};}let current=el,parts=[];for(let depth=0;current&&depth<8;depth++,current=current.parentElement){parts.unshift(localSelector(current));const candidate=parts.join(' > ');let count=0;try{count=el.ownerDocument.querySelectorAll(candidate).length;}catch(_){}if(count===1)return {selector:candidate,unique:true,matchCount:1,stability:candidate.startsWith('#')?'high':'medium'};}const selector=parts.join(' > ')||localSelector(el);let count=0;try{count=el.ownerDocument.querySelectorAll(selector).length;}catch(_){}return {selector,unique:count===1,matchCount:count,stability:'low'};};
+     const stableRef=(value)=>{let hash=2166136261;for(const char of value){hash^=char.charCodeAt(0);hash=Math.imul(hash,16777619);}return 'node-'+(hash>>>0).toString(16).padStart(8,'0');};
+     const containerInfo=(el)=>{const node=el.closest?.('[role="listitem"],li,article,tr,form,[data-testid]');if(!node||node===el)return null;const locator=selectorInfo(node);return {stableRef:stableRef(locator.selector),role:roleOf(node)||({LI:'listitem',TR:'row',FORM:'form',ARTICLE:'article'}[node.tagName]||'group'),selector:locator.selector,text:String(node.innerText||node.textContent||'').trim().replace(/\s+/g,' ').slice(0,textLimit)};};
+     const regionRole=el=>roleOf(el)||({NAV:'navigation',MAIN:'main',ASIDE:'complementary',HEADER:'banner',FOOTER:'contentinfo',FORM:'form',DIALOG:'dialog'}[el.tagName]||'region');
+@@ -160,7 +160,7 @@
+         matched++;if(items.length>=limit)continue;
+         const clip=(value,max=textLimit)=>String(value||'').slice(0,max);
+         const locator=selectorInfo(el),container=containerInfo(el),nodeRef=stableRef(locator.selector);
+-        const item={id:'e'+matched,stableRef:nodeRef,kind,tag,selector:locator.selector,selectorUnique:locator.unique,selectorMatchCount:locator.matchCount,selectorStability:locator.stability,locator:{strategy:semantic.role&&accessible.text?'role-and-name':'css',role:semantic.role,name:clip(accessible.text),cssPath:locator.selector,unique:locator.unique,matchCount:locator.matchCount},text:safeText.slice(0,textLimit),textTruncated:safeText.length>textLimit,name:clip(el.getAttribute('name')),label:clip(accessible.text),labelSource:accessible.source,labelConfidence:accessible.confidence,placeholder:clip(el.getAttribute('placeholder')),ariaLabel:clip(el.getAttribute('aria-label')),value:inputType==='password'?'':clip(el.value),disabled:!!el.disabled,role:semantic.role,controlType:semantic.controlType,editable:semantic.editable,multiline:semantic.multiline,readOnly:!!el.readOnly,required:!!el.required,focused:el===el.ownerDocument.activeElement,visible:true,inViewport:true,occluded:false,...(container?{containerRef:container.stableRef,container,associatedText:container.text}:{}),...(inputType?{inputType}:{}),...(inputType==='file'?{requiresFileUpload:true}:{}),...('checked' in el?{checked:!!el.checked}:{}),...(el.getAttribute('aria-selected')!==null?{selected:el.getAttribute('aria-selected')==='true'}:{}),...(el.getAttribute('aria-checked')!==null?{ariaChecked:el.getAttribute('aria-checked')}:{}),...(el.getAttribute('aria-expanded')!==null?{expanded:el.getAttribute('aria-expanded')==='true'}:{}),...(el.getAttribute('aria-pressed')!==null?{pressed:el.getAttribute('aria-pressed')==='true'}:{}),x:Math.round(r.left),y:Math.round(r.top),width:Math.round(r.width),height:Math.round(r.height)};
++        const item={id:'e'+matched,stableRef:nodeRef,testId:clip(el.getAttribute('data-testid')),elementId:clip(el.id),kind,tag,selector:locator.selector,selectorUnique:locator.unique,selectorMatchCount:locator.matchCount,selectorStability:locator.stability,locator:{strategy:semantic.role&&accessible.text?'role-and-name':'css',role:semantic.role,name:clip(accessible.text),cssPath:locator.selector,unique:locator.unique,matchCount:locator.matchCount},text:safeText.slice(0,textLimit),textTruncated:safeText.length>textLimit,name:clip(el.getAttribute('name')),label:clip(accessible.text),labelSource:accessible.source,labelConfidence:accessible.confidence,placeholder:clip(el.getAttribute('placeholder')),ariaLabel:clip(el.getAttribute('aria-label')),value:inputType==='password'?'':clip(el.value),disabled:!!el.disabled,role:semantic.role,controlType:semantic.controlType,editable:semantic.editable,multiline:semantic.multiline,readOnly:!!el.readOnly,required:!!el.required,focused:el===el.ownerDocument.activeElement,visible:true,inViewport:true,occluded:false,...(container?{containerRef:container.stableRef,container,associatedText:container.text}:{}),...(inputType?{inputType}:{}),...(inputType==='file'?{requiresFileUpload:true}:{}),...('checked' in el?{checked:!!el.checked}:{}),...(el.getAttribute('aria-selected')!==null?{selected:el.getAttribute('aria-selected')==='true'}:{}),...(el.getAttribute('aria-checked')!==null?{ariaChecked:el.getAttribute('aria-checked')}:{}),...(el.getAttribute('aria-expanded')!==null?{expanded:el.getAttribute('aria-expanded')==='true'}:{}),...(el.getAttribute('aria-pressed')!==null?{pressed:el.getAttribute('aria-pressed')==='true'}:{}),x:Math.round(r.left),y:Math.round(r.top),width:Math.round(r.width),height:Math.round(r.height)};
+         if(regionData){item.insideRegion=regionIntersection.included;item.intersection={mode:regionMode,ratio:regionIntersection.ratio};item.regionRef=regionData.ref;item.ancestorContext=ancestorContext(el,regionElement);if(relatedPortal)item.relatedPortal=true;}
+         if(!accessible.text&&clickable)item.unresolvedReason='interactive control without accessible name';
+         if(/删除|移除|清空|关闭/.test(accessible.text)||/delete|remove|trash/.test(String(el.className||'')))item.destructiveHint=true;
+@@ -437,7 +437,7 @@
+ bool IsReadOnlyAutomationCommand(const base::DictValue& command) {
+   const std::string* type = command.FindString("type");
+   if (!type) return true;
+-  if (*type == "observe-page" || *type == "capture-screenshot" ||
++  if (*type == "observe-page" || *type == "inspect-page-state" || *type == "capture-screenshot" ||
+       *type == "get-session-data" || *type == "automation-takeover") {
+     return true;
+   }
+@@ -666,6 +666,54 @@
+       base::BindOnce(&OnScreenshot, std::move(success), std::move(failure)));
+ }
+ 
++std::string InspectPageStateScript(const base::DictValue& command) {
++  return base::StrCat({R"JS((() => { try {
++  const a=)JS", CommandJson(command), R"JS(;
++  const clip=v=>String(v??'').slice(0,512).trim();
++  const roots=[document],elements=[];
++  for(let i=0;i<roots.length&&elements.length<20000;i++)for(const e of roots[i].querySelectorAll('*')){elements.push(e);if(e.shadowRoot)roots.push(e.shadowRoot);if(elements.length>=20000)break;}
++  const query=s=>{try{return elements.filter(e=>e.matches(s));}catch(_){return null;}};
++  const role=e=>e.getAttribute('role')||({BUTTON:'button',TEXTAREA:'textbox',SELECT:'combobox',A:e.hasAttribute('href')?'link':'generic',INPUT:({checkbox:'checkbox',radio:'radio',range:'slider',number:'spinbutton',button:'button',submit:'button'}[e.type]||'textbox')}[e.tagName]||e.tagName.toLowerCase());
++  const label=e=>clip(e.getAttribute('aria-label')||String(e.getAttribute('aria-labelledby')||'').split(/\s+/).map(id=>e.getRootNode().getElementById?.(id)?.textContent||'').join(' ').trim()||e.labels?.[0]?.innerText||e.innerText||e.textContent||e.getAttribute('title'));
++  const t=a.target||{};
++  const choices=[t.test_id&&(()=>elements.filter(e=>e.getAttribute('data-testid')===t.test_id)),t.id&&(()=>elements.filter(e=>e.id===t.id)),t.role&&t.name&&(()=>elements.filter(e=>role(e)===t.role&&label(e)===t.name)),t.text&&(()=>elements.filter(e=>label(e)===t.text&&!Array.from(e.children).some(c=>label(c)===t.text))),t.selector&&(()=>query(t.selector)||[])];
++  let matches=[];for(const choose of choices){if(!choose)continue;matches=choose();if(matches.length)break;}
++  const selectorFor=e=>{
++    const candidates=[e.getAttribute('data-testid')&&'[data-testid="'+CSS.escape(e.getAttribute('data-testid'))+'"]',e.id&&'#'+CSS.escape(e.id),t.selector];
++    let node=e,parts=[];for(let depth=0;node&&depth<12;depth++,node=node.parentElement){let part=node.tagName.toLowerCase();if(node.parentElement)part+=':nth-child('+([...node.parentElement.children].indexOf(node)+1)+')';parts.unshift(part);candidates.push(parts.join(' > '));}
++    return candidates.find(selector=>{if(!selector)return false;const found=query(selector);return found?.length===1&&found[0]===e;})||'';
++  };
++  const inspect=()=>{
++    if(matches.length!==1)return {found:false,count:matches.length,reason:matches.length?'ambiguous':'not_found'};
++    const e=matches[0],r=e.getBoundingClientRect(),s=getComputedStyle(e);
++    const hidden=!r.width||!r.height||s.display==='none'||s.visibility==='hidden'||s.visibility==='collapse';
++    const offscreen=r.right<=0||r.bottom<=0||r.left>=innerWidth||r.top>=innerHeight;
++    const x=Math.max(0,r.left)+Math.max(0,Math.min(innerWidth,r.right)-Math.max(0,r.left))/2;
++    const y=Math.max(0,r.top)+Math.max(0,Math.min(innerHeight,r.bottom)-Math.max(0,r.top))/2;
++    let hit=document.elementFromPoint(x,y);while(hit?.shadowRoot){const deeper=hit.shadowRoot.elementFromPoint?.(x,y);if(!deeper||deeper===hit)break;hit=deeper;}
++    const occluded=!hidden&&!offscreen&&hit!==e&&!e.contains(hit);
++    const reason=hidden?'hidden':offscreen?'offscreen':occluded?'occluded':undefined;
++    return {found:true,count:1,reason,selector:selectorFor(e),selectorUnique:true,x:r.x,y:r.y,width:r.width,height:r.height,clickX:x,clickY:y,visible:!hidden&&!offscreen,occluded,disabled:!!e.disabled||e.getAttribute('aria-disabled')==='true',tag:e.tagName.toLowerCase(),role:role(e),label:label(e),testId:e.getAttribute('data-testid')||'',elementId:e.id||'',inputType:e.type||''};
++  };
++  const read=p=>{
++    const es=query(String(p.selector||''));if(!es)return {available:false,reason:'invalid_selector'};
++    const mode=p.read||'text';if(mode==='count')return {available:true,value:es.length};
++    if(es.length!==1)return {available:false,reason:es.length?'ambiguous':'not_found'};
++    const e=es[0];if(mode==='visible'){const r=e.getBoundingClientRect(),s=getComputedStyle(e);return {available:true,value:!!r.width&&!!r.height&&s.visibility!=='hidden'&&s.display!=='none'&&s.visibility!=='collapse'&&Number(s.opacity)!==0};}if(e.type==='password')return {available:false,reason:'redacted'};
++    if(mode==='text')return {available:true,value:clip(e.innerText||e.textContent)};
++    if(mode==='value')return 'value' in e?{available:true,value:clip(e.value)}:{available:false,reason:'unsupported'};
++    if(mode==='attribute'){
++      const n=String(p.attribute||'');if(!/^(aria-[\w-]+|data-testid|data-state|data-status|title|value)$/.test(n))return {available:false,reason:'attribute_not_allowed'};
++      const value=e.getAttribute(n);return value===null?{available:false,reason:'attribute_missing'}:{available:true,value:clip(value)};
++    }
++    if(['duration','currentTime'].includes(mode)&&e instanceof HTMLMediaElement&&Number.isFinite(e[mode]))return {available:true,value:e[mode]};
++    return {available:false,reason:'unsupported'};
++  };
++  const values=Object.create(null);for(const p of (Array.isArray(a.probes)?a.probes:[]).slice(0,32)){if(!p||['__proto__','constructor','prototype'].includes(p.name))continue;values[p.name]=read(p);}
++  return {success:true,url:location.href,title:document.title,values,truncated:elements.length>=20000,...(Object.keys(t).length?{target:inspect()}:{})};
++} catch(error) {return {success:false,errorCode:'PAGE_STATE_FAILED',error:String(error.message).slice(0,256)};} })())JS"});
++}
++
+ }  // namespace
+ 
+ bool HandleAiFreePageAutomationCommand(Browser* browser,
+@@ -680,6 +728,7 @@
+   // Session/profile commands belong to the authenticated Runtime Bridge.
+   // Do not consume them through the page-only takeover guard.
+   if (*type != "automation-takeover" && *type != "observe-page" &&
++      *type != "inspect-page-state" &&
+       *type != "perform-action" && *type != "get-session-data" &&
+       *type != "capture-screenshot") {
+     return false;
+@@ -713,6 +762,16 @@
+     result.Set("suggestedTool", "browser_control");
+     result.Set("suggestedAction", "acquire");
+     std::move(success).Run(std::move(result));
++    return true;
++  }
++  if (*type == "inspect-page-state") {
++    ExecuteIsolated(web_contents, InspectPageStateScript(command),
++                   base::BindOnce(
++                       [](AiFreeAutomationSuccess done, AiFreeAutomationFailure failed, base::Value value) {
++                         const base::DictValue* result = value.GetIfDict();
++                         if (!result) return Fail(std::move(failed), "INSPECT_RESULT_INVALID", "页面状态结果无效");
++                         std::move(done).Run(result->Clone());
++                       }, std::move(success), std::move(failure)));
+     return true;
+   }
+   if (*type == "observe-page") {

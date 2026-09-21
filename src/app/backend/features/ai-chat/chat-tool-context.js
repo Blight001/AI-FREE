@@ -34,6 +34,7 @@ function collectConnectionTools(connections, windowTools) {
 }
 
 const BROWSER_ENVIRONMENT_INTENT = /(?:浏览器|栏目|窗口)?.{0,10}(?:环境|配置|设置|指纹|代理|proxy|user[ -]?agent|\bua\b|语言|时区|定位|分辨率|webrtc|canvas|webgl|字体|cpu|内存|启动参数)/i;
+const LOCAL_WEB_TEST_INTENT = /(?:测试|回归|重复操作|验收|验证|workflow|regression|test)/i;
 
 function shouldIncludeBrowserEnvironment(messages = []) {
   const recentUsers = messages.filter((message) => message?.role === 'user').slice(-2);
@@ -49,6 +50,7 @@ function selectedWindowTools(windowTools, initialMessages) {
 function appendDownloadWorkflow(workflow, available) {
   if (!available.has('browser_observe') || !available.has('browser_file')) return;
   workflow.push('用户要求下载页面上可见的图片元素时，先主动调用 browser_observe filter:"media" 获取 ref，再调用 browser_file action=download_element 并传 ref（可选 filename）；不要找下载按钮或用截图代替。若旧内核不支持原生元素下载，会自动用 item.mediaUrl/downloadUrl 经浏览器代理下载。也可直接 action=download 传入图片 URL。下载图片/视频/音频时把条目的 category 传给 media_type；不得根据链接文字猜测地址');
+  if (available.has('browser_media')) workflow.push('下载网页视频或音频素材时优先调用 browser_media action=list，再用返回的 ref 调用 action=download；不要猜测页面中未观察到的媒体地址。当前工具支持页面媒体元素和可解析直链，不能处理 DRM 或需要分片合并的 HLS/DASH。');
 }
 
 function appendOptionalWorkflows(workflow, available) {
@@ -64,7 +66,7 @@ function appendOptionalWorkflows(workflow, available) {
   }
 }
 
-function createMcpContext(tools, connections, resolver, controlledConnectionId) {
+function createMcpContext(tools, connections, resolver, controlledConnectionId, initialMessages = []) {
   if (!tools.length) return null;
   const availableNames = tools.map((tool) => String(tool?.name || '').trim()).filter(Boolean);
   const toolNames = availableNames.join('、');
@@ -80,6 +82,11 @@ function createMcpContext(tools, connections, resolver, controlledConnectionId) 
   if (available.has('browser_observe') && available.has('browser_action')) {
     workflow.push('网页操作前先用 browser_observe 获取当前状态，再用 browser_action 操作；导航、切换标签页或页面明显变化后重新 observe，禁止跨浏览器或跨页面复用旧 ref');
   } else if (available.has('browser_observe')) workflow.push('用 browser_observe 读取当前页面，不虚构未返回的元素');
+  const controlledUrl = String(controlled?.url || controlled?.tabUrl || controlled?.currentUrl || '');
+  if (available.has('browser_workflow') && (LOCAL_WEB_TEST_INTENT.test(initialMessages.map((message) => message?.content || '').join('\n'))
+    || /^(https?:\/\/)?(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?\//i.test(controlledUrl))) {
+    workflow.push('本地 Web 测试、回归、验收或重复操作默认使用 browser_control acquire 后的 browser_workflow automation；每步配置稳定 locator、业务 probes/expect，失败自动暂停并转 debug。只有用户明确要求单步低层操作时才直接使用 browser_action');
+  }
   if (available.has('browser_wait')) workflow.push('仅在页面确实需要加载或等待元素时使用 browser_wait');
   appendOptionalWorkflows(workflow, available);
   const browserWorkflow = workflow.length
@@ -144,7 +151,7 @@ function buildChatToolContext(options = {}) {
   const resolver = createConnectionResolver(connections);
   const tools = [...selectedWindowTools(windowTools, initialMessages), ...collectConnectionTools(connections, windowTools)];
   const cardContext = createCardCatalogContext(automationCards, connections);
-  const mcpContext = createMcpContext(tools, connections, resolver, controlledConnectionId);
+  const mcpContext = createMcpContext(tools, connections, resolver, controlledConnectionId, initialMessages);
   return {
     ...resolver,
     tools,

@@ -2,9 +2,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('events');
 
-const { ChromiumRuntime } = require('../../src/app/main/browser-runtime/chromium-runtime');
-const { ChromiumWindowBridge } = require('../../src/app/main/browser-runtime/chromium-window-bridge');
-const { RUNTIME_STATUS } = require('../../src/app/main/browser-runtime/runtime-types');
+const { ChromiumRuntime } = require('../../src/app/backend/browser-runtime/chromium-runtime');
+const { ChromiumWindowBridge } = require('../../src/app/backend/browser-runtime/chromium-window-bridge');
+const { RUNTIME_STATUS } = require('../../src/app/backend/browser-runtime/runtime-types');
 
 test('refocusing the app keeps Chromium above delayed Electron renderer reordering', async () => {
   const parentWindow = new EventEmitter();

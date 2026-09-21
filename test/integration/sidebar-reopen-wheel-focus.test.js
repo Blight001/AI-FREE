@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { toggleSidebarVisibility } = require('../../src/app/main/services/tab-common');
+const { toggleSidebarVisibility } = require('../../src/app/backend/services/tab-common');
 
 test('reopening the sidebar restores its input target after layout', async () => {
   let sidebarVisible = false;

@@ -2,8 +2,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { compareVersions } = require('../../src/app/shared/version-utils');
-const { createAnnouncementPoller } = require('../../src/app/main/lib/announcement-poller');
-const { createAppUpdater } = require('../../src/app/main/services/app-updater');
+const { createAnnouncementPoller } = require('../../src/app/backend/lib/announcement-poller');
+const { createAppUpdater } = require('../../src/app/backend/services/app-updater');
 
 test('版本比较按数字段处理，并忽略 v 前缀与构建元数据', () => {
   assert.equal(compareVersions('v2.6.3', '2.6.3+build.9'), 0);

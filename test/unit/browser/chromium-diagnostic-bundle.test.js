@@ -8,7 +8,7 @@ const test = require('node:test');
 
 const {
   createChromiumDiagnosticBundle,
-} = require('../../../src/app/main/browser-runtime/chromium-diagnostic-bundle');
+} = require('../../../src/app/backend/browser-runtime/chromium-diagnostic-bundle');
 
 test('Chromium 失败自动生成单文件脱敏诊断包', (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-bundle-'));

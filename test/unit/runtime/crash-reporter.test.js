@@ -7,7 +7,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { CrashReporterRuntime } = require('../../../src/app/main/runtime/crash-reporter');
+const { CrashReporterRuntime } = require('../../../src/app/backend/runtime/crash-reporter');
 
 test('main crash reporter persists incidents and delegates upload to an independent watchdog', async (t) => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-crash-main-test-'));

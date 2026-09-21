@@ -68,7 +68,7 @@ const nativeFocus = fs.readFileSync(
   'utf8',
 );
 const tabManagerRuntime = fs.readFileSync(
-  path.join(root, 'src', 'app', 'main', 'services', 'tab-manager-runtime.js'),
+  path.join(root, 'src', 'app', 'backend', 'services', 'tab-manager-runtime.js'),
   'utf8',
 );
 
@@ -246,7 +246,7 @@ assert(tabManagerRuntime.includes('options.focusBrowser === true'),
 assert(!fs.existsSync(path.join(root, 'src', 'assets', 'extensions', 'browser_automation')),
   'legacy browser automation extension directory must stay deleted');
 const nativeAutomation = fs.readFileSync(
-  path.join(root, 'src', 'app', 'main', 'services', 'native-browser-automation.js'),
+  path.join(root, 'src', 'app', 'backend', 'services', 'native-browser-automation.js'),
   'utf8',
 );
 assert(nativeAutomation.includes("runtimeCommand(connection, 'observe-page'"));

@@ -11,7 +11,7 @@ const {
   resolveChatAccess,
   resolveConnections,
   validateQuota,
-} = require('../../../src/app/main/features/ai-chat/chat-request-context');
+} = require('../../../src/app/backend/features/ai-chat/chat-request-context');
 
 test('额度边界和旧多选输入被归一化为单一控制浏览器', () => {
   assert.equal(validateQuota({ unlimited: true, remaining: 0 }), null);

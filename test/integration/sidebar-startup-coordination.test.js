@@ -77,16 +77,16 @@ test('自动开启网络魔法在配置获取完成前禁用主开关', async ()
     },
   });
   vm.runInContext(
-    readSource('src/app/renderer/controllers/shared/controller-utils.js'),
+    readSource('src/app/frontend/renderer/controllers/shared/controller-utils.js'),
     context,
   );
   context.withBusyButton = context.window.RendererControllerUtils.withBusyButton;
   vm.runInContext(
-    readSource('src/app/sidebar/client/app/side/controllers/pages/side-panel/modules/vpn-selector.js'),
+    readSource('src/app/frontend/sidebar/client/app/side/controllers/pages/side-panel/modules/vpn-selector.js'),
     context,
   );
   vm.runInContext(
-    readSource('src/app/sidebar/client/app/side/controllers/pages/side-panel/modules/vpn-lifecycle.js'),
+    readSource('src/app/frontend/sidebar/client/app/side/controllers/pages/side-panel/modules/vpn-lifecycle.js'),
     context,
   );
   context.startClashMiniFlow = (options) => { startOptions = options; return startPending; };
@@ -121,10 +121,10 @@ test('点击开启网络魔法成功后主开关恢复为关闭按钮', async ()
       button.textContent = state.enabled ? '关闭魔法代理' : '开启魔法代理';
     },
   });
-  vm.runInContext(readSource('src/app/renderer/controllers/shared/controller-utils.js'), context);
+  vm.runInContext(readSource('src/app/frontend/renderer/controllers/shared/controller-utils.js'), context);
   context.withBusyButton = context.window.RendererControllerUtils.withBusyButton;
   vm.runInContext(
-    readSource('src/app/sidebar/client/app/side/controllers/pages/side-panel/modules/vpn-lifecycle.js'),
+    readSource('src/app/frontend/sidebar/client/app/side/controllers/pages/side-panel/modules/vpn-lifecycle.js'),
     context,
   );
 
@@ -180,7 +180,7 @@ test('侧边栏启动时主动读取并渲染浏览器记录', async () => {
     },
   });
   vm.runInContext(
-    readSource('src/app/sidebar/client/app/side/controllers/pages/side-panel/modules/browser-settings.js'),
+    readSource('src/app/frontend/sidebar/client/app/side/controllers/pages/side-panel/modules/browser-settings.js'),
     context,
   );
 
@@ -228,15 +228,15 @@ test('节点延时重新测速保持按钮可用且不请求自动切换', async
     },
   });
   vm.runInContext(
-    readSource('src/app/sidebar/client/app/side/controllers/pages/side-panel/modules/vpn.js'),
+    readSource('src/app/frontend/sidebar/client/app/side/controllers/pages/side-panel/modules/vpn.js'),
     context,
   );
   vm.runInContext(
-    readSource('src/app/sidebar/client/app/side/controllers/pages/side-panel/modules/vpn-config.js'),
+    readSource('src/app/frontend/sidebar/client/app/side/controllers/pages/side-panel/modules/vpn-config.js'),
     context,
   );
   vm.runInContext(
-    readSource('src/app/sidebar/client/app/side/controllers/pages/side-panel/modules/vpn-selector.js'),
+    readSource('src/app/frontend/sidebar/client/app/side/controllers/pages/side-panel/modules/vpn-selector.js'),
     context,
   );
 
@@ -270,7 +270,7 @@ test('启动流程中切换节点可展开但测速操作保持禁用', () => {
     vpnNodeSelectorToggleBtn: toggleButton,
   });
   vm.runInContext(
-    readSource('src/app/sidebar/client/app/side/controllers/pages/side-panel/modules/vpn.js'),
+    readSource('src/app/frontend/sidebar/client/app/side/controllers/pages/side-panel/modules/vpn.js'),
     context,
   );
   vm.runInContext('clashMiniStartFlowPromise = Promise.resolve()', context);
@@ -289,7 +289,7 @@ test('节点完整重建后仍显示已测延时', () => {
     vpnNodeSelectorBusy: false,
   });
   vm.runInContext(
-    readSource('src/app/sidebar/client/app/side/controllers/pages/side-panel/modules/vpn.js'),
+    readSource('src/app/frontend/sidebar/client/app/side/controllers/pages/side-panel/modules/vpn.js'),
     context,
   );
 
@@ -311,7 +311,7 @@ test('节点测速失败只显示简短 error 状态', () => {
     vpnNodeSelectorBusy: false,
   });
   vm.runInContext(
-    readSource('src/app/sidebar/client/app/side/controllers/pages/side-panel/modules/vpn.js'),
+    readSource('src/app/frontend/sidebar/client/app/side/controllers/pages/side-panel/modules/vpn.js'),
     context,
   );
 
@@ -344,7 +344,7 @@ test('设置页自动启动时同步账号会话并解除节点选择登录门�
     syncLoggedOutProtectedEntryAvailability: () => {},
   });
   vm.runInContext(
-    readSource('src/app/sidebar/client/app/side/controllers/pages/side-panel/modules/vpn-lifecycle.js'),
+    readSource('src/app/frontend/sidebar/client/app/side/controllers/pages/side-panel/modules/vpn-lifecycle.js'),
     context,
   );
 
@@ -398,9 +398,9 @@ test('启动测速前先加载并显示节点，只补测没有历史延时的�
     vpnNodeSelectorPanel: null,
     clashMiniProxyState: { groupName: 'Manual', current: '', names: [], proxies: [] },
   });
-  vm.runInContext(readSource('src/app/sidebar/client/app/side/controllers/pages/side-panel/modules/vpn.js'), context);
-  vm.runInContext(readSource('src/app/sidebar/client/app/side/controllers/pages/side-panel/modules/vpn-config.js'), context);
-  vm.runInContext(readSource('src/app/sidebar/client/app/side/controllers/pages/side-panel/modules/vpn-selector.js'), context);
+  vm.runInContext(readSource('src/app/frontend/sidebar/client/app/side/controllers/pages/side-panel/modules/vpn.js'), context);
+  vm.runInContext(readSource('src/app/frontend/sidebar/client/app/side/controllers/pages/side-panel/modules/vpn-config.js'), context);
+  vm.runInContext(readSource('src/app/frontend/sidebar/client/app/side/controllers/pages/side-panel/modules/vpn-selector.js'), context);
 
   const task = context.loadVpnNodeSelectorOptions({ force: true, probeDelays: true });
   await new Promise((resolve) => setImmediate(resolve));
@@ -444,7 +444,7 @@ test('独立首页登录门禁读取真实会话，已登录继续操作、未�
       },
     });
     vm.runInContext(
-      readSource('src/app/sidebar/client/app/side/controllers/pages/side-panel/modules/account-auth.js'),
+      readSource('src/app/frontend/sidebar/client/app/side/controllers/pages/side-panel/modules/account-auth.js'),
       context,
     );
     const redirected = await context.redirectToSidebarAccountLogin();
