@@ -56,10 +56,29 @@ constructor({
       main.className = 'browser-history-main';
       main.title = `${item.name || '未命名浏览器'}（单击打开）`;
       main.setAttribute('aria-label', `${item.name || '未命名浏览器'}，${item.isActive ? '当前浏览器' : (item.isOpen ? '已打开' : '已关闭')}，单击打开`);
+      const nameRow = document.createElement('span');
+      nameRow.className = 'browser-history-name-row';
+      const icon = document.createElement('span');
+      icon.className = 'browser-history-icon';
+      icon.setAttribute('aria-hidden', 'true');
+      icon.innerHTML = '<svg viewBox="0 0 24 24"><path d="M7 3.5h7.2L19 8.3V20.5H7z"></path><path d="M14.2 3.5V8.3H19"></path></svg>';
+      const image = document.createElement('img');
+      image.alt = '';
+      image.referrerPolicy = 'no-referrer';
+      image.addEventListener('load', () => icon.classList.add('has-site-icon'));
+      image.addEventListener('error', () => {
+        image.removeAttribute('src');
+        icon.classList.remove('has-site-icon');
+      });
+      const iconUrl = String(item.iconUrl || '').trim();
+      if (iconUrl) image.src = iconUrl;
+      icon.append(image);
+      nameRow.append(icon);
       const name = document.createElement('span');
       name.className = 'browser-history-name';
       name.textContent = item.name || '未命名浏览器';
-      main.append(name);
+      nameRow.append(name);
+      main.append(nameRow);
       this.appendAccountMetadata(main, item);
       main.addEventListener('click', () => void this.openBrowserHistory(item.id, main));
   

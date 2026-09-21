@@ -100,6 +100,28 @@ test('自动化卡片读取和选择返回稳定摘要，不泄露完整卡片�
   });
 });
 
+test('工作流转发包含报告详情开关', async () => {
+  const calls = [];
+  const service = createAiSupportService({
+    browserAutomationBridge: {
+      dispatch: async (...args) => {
+        calls.push(args);
+        return { success: true, last_step: { durationMs: 12 } };
+      },
+    },
+  });
+  const result = await service.workflow({
+    connection_id: 'browser-1',
+    action: 'report',
+    include_details: true,
+  });
+  assert.equal(result.success, true);
+  assert.deepEqual(calls, [['browser-1', 'browser_workflow', {
+    action: 'report',
+    include_details: true,
+  }]]);
+});
+
 test('浏览器选择事件对已销毁窗口无副作用', () => {
   const sent = [];
   const destroyed = createAiSupportService({

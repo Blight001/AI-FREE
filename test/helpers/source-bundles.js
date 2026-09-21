@@ -23,7 +23,6 @@ function readAiControlSource() {
     `${base}/ai-control/ai-control-messages.js`,
     `${base}/ai-control/ai-control-data-loaders.js`,
     `${base}/ai-control/ai-control-composer.js`,
-    `${base}/ai-control/ai-control-workflow.js`,
     `${base}/ai-control/ai-control-bootstrap.js`,
   ]);
 }

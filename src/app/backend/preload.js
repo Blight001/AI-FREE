@@ -188,6 +188,7 @@ contextBridge.exposeInMainWorld('aiFree', Object.freeze({
     copyExternalCodexConfig: invokeChannel('copy-external-codex-config'),
     requestAccountCenter: sendChannel('request-account-center'),
     setSidebarWidth: invokeChannel('set-sidebar-width'),
+    setUiScale: sendChannel('set-ui-scale'),
     getStartupSettings: invokeChannel('get-startup-settings'),
     setStartupSettings: invokeChannel('set-startup-settings'),
     getWindowCloseBehavior: invokeChannel('get-window-close-behavior'),

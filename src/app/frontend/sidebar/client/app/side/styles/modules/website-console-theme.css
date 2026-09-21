@@ -50,7 +50,7 @@ body,
 html.theme-light body {
   color: var(--site-text);
   background: var(--site-bg);
-  font-family: Inter, "Segoe UI", "Microsoft YaHei", sans-serif;
+  font-family: var(--app-ui-font, Inter, "Segoe UI", "Microsoft YaHei", sans-serif);
 }
 
 * { scrollbar-color: #a1a1aa transparent; }

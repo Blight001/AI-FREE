@@ -323,6 +323,7 @@ function resetUpdateWidget() {
 
 // 创建/初始化：initAnnouncementListener的具体业务逻辑。
 function initAnnouncementListener() {
+  bindAnnouncementMailControls();
   if (typeof window.aiFree?.ui?.onServerMessage === 'function') {
     window.aiFree.ui.onServerAnnouncementsReset(() => {
       announcements = [];
@@ -431,7 +432,7 @@ function storeAnnouncementRecord(announcementId, content, timestamp) {
 function decorateAnnouncementHeader() {
   const announcementIcon = safeGetEl('announcement-icon');
   if (announcementIcon) {
-    announcementIcon.textContent = '📢';
+    announcementIcon.textContent = '✉️';
     announcementIcon.style.color = '#409eff';
   }
   const announcementTitle = safeGetEl('announcement-title');
@@ -439,6 +440,51 @@ function decorateAnnouncementHeader() {
     announcementTitle.textContent = '公告';
     announcementTitle.style.color = '#409eff';
   }
+}
+
+function setAnnouncementMailOpen(open) {
+  const bar = safeGetEl('announcement-bar');
+  const button = safeGetEl('announcement-mail-btn');
+  const nextOpen = open === true;
+  if (bar) bar.hidden = !nextOpen;
+  if (button) button.setAttribute('aria-expanded', String(nextOpen));
+  if (nextOpen) {
+    const dot = safeGetEl('announcement-mail-dot');
+    if (dot) dot.hidden = true;
+    const settings = safeGetEl('account-general-settings');
+    if (settings) settings.open = false;
+  }
+}
+
+function toggleAnnouncementMail(event) {
+  event?.stopPropagation?.();
+  const bar = safeGetEl('announcement-bar');
+  setAnnouncementMailOpen(bar?.hidden !== false);
+}
+
+function closeAnnouncementMail(event) {
+  const bar = safeGetEl('announcement-bar');
+  if (!bar || bar.hidden) return;
+  if (event?.target?.closest?.('#announcement-bar, #announcement-mail-btn')) return;
+  setAnnouncementMailOpen(false);
+}
+
+function markAnnouncementMailUnread() {
+  const bar = safeGetEl('announcement-bar');
+  const dot = safeGetEl('announcement-mail-dot');
+  if (!dot) return;
+  dot.hidden = bar?.hidden === false;
+}
+
+function bindAnnouncementMailControls() {
+  const button = safeGetEl('announcement-mail-btn');
+  if (!button || button.dataset.bound === 'true') return;
+  button.dataset.bound = 'true';
+  button.addEventListener('click', toggleAnnouncementMail);
+  document.addEventListener('click', closeAnnouncementMail);
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') setAnnouncementMailOpen(false);
+  });
 }
 
 // 设置/更新/持久化：updateAnnouncement的具体业务逻辑。
@@ -459,6 +505,7 @@ function updateAnnouncement(announcementData) {
 
     const contentHtml = announcements.map((ann) => String(ann.content || '')).join('');
     announcementContent.innerHTML = contentHtml || '<p>暂无公告内容</p>';
+    markAnnouncementMailUnread();
   } catch (e) {
     console.error('[侧边栏] 更新公告栏失败:', e);
   }

@@ -7,7 +7,10 @@ function bindNetworkMagicShell() {
     event.stopPropagation();
     const open = toggle.getAttribute('aria-expanded') !== 'true';
     setNetworkMagicLauncherOpen(open);
-    window.aiFree?.shell?.toggleNetworkMagicPanel?.({ open });
+    window.aiFree?.shell?.toggleNetworkMagicPanel?.({
+      open,
+      anchor: readNetworkMagicButtonAnchor(toggle),
+    });
   });
   window.aiFree?.ui?.onNetworkMagicPanelToggle?.((payload) => {
     setNetworkMagicLauncherOpen(payload?.open === true);
@@ -16,6 +19,17 @@ function bindNetworkMagicShell() {
     syncNetworkMagicLauncherState(Boolean(status?.running && (status?.enabled || status?.proxyAppliedByApp)));
   });
   toggle.dataset.bound = '1';
+}
+
+function readNetworkMagicButtonAnchor(toggle) {
+  const rect = toggle?.getBoundingClientRect?.();
+  if (!rect) return null;
+  return {
+    left: rect.left,
+    right: rect.right,
+    top: rect.top,
+    bottom: rect.bottom,
+  };
 }
 
 function setNetworkMagicLauncherOpen(open) {

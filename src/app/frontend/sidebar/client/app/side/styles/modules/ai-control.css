@@ -341,7 +341,13 @@
 .ai-select-dropup .ai-select-menu {
   top: auto;
   bottom: calc(100% + 6px);
+  z-index: 80;
   animation-name: ai-select-pop-up;
+}
+.ai-chat-footer-bar .ai-model-inline-select {
+  position: relative;
+  z-index: 60;
+  overflow: visible;
 }
 
 /* ---- 输入框下方：齿轮 + 额度圆环 + 右侧模型 ---- */
@@ -544,8 +550,8 @@ body.ai-prompt-diagnostics-open { overflow: hidden; }
 .ai-custom-api-backdrop { position: absolute; inset: 0; width: 100%; border: 0; background: rgba(3, 8, 16, .78); backdrop-filter: blur(7px); }
 .ai-custom-api-panel { position: relative; z-index: 1; width: min(460px, calc(100vw - 28px)); overflow: hidden; border: 1px solid rgba(91, 116, 153, .46); border-radius: 16px; background: #151b25; box-shadow: 0 24px 70px rgba(0, 0, 0, .48); }
 .ai-custom-api-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 15px 16px 12px; border-bottom: 1px solid rgba(91, 116, 153, .28); }
-.ai-custom-api-title-tabs { display: flex; align-items: center; gap: 4px; }
-.ai-custom-api-title-tabs button { padding: 4px 8px; border: 0; border-radius: 7px; color: #8294ad; background: transparent; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; }
+.ai-custom-api-title-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.ai-custom-api-title-tabs button { padding: 4px 8px; border: 0; border-radius: 7px; color: #8294ad; background: transparent; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
 .ai-custom-api-title-tabs button.is-active { color: #eef4ff; background: rgba(100, 166, 255, .12); }
 .ai-custom-api-header p { margin: 4px 0 0; color: #8da0b9; font-size: 10.5px; }
 .ai-custom-api-close { width: 30px; height: 30px; padding: 0; border: 0; border-radius: 8px; color: #9cacc1; background: rgba(255,255,255,.04); font-size: 22px; cursor: pointer; }
@@ -558,6 +564,11 @@ body.ai-prompt-diagnostics-open { overflow: hidden; }
 .ai-custom-api-status { min-height: 14px; margin: -2px 0 0; color: #ff8f99; font-size: 10px; }
 .ai-custom-api-status[data-type="success"] { color: #70c998; }
 .ai-custom-api-status[data-type="info"] { color: #8da0b9; }
+.ai-external-codex-status-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.ai-external-codex-status-row strong { color: #eef4ff; font-size: 12px; }
+.ai-external-codex-status-row .ai-custom-api-status { min-height: 0; margin: 0; text-align: right; }
+.ai-external-codex-steps { margin: 0; padding-left: 18px; color: #8da0b9; font-size: 11px; line-height: 1.55; }
+.ai-external-codex-steps code { color: #c9d8ec; font-size: 10.5px; }
 .ai-server-device-summary { padding: 8px 9px; border: 1px solid rgba(112,201,152,.22); border-radius: 8px; color: #9edbb9; background: rgba(64,155,104,.08); font-size: 10.5px; overflow-wrap: anywhere; }
 .ai-custom-api-footer { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 8px; padding: 11px 16px 14px; border-top: 1px solid rgba(91,116,153,.24); }
 .ai-custom-api-footer button { height: 31px; padding: 0 12px; border: 1px solid rgba(120,150,200,.24); border-radius: 8px; color: #c9d8ec; background: rgba(255,255,255,.05); font: inherit; font-size: 11px; cursor: pointer; }
@@ -570,6 +581,9 @@ html.theme-light .ai-custom-api-title-tabs button.is-active { color: #203448; ba
 html.theme-light .ai-custom-api-header p,
 html.theme-light .ai-custom-api-body label { color: #64778d; }
 html.theme-light .ai-custom-api-body input { color: #203448; background: #f7f9fc; }
+html.theme-light .ai-external-codex-status-row strong { color: #203448; }
+html.theme-light .ai-external-codex-steps { color: #64778d; }
+html.theme-light .ai-external-codex-steps code { color: #294057; }
 .ai-model-inline-select {
   width: fit-content;
   max-width: 100%;
@@ -758,7 +772,7 @@ html.theme-light .ai-custom-api-body input { color: #203448; background: #f7f9fc
 .ai-chat-welcome strong {
   display: block;
   color: #edf4ff;
-  font: 720 28px/1.25 "Segoe UI", sans-serif;
+  font: 720 28px/1.25 var(--app-ui-font, Inter, "Segoe UI", "Microsoft YaHei", sans-serif);
   letter-spacing: -.035em;
 }
 .ai-chat-welcome-context {

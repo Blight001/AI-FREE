@@ -83,6 +83,7 @@ test('open tabs create and update durable history records', () => {
     id: 'profile-account',
     accountId: 'account-1',
     runtimeUrl: 'https://live-account.test',
+    firstWebsiteIconUrl: 'https://live-account.test/favicon.ico',
   };
   const ui = {
     getTabs: () => new Map([['new', newTab], ['existing', existingTab]]),
@@ -93,6 +94,7 @@ test('open tabs create and update durable history records', () => {
   assert.equal(newTab.browserHistoryId.startsWith('browser-'), true);
   assert.equal(existingTab.browserHistoryId, 'existing');
   assert.equal(records.find((item) => item.id === 'existing').url, 'https://live-account.test');
+  assert.equal(records.find((item) => item.id === 'existing').lastClosedIconUrl, 'https://live-account.test/favicon.ico');
   const created = records.find((item) => item.id === newTab.browserHistoryId);
   assert.equal(created.kind, 'tutorial');
   assert.equal(created.hideToolbar, true);
@@ -107,7 +109,11 @@ test('serialization adds account and live tab state then sorts recent records', 
   const ui = {
     getActiveTabId: () => 'tab-old',
     getTabs: () => new Map([['tab-old', {
-      id: 'tab-old', browserHistoryId: 'old', runtimeUrl: 'https://live.test', networkMagicApplied: true,
+      id: 'tab-old',
+      browserHistoryId: 'old',
+      runtimeUrl: 'https://live.test',
+      firstWebsiteIconUrl: 'https://live.test/icon.png',
+      networkMagicApplied: true,
     }]]),
   };
   const serialized = historyService.serializeBrowserHistory(history, ui);
@@ -121,7 +127,30 @@ test('serialization adds account and live tab state then sorts recent records', 
   assert.equal(old.isActive, true);
   assert.equal('networkMagicSelected' in old, false);
   assert.equal(old.networkMagicActive, true);
+  assert.equal(old.iconUrl, 'https://live.test/icon.png');
+  assert.equal(serialized[0].iconUrl, '');
   assert.equal(historyService.buildBrowserHistoryAccountMeta({}), null);
+});
+
+test('closed history keeps last site icon after the tab is gone', () => {
+  store.browserHistory = [{
+    id: 'closed',
+    name: 'Closed',
+    url: 'https://closed.test',
+    lastClosedIconUrl: 'https://closed.test/favicon.ico',
+    lastOpenedAt: 9,
+  }];
+  const serialized = historyService.serializeBrowserHistory(store.browserHistory, {
+    getActiveTabId: () => '',
+    getTabs: () => new Map(),
+  });
+  assert.equal(serialized[0].iconUrl, 'https://closed.test/favicon.ico');
+  const tab = { id: 'tab-closed', browserHistoryId: 'closed', firstWebsiteIconUrl: 'https://closed.test/next.png' };
+  assert.equal(historyService.persistClosedTabIconToBrowserHistory({
+    getTabs: () => new Map([['tab-closed', tab]]),
+    sendToSide() {},
+  }, tab), true);
+  assert.equal(store.browserHistory[0].lastClosedIconUrl, 'https://closed.test/next.png');
 });
 
 test('open and edit reuse active tabs, persist settings, or restore closed profiles', async () => {

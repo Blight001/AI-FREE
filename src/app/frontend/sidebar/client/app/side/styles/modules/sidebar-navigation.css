@@ -9,12 +9,22 @@
 .tab-button-icon { display: inline-block; width: 19px; height: 19px; flex: 0 0 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .main-wrapper > .panel { animation: sidebar-panel-slide-in .28s ease both; }
 .main-wrapper > .panel:not(.active) { animation: none; }
-.control-shell { display: flex; flex-direction: column; min-height: 100%; }
+html.account-center-page .main-wrapper > .panel,
+html.ai-control-page .main-wrapper > .panel { animation: none; }
+/* transform 只改变绘制，避免 CSS zoom 从左上角放大后右侧和底部被裁掉。 */
+.control-shell {
+  box-sizing: border-box;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  width: calc(100% / var(--ui-scale, 1));
+  height: calc(100% / var(--ui-scale, 1));
+  min-height: 0;
+  transform: scale(var(--ui-scale, 1));
+  transform-origin: top left;
+}
 .control-shell > .main-wrapper { flex: 1 1 auto; min-height: 0; }
-.sidebar-bottom-actions { flex: 0 0 auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 10px 12px 12px; border-top: 1px solid var(--site-border, rgba(86, 112, 151, .24)); background: var(--site-panel, rgba(20, 25, 34, .9)); }
-.sidebar-bottom-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; width: 100%; border: 1px solid var(--site-border, rgba(86, 112, 151, .35)); border-radius: 9px; color: var(--site-text, #e7edf7); background: var(--site-panel-soft, rgba(55, 70, 94, .35)); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
-.sidebar-bottom-button:hover { color: var(--site-accent, #8bbcff); border-color: var(--site-accent, #8bbcff); }
-.sidebar-bottom-button.is-active { color: var(--site-accent, #8bbcff); border-color: var(--site-accent, #8bbcff); background: var(--site-accent-soft, rgba(82, 122, 190, .2)); }
-.sidebar-bottom-button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+html.account-center-page .main-wrapper,
+html.ai-control-page .main-wrapper { padding: 0; }
 @keyframes sidebar-panel-slide-in { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: translateX(0); } }
 @media (prefers-reduced-motion: reduce) { .tab-button, .main-wrapper > .panel { transition: none; animation: none; } }

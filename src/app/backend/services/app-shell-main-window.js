@@ -117,7 +117,8 @@ function bindSidebarEvents(deps, sideView, mainWindow) {
 
 function resolveLayout(deps, mainWindow, sideView) {
   const [width, height] = mainWindow.getContentSize();
-  const tabBarHeight = 41;
+  const uiScale = Math.min(1.2, Math.max(1, Number(deps.getUiScale?.()) || 1));
+  const tabBarHeight = Math.round(41 * uiScale);
   const isSidebarVisible = deps.getIsSidebarVisible ? deps.getIsSidebarVisible() : true;
   const sideViewWidth = resolveSidebarWidth({
     contentWidth: width,
@@ -272,10 +273,12 @@ function createAppShellMainWindowController(deps = {}) {
   const backgroundController = createWindowBackgroundController(deps);
   const windowStateController = createAppShellWindowStateController(deps);
   let sidebarPage = 'account-center.html';
+  let uiScale = 1;
   let preferredSidebarWidth = windowStateController.getSidebarWidth();
   const controllerDeps = {
     ...deps,
     getPreferredSidebarWidth: () => preferredSidebarWidth,
+    getUiScale: () => uiScale,
   };
   const setSidebarWidth = (requestedWidth) => {
     const mainWindow = deps.resolveMainWindow?.();
@@ -287,6 +290,14 @@ function createAppShellMainWindowController(deps = {}) {
     updateMainWindowLayout(controllerDeps, mainWindow);
     return preferredSidebarWidth;
   };
+  const setUiScale = (requestedScale) => {
+    const numeric = Number(requestedScale);
+    if (!Number.isFinite(numeric)) return uiScale;
+    uiScale = Math.min(1.2, Math.max(1, numeric));
+    const mainWindow = deps.resolveMainWindow?.();
+    if (mainWindow && !mainWindow.isDestroyed?.()) updateMainWindowLayout(controllerDeps, mainWindow);
+    return uiScale;
+  };
   return {
     createMainWindow: () => createMainWindow(controllerDeps, backgroundController, windowStateController),
     revealMainWindow: () => backgroundController.revealWindow() || revealMainWindow(deps),
@@ -296,6 +307,8 @@ function createAppShellMainWindowController(deps = {}) {
     openAccountCenterSidebar: () => toggleSidebarPage('account-center.html'),
     toggleSidebarPage,
     setSidebarWidth,
+    setUiScale,
+    getUiScale: () => uiScale,
   };
 
   function toggleSidebarPage(fileName) {

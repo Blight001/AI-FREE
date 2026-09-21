@@ -126,7 +126,7 @@ npm install
 
 ## 内置扩展
 
-当前 `packagedExtensions` 配置为空。AI 自动化由认证的 Chromium Runtime Bridge 提供，不再作为浏览器扩展打包。
+当前 `packagedExtensions` 包含 `aixdownloader-9.0.58`。AI 自动化由认证的 Chromium Runtime Bridge 提供，不再作为浏览器扩展打包。
 - `remove_watermark`：网页复制与媒体处理相关能力。
 - `transform`：网页、输入框、图片、PDF 和视频字幕翻译能力。
 

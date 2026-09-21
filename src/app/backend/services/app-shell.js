@@ -241,6 +241,8 @@ class AppShellRuntime {
     this.openAiControlSidebar = mainController.openAiControlSidebar;
     this.openAccountCenterSidebar = mainController.openAccountCenterSidebar;
     this.setSidebarWidth = mainController.setSidebarWidth;
+    this.setUiScale = mainController.setUiScale;
+    this.getUiScale = mainController.getUiScale;
     this.bootstrapMainApp = this.createBootstrapMainApp();
   }
 
@@ -255,6 +257,7 @@ class AppShellRuntime {
       isLaunchMinimizedStartupRequested: this.isLaunchMinimizedStartupRequested.bind(this),
       revealMainWindow: this.revealMainWindow,
       setSidebarWidth: this.setSidebarWidth,
+      setUiScale: this.setUiScale,
       resolveActiveTabId: this.resolveActiveTabId.bind(this),
       resolveAddTab: this.resolveAddTab.bind(this),
       resolveAuth: this.resolveAuth.bind(this),
@@ -295,6 +298,7 @@ function createAppShell(deps = {}) {
     revealMainWindow: runtime.revealMainWindow,
     openAiControlSidebar: runtime.openAiControlSidebar,
     openAccountCenterSidebar: runtime.openAccountCenterSidebar,
+    getUiScale: runtime.getUiScale.bind(runtime),
     isLaunchMinimizedStartupRequested: runtime.isLaunchMinimizedStartupRequested.bind(runtime),
     refreshAnnouncements: runtime.refreshAnnouncements.bind(runtime),
   };

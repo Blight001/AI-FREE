@@ -52,8 +52,29 @@ test('AI 控制与个人中心装配网站控制台统一主题', () => {
   const themeCss = fs.readFileSync(path.join(sidebarRoot, themeAsset), 'utf8');
   assert.doesNotMatch(aiCss, /\.ai-chat-composer button\s*\{/);
   assert.match(aiCss, /#ai-chat-send\s*\{/);
+  assert.match(themeCss, /font-family:\s*var\(--app-ui-font, Inter, "Segoe UI", "Microsoft YaHei", sans-serif\)/);
   assert.match(themeCss, /\.ai-model-inline-select \.ai-select-trigger\s*\{[^}]*display:\s*flex/s);
   assert.match(themeCss, /\.ai-browser-gear-select \.ai-browser-gear-trigger[\s\S]*?border:\s*0\s*!important;[\s\S]*?background:\s*transparent\s*!important;/);
+});
+
+test('AI 控制页不再提供手动工作模式栏', () => {
+  const html = fs.readFileSync(path.join(sidebarRoot, 'ai-control.html'), 'utf8');
+  assert.doesNotMatch(html, /ai-control-workflow|工作模式|暂停接管|最近报告|结束流程/);
+  assert.equal(fs.existsSync(path.join(
+    sidebarRoot, 'client/app/side/controllers/pages/ai-control/ai-control-workflow.js',
+  )), false);
+});
+
+test('AI 控制模型读取不会因页面显示事件反复清空', () => {
+  const bootstrap = fs.readFileSync(path.join(
+    sidebarRoot, 'client/app/side/controllers/pages/ai-control/ai-control-bootstrap.js',
+  ), 'utf8');
+  const loaders = fs.readFileSync(path.join(
+    sidebarRoot, 'client/app/side/controllers/pages/ai-control/ai-control-data-loaders.js',
+  ), 'utf8');
+  assert.doesNotMatch(bootstrap, /pageshow|visibilitychange/);
+  assert.match(loaders, /modelsLoadQueued/);
+  assert.match(loaders, /showingPlaceholder/);
 });
 
 test('AI 新对话欢迎区不再显示浏览器连接或对话模式', () => {

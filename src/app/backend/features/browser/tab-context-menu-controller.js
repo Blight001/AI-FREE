@@ -5,7 +5,7 @@ const { BrowserWindow, screen } = require('electron');
 
 const TAB_CONTEXT_MENU_HTML = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8" /><style>
-html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;font-family:Inter,"Segoe UI","Microsoft YaHei",sans-serif}
 .menu{display:flex;flex-direction:column;gap:4px;padding:6px;min-width:168px;box-sizing:border-box;background:rgba(17,20,28,.98);border:1px solid rgba(255,255,255,.10);border-radius:8px;box-shadow:0 14px 36px rgba(0,0,0,.34);backdrop-filter:blur(10px)}
 button{appearance:none;border:0;background:transparent;color:#e6e8ee;font-size:12px;line-height:1.2;min-height:32px;padding:0 10px;border-radius:6px;text-align:left;cursor:pointer;white-space:nowrap;box-sizing:border-box}
 button:hover{background:rgba(77,163,255,.18)}button:active{background:rgba(77,163,255,.28)}button.danger{color:#ffb4b4}button.danger:hover{background:rgba(255,82,82,.16)}button:disabled{cursor:default;opacity:.72}

@@ -3,6 +3,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { pathToFileURL, fileURLToPath } = require('node:url');
+const { resolveLogoUrl } = require('../../src/app/shared/app-assets');
 
 const packageJson = require('../../package.json');
 const { resolveBindingCandidates } = require('../../src/app/backend/browser-runtime/chromium-window-bridge');
@@ -85,25 +87,42 @@ test('sidebar logos use the runtime asset resolver in source and packaged apps',
   }
   assert.equal((aiControlPage.match(/<img[^>]*data-app-logo/g) || []).length, 1);
   assert.equal((accountCenterPage.match(/<img[^>]*data-app-logo/g) || []).length, 1);
-  assert.ok(logoResolver.includes("const SOURCE_LOGO_PATH = '../../../assets/logo.ico';"));
-  assert.ok(logoResolver.includes("const PACKAGED_LOGO_PATH = '../../../../resource/logo.ico';"));
-  assert.ok(aiControl.includes('window.aiFreeLogoAssets?.url'));
+  assert.ok(logoResolver.includes('AiFreeAppAssets.resolveLogoUrl'));
+  for (const html of [aiControlPage, accountCenterPage, appShell]) {
+    assert.ok(html.includes('<script src="../../shared/app-assets.js"></script>'));
+  }
+  assert.ok(aiControl.includes('window.aiFreeLogoAssets.url'));
   assert.equal(appShell.includes('id="account-center-btn"'), false);
-  assert.ok(accountCenterPage.includes('data-open-ai-control'));
+  assert.equal(accountCenterPage.includes('data-open-ai-control'), false);
+  assert.equal(accountCenterPage.includes('sidebar-bottom-actions'), false);
   assert.ok(accountCenterPage.includes('id="account-center-panel"'));
   assert.ok(aiControlPage.includes('data-dev-only'));
   assert.ok(accountCenterPage.includes('data-dev-only'));
+  assert.match(appShell, /id="browser-settings-dev-console"[^>]*data-dev-only[^>]*hidden/);
+  assert.match(
+    fs.readFileSync(
+      path.join(sidebarRoot, 'client/app/side/styles/modules/browser-settings.css'),
+      'utf8',
+    ),
+    /html:not\(\.development-mode\) \[data-dev-only\]/,
+  );
   assert.ok(devConsolePage.includes('../../frontend/sidebar/ai-control.html?dev=1'));
   assert.equal(appShellSource.includes('createDevConsoleWindow'), false);
   assert.ok(appShell.includes('../sidebar/client/scripts/logo-assets.js'));
   assert.ok(appShell.includes('app-shell-network-magic.css'));
   assert.ok(appShell.includes('shell-network-magic.js'));
   assert.ok(appShell.includes('id="shell-network-magic-toggle"'));
-  assert.ok(aiControlPage.includes('id="network-magic-sidebar-dialog"'));
-  assert.ok(aiControlPage.includes('network-magic-sidebar.js'));
-  assert.ok(aiControlPage.includes('id="vpn-node-selector-panel"'));
+  const networkMagicPopup = fs.readFileSync(path.join(sidebarRoot, '../views/network-magic-popup.html'), 'utf8');
+  assert.ok(networkMagicPopup.includes('id="network-magic-sidebar-dialog"'));
+  assert.ok(networkMagicPopup.includes('id="vpn-node-selector-panel"'));
+  assert.equal(appShell.includes('id="network-magic-sidebar-dialog"'), false);
+  assert.equal(aiControlPage.includes('id="network-magic-sidebar-dialog"'), false);
+  assert.equal(aiControlPage.includes('network-magic-sidebar.js'), false);
+  assert.equal(aiControlPage.includes('id="vpn-node-selector-panel"'), false);
   assert.equal(appShell.includes('settings-network-tools-proxy-title'), false);
-  assert.equal((appShell.match(/<img[^>]*data-app-logo/g) || []).length, 2);
+  assert.equal((appShell.match(/<img[^>]*data-app-logo/g) || []).length, 1);
+  assert.match(appShell, /id="shell-network-magic-toggle"[\s\S]*?内置代理[\s\S]*?id="add-tab-btn"[\s\S]*?个人中心/);
+  assert.match(appShell, /id="shell-ai-control-btn"[\s\S]*?AI 控制/);
   assert.ok(appShell.includes('id="ai-free-settings-panel"'));
   assert.ok(appShell.includes('id="browser-settings-tutorial"'));
   assert.equal(appShell.includes('id="automation-workbench"'), false);
@@ -121,7 +140,9 @@ test('runtime logo URLs resolve from both frontend page hosts to the source asse
   const logoPath = path.resolve(__dirname, '../../src/assets/logo.ico');
   for (const pageDirectory of ['sidebar', 'views']) {
     assert.equal(
-      path.resolve(__dirname, '../../src/app/frontend', pageDirectory, '../../../assets/logo.ico'),
+      fileURLToPath(resolveLogoUrl(pathToFileURL(path.resolve(
+        __dirname, '../../src/app/frontend', pageDirectory, 'page.html',
+      )).href)),
       logoPath,
     );
   }

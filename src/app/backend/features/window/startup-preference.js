@@ -6,6 +6,18 @@ const DEFAULT_STARTUP_SETTINGS = Object.freeze({
   startMinimized: false,
 });
 
+function resolveStartMinimized(openAtLogin, closeBehavior) {
+  return openAtLogin === true && String(closeBehavior || '') === 'hide';
+}
+
+function withCloseBehaviorStartupSettings(settings, closeBehavior) {
+  const openAtLogin = settings?.openAtLogin === true;
+  return {
+    openAtLogin,
+    startMinimized: resolveStartMinimized(openAtLogin, closeBehavior),
+  };
+}
+
 function normalizeStartupSettings(value) {
   const source = value && typeof value === 'object' ? value : {};
   const hasEnabled = Object.prototype.hasOwnProperty.call(source, 'enabled');
@@ -135,6 +147,8 @@ module.exports = {
   isStartMinimizedArg,
   isStartupSupported,
   normalizeStartupSettings,
+  resolveStartMinimized,
+  withCloseBehaviorStartupSettings,
   readStartupSettings,
   updateStartupSettings,
   writeStartupSettings,

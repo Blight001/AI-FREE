@@ -10,9 +10,12 @@ const { createLicenseService } = require('../features/account/license-service');
 const { registerLicenseIpc } = require('../features/account/register-license-ipc');
 const { createMembershipService } = require('../features/account/membership-service');
 const { registerAiServerDeviceIpc } = require('../features/ai-chat/register-ai-server-device-ipc');
+const { readWindowCloseBehavior } = require('../features/window/window-close-preference');
 const {
   applyStartupSettings,
   readStartupSettings,
+  updateStartupSettings,
+  withCloseBehaviorStartupSettings,
 } = require('../features/window/startup-preference');
 
 function registerConsoleHistoryIpc(deps, ipc) {
@@ -70,11 +73,21 @@ function scheduleDeviceIdLog(deps) {
 
 function synchronizeAppStartupSettings(deps) {
   if (typeof deps.app?.setLoginItemSettings !== 'function') return;
-  const result = applyStartupSettings(
-    deps.app,
-    readStartupSettings(deps.readStoreConfigSafe, deps.app),
-    { platform: process.platform, execPath: process.execPath },
+  const current = readStartupSettings(deps.readStoreConfigSafe, deps.app);
+  const aligned = withCloseBehaviorStartupSettings(
+    current,
+    readWindowCloseBehavior(deps.readStoreConfigSafe),
   );
+  const options = { platform: process.platform, execPath: process.execPath };
+  const result = current.startMinimized === aligned.startMinimized
+    ? applyStartupSettings(deps.app, aligned, options)
+    : updateStartupSettings({
+      app: deps.app,
+      readStoreConfigSafe: deps.readStoreConfigSafe,
+      writeStoreConfigSafe: deps.writeStoreConfigSafe,
+      payload: aligned,
+      options,
+    });
   if (!result.ok) deps.logger.warn?.('[启动] 同步开机自启设置失败:', result.error?.message || result.error);
 }
 

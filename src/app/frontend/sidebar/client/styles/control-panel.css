@@ -1,8 +1,20 @@
+:root {
+  --app-ui-font: Inter, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
 html, body {
   width: 100%;
   height: 100%;
   margin: 0;
   overflow: hidden;
+  font-family: var(--app-ui-font);
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
 }
 
 html {
@@ -80,7 +92,7 @@ html.theme-gold .account-profile-cover {
 }
 
 .control-shell {
-  height: 100vh;
+  height: 100%;
   display: flex;
   flex-direction: column;
   min-height: 0;

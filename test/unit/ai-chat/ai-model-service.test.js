@@ -43,6 +43,19 @@ test('model service handles missing credentials and unavailable clients', async 
 
   const plain = createAiModelService({ readStoreConfigSafe: () => ({}), getGlobalHttpClient: () => ({}) });
   assert.deepEqual(await plain.getModels(), { ok: false, message: 'AI 服务尚未就绪' });
+
+  const remoteCalls = [];
+  const missingCredentials = createAiModelService({
+    readStoreConfigSafe: () => ({}),
+    getGlobalHttpClient: () => ({
+      getAIControlModels: async () => {
+        remoteCalls.push(1);
+        return { ok: true, models: [{ id: 'remote' }] };
+      },
+    }),
+  });
+  assert.deepEqual(await missingCredentials.getModels(), { ok: false, message: 'AI 服务尚未就绪' });
+  assert.deepEqual(remoteCalls, []);
 });
 
 test('model service merges remote models and degrades remote errors to custom-only', async () => {

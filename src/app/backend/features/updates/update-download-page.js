@@ -3,6 +3,7 @@ const path = require('path');
 const { BrowserWindow } = require('electron');
 const { getSuggestedFileNameFromUrl, toDebugString } = require('./update-notice');
 const { safeMkdir } = require('./update-package');
+const { resolveAppIconPath } = require('../../utils/app-icon');
 
 const DOWNLOAD_BUTTON_SCRIPT = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -80,18 +81,13 @@ const DOWNLOAD_BUTTON_SCRIPT = `(async () => {
   return false;
 })()`;
 
-function resolveUpdatePageIcon() {
-  const candidate = process.resourcesPath ? path.join(process.resourcesPath, 'resource', 'logo.ico') : '';
-  return candidate && fs.existsSync(candidate) ? candidate : undefined;
-}
-
 function createUpdatePageWindow(showWindow) {
   return new BrowserWindow({
     show: Boolean(showWindow),
     autoHideMenuBar: true,
     width: 1280,
     height: 900,
-    icon: resolveUpdatePageIcon(),
+    icon: resolveAppIconPath(),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

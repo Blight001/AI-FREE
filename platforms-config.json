@@ -7,7 +7,9 @@
     ],
     "timeoutSec": 8
   },
-  "packagedExtensions": [],
+  "packagedExtensions": [
+    "aixdownloader-9.0.58"
+  ],
   "platforms": {
     "default": {
       "name": "ai-free",

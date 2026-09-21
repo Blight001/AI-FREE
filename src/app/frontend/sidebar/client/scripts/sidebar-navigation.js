@@ -1,6 +1,13 @@
 (() => {
   const params = new URLSearchParams(location.search);
-  const enabled = params.get('dev') === '1' || sessionStorage.getItem('ai-free.sidebar.dev-mode') === '1';
+  const explicitMode = params.get('dev');
+  if (explicitMode === '1' || explicitMode === '0') {
+    try { sessionStorage.setItem('ai-free.sidebar.dev-mode', explicitMode); } catch (_) {}
+  }
+  let enabled = explicitMode === '1';
+  if (explicitMode !== '0' && explicitMode !== '1') {
+    try { enabled = sessionStorage.getItem('ai-free.sidebar.dev-mode') === '1'; } catch (_) {}
+  }
   document.documentElement.classList.toggle('development-mode', enabled);
   document.querySelectorAll('[data-dev-only]').forEach((item) => { item.hidden = !enabled; });
   document.querySelectorAll('[data-open-ai-control]').forEach((button) => {

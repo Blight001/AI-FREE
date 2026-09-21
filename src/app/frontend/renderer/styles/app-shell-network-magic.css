@@ -5,19 +5,8 @@
 
 .shell-network-magic {
   position: relative;
-  flex: 0 0 var(--shell-tab-height);
-  width: var(--shell-tab-height);
+  flex: 0 0 auto;
   height: var(--shell-tab-height);
-}
-
-.shell-network-magic-btn .network-magic-wand-icon {
-  width: 16px;
-  height: 16px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.7;
-  stroke-linecap: round;
-  stroke-linejoin: round;
 }
 
 .shell-network-magic-btn.is-active {
@@ -31,14 +20,32 @@
   transform: translateY(-1px);
 }
 
+.shell-network-magic-btn.is-active:hover {
+  color: #f3e8ff;
+  border-color: rgba(168, 85, 247, 0.72);
+  background: rgba(147, 51, 234, 0.38);
+}
+
 html.theme-light .shell-network-magic-btn.is-active {
   color: #6b21a8;
   border-color: rgba(147, 51, 234, 0.32);
   background: rgba(147, 51, 234, 0.14);
 }
 
+html.theme-light .shell-network-magic-btn.is-active:hover {
+  color: #6b21a8;
+  border-color: rgba(147, 51, 234, 0.5);
+  background: rgba(147, 51, 234, 0.22);
+}
+
 html.theme-gold .shell-network-magic-btn.is-active {
   color: #f4ead2;
   border-color: rgba(226, 200, 138, 0.62);
   background: rgba(212, 183, 118, 0.28);
+}
+
+html.theme-gold .shell-network-magic-btn.is-active:hover {
+  color: #f4ead2;
+  border-color: rgba(226, 200, 138, 0.8);
+  background: rgba(212, 183, 118, 0.38);
 }

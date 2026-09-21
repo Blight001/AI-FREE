@@ -122,24 +122,9 @@ function bindAddTabBtnOnce() {
     e.stopPropagation();
     if (toggleSidebarClickLock) return;
     toggleSidebarClickLock = true;
-    ShellApi.openAccountCenterSidebar?.();
+    rememberSidebarToggleSource('account-center');
+    UiApi.openAccountCenterSidebar?.();
     setTimeout(() => { toggleSidebarClickLock = false; }, 300);
-  });
-  addTabBtn.addEventListener('dblclick', async (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    try {
-      const invokeFn = ShellApi.openActiveWebConsole;
-      if (typeof invokeFn !== 'function') {
-        throw new Error('当前环境不支持打开网页控制台');
-      }
-      const resp = await invokeFn();
-      if (!resp || resp.ok !== true) {
-        throw new Error((resp && (resp.message || resp.error)) || '打开网页控制台失败');
-      }
-    } catch (err) {
-      showControllerError('打开网页控制台失败', err);
-    }
   });
   addTabBtn.dataset.bound = '1';
 }
@@ -158,29 +143,47 @@ onReady(() => {
   initSettingsBtnAnimation();
 });
 
-// 设置按钮动画监听器
+let lastSidebarToggleSource = 'account-center';
+
+function rememberSidebarToggleSource(source) {
+  lastSidebarToggleSource = source === 'ai-control' ? 'ai-control' : 'account-center';
+}
+
+function resolveSidebarToggleButton() {
+  if (lastSidebarToggleSource === 'ai-control') {
+    return document.getElementById('shell-ai-control-btn') || document.getElementById('add-tab-btn');
+  }
+  return document.getElementById('add-tab-btn');
+}
+
+function playSidebarToggleAnimation(kind) {
+  const collapsing = kind === 'collapsing';
+  const button = resolveSidebarToggleButton();
+  document.querySelectorAll('#add-tab-btn, #shell-ai-control-btn').forEach((element) => {
+    element.classList.remove('collapsing', 'expanding');
+  });
+  if (!button) return;
+  button.classList.add(collapsing ? 'collapsing' : 'expanding');
+  setTimeout(() => {
+    button.classList.remove(collapsing ? 'collapsing' : 'expanding');
+  }, collapsing ? 400 : 150);
+}
+
 function initSettingsBtnAnimation() {
   const addTabBtn = document.getElementById('add-tab-btn');
-  if (!addTabBtn) return;
+  const aiControlBtn = document.getElementById('shell-ai-control-btn');
+  if (!addTabBtn && !aiControlBtn) return;
 
-  UiApi.onSidebarCollapse( () => {
-    console.log('[标签栏] 收到收起动画事件');
+  aiControlBtn?.addEventListener('click', () => rememberSidebarToggleSource('ai-control'), true);
+
+  UiApi.onSidebarCollapse(() => {
     setBrowserEmptyStateSidebarVisible(false);
-    addTabBtn.classList.add('collapsing');
-    addTabBtn.classList.remove('expanding');
-    setTimeout(() => {
-      addTabBtn.classList.remove('collapsing');
-    }, 400);
+    playSidebarToggleAnimation('collapsing');
   });
 
-  UiApi.onSidebarExpand( () => {
-    console.log('[标签栏] 收到展开动画事件');
+  UiApi.onSidebarExpand(() => {
     setBrowserEmptyStateSidebarVisible(true);
-    addTabBtn.classList.add('expanding');
-    addTabBtn.classList.remove('collapsing');
-    setTimeout(() => {
-      addTabBtn.classList.remove('expanding');
-    }, 150);
+    playSidebarToggleAnimation('expanding');
   });
 
   UiApi.onSidebarWidthChanged?.(setBrowserEmptyStateSidebarWidth);

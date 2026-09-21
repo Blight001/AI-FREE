@@ -195,19 +195,20 @@ function createCoreServices({ app, fs, path, BrowserWindow, dialog, shell, power
     console.error('[AutomationBridge] 启动失败:', error?.message || error);
   });
 
-  const isDevMode = !!(
-    (app && app.isPackaged === false)
-    || (
-      process.env.NODE_ENV
-      && /^(dev|development)$/i.test(String(process.env.NODE_ENV || ''))
-    )
-  );
+  const isDevMode = !!(app && app.isPackaged === false);
 
   const uiBridge = createUiBridge({
     getMainWindow: appRuntime.getMainWindow,
     getSideView: appRuntime.getSideView,
     getDevConsoleWindow: appRuntime.getDevConsoleWindow,
     getControlPanelWindow: appRuntime.getControlPanelWindow,
+    getNetworkMagicPopupWindow: () => {
+      try {
+        return require('../features/network/network-magic-popup-controller').getNetworkMagicPopupWindow();
+      } catch (_) {
+        return null;
+      }
+    },
     isDevMode,
   });
   const { sendToSide, getAppConsoleHistory, getDebugConsoleHistory } = uiBridge;

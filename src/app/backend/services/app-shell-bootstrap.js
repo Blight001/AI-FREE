@@ -49,6 +49,7 @@ function createBootstrapUiDeps(deps) {
     openAiControlSidebar: deps.openAiControlSidebar,
     openAccountCenterSidebar: deps.openAccountCenterSidebar,
     setSidebarWidth: deps.setSidebarWidth,
+    setUiScale: deps.setUiScale,
     sendToSide: deps.sendToSide,
     startAppUpdate: deps.startAppUpdate,
     getAppVersion: deps.getAppVersion,

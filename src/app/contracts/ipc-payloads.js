@@ -241,12 +241,13 @@ const IPC_PAYLOAD_SCHEMAS = Object.freeze({
   },
   'ai.workflow': (channel, payload) => {
     const input = objectPayload(channel, payload);
-    const allowed = new Set(['connection_id', 'action', 'mode']);
+    const allowed = new Set(['connection_id', 'action', 'mode', 'include_details']);
     Object.keys(input).forEach((key) => { if (!allowed.has(key)) fail(channel, key, '不支持的字段'); });
     stringField(channel, input, 'connection_id', { required: true });
     stringField(channel, input, 'action', { required: true, maxLength: 32 });
     if (!['status', 'set_mode', 'pause', 'resume', 'report', 'cancel'].includes(input.action)) fail(channel, 'action', '不支持的动作');
     stringField(channel, input, 'mode', { maxLength: 32 });
+    booleanField(channel, input, 'include_details');
     return input;
   },
   'ui.startup-settings': (channel, payload) => {
@@ -262,6 +263,11 @@ const IPC_PAYLOAD_SCHEMAS = Object.freeze({
   'ui.sidebar-width': (channel, payload) => {
     const input = objectPayload(channel, payload, { optional: true });
     numberLikeField(channel, input, 'width');
+    return input;
+  },
+  'ui.ui-scale': (channel, payload) => {
+    const input = objectPayload(channel, payload);
+    numberLikeField(channel, input, 'scale');
     return input;
   },
   'ai.automation-card-operation': (channel, payload) => {

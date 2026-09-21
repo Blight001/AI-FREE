@@ -5,6 +5,7 @@
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: http: https:; font-src 'self' data:; connect-src 'self' http: https:; object-src 'none'; base-uri 'self'">
   <title>AI-FREE</title>
+  <script src="../sidebar/client/scripts/ui-scale.js"></script>
   <link rel="stylesheet" href="../sidebar/client/styles/control-panel.css" />
   <link rel="stylesheet" href="../sidebar/client/app/side/styles/side.css" />
   <link rel="stylesheet" href="../renderer/styles/app-shell.css" />
@@ -39,17 +40,6 @@
         </div>
       </div>
       <span id="shell-app-version" class="shell-app-version" aria-label="软件版本" hidden></span>
-      <div id="shell-network-magic" class="shell-network-magic">
-        <button id="shell-network-magic-toggle" class="shell-theme-toggle-btn shell-network-magic-btn" type="button" aria-expanded="false" aria-controls="network-magic-sidebar-dialog" aria-haspopup="dialog" aria-label="内置代理" title="内置代理">
-          <svg class="network-magic-wand-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M4.2 19.8 13.8 10.2"></path>
-            <path d="m12.4 8.8 2.8 2.8"></path>
-            <path d="M16.1 3.6 15.2 6.4 12.4 7.3 15.2 8.2 16.1 11 17 8.2 19.8 7.3 17 6.4 16.1 3.6Z"></path>
-            <path d="M19.4 12.1v2.4M18.2 13.3h2.4"></path>
-            <path d="M20.1 4.8v1.6M19.3 5.6h1.6"></path>
-          </svg>
-        </button>
-      </div>
       <button id="theme-toggle-btn" class="shell-theme-toggle-btn" type="button" aria-pressed="false" aria-label="切换主题" title="切换到白色模式">
         <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" aria-hidden="true">
           <circle cx="12" cy="12" r="4.2"></circle>
@@ -60,10 +50,32 @@
           <path d="M18.8 5.2l.5 1.4 1.4.5-1.4.5-.5 1.4-.5-1.4-1.4-.5 1.4-.5.5-1.4Z"></path>
         </svg>
       </button>
-      <div id="add-tab-btn" title="单击收起或展开 AI 控制，双击打开网页控制台" role="button" aria-label="收起或展开 AI 控制">
-        <img class="shell-app-logo" data-app-logo alt="AI-FREE">
+      <div id="shell-network-magic" class="shell-network-magic">
+        <button id="shell-network-magic-toggle" class="shell-action-btn shell-network-magic-btn" type="button" aria-expanded="false" aria-controls="network-magic-sidebar-dialog" aria-haspopup="dialog" aria-label="内置代理" title="内置代理">
+          <span class="shell-action-icon" aria-hidden="true">
+            <svg class="network-magic-wand-icon" viewBox="0 0 24 24">
+              <path d="M4.2 19.8 13.8 10.2"></path>
+              <path d="m12.4 8.8 2.8 2.8"></path>
+              <path d="M16.1 3.6 15.2 6.4 12.4 7.3 15.2 8.2 16.1 11 17 8.2 19.8 7.3 17 6.4 16.1 3.6Z"></path>
+              <path d="M19.4 12.1v2.4M18.2 13.3h2.4"></path>
+              <path d="M20.1 4.8v1.6M19.3 5.6h1.6"></path>
+            </svg>
+          </span>
+          <span class="shell-action-label">内置代理</span>
+        </button>
       </div>
-      <button id="shell-ai-control-btn" class="shell-action-btn" type="button" aria-label="打开 AI 控制" title="打开 AI 控制">AI 控制</button>
+      <button id="add-tab-btn" class="shell-action-btn shell-account-center-btn" type="button" aria-label="打开个人中心" title="打开个人中心">
+        <span class="shell-action-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"></circle><path d="M5 20a7 7 0 0 1 14 0"></path></svg>
+        </span>
+        <span class="shell-action-label">个人中心</span>
+      </button>
+      <button id="shell-ai-control-btn" class="shell-action-btn shell-ai-control-btn" type="button" aria-label="打开 AI 控制" title="打开 AI 控制">
+        <span class="shell-action-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="14" rx="4"></rect><path d="M12 3v3M8 11h.01M16 11h.01M8 16h8"></path></svg>
+        </span>
+        <span class="shell-action-label">AI 控制</span>
+      </button>
     </div>
     </footer>
     <section id="browser-page-module" aria-label="浏览器页面区域">
@@ -107,10 +119,7 @@
 
             <section class="extension-manager-inline" aria-labelledby="extension-manager-title">
               <div class="extension-manager-heading">
-                <div>
-                  <h2 id="extension-manager-title">统一浏览器插件</h2>
-                  <p>这里启用的插件会安装到全部 AI-FREE 浏览器，独立浏览器已有的插件不会被修改。</p>
-                </div>
+                <h2 id="extension-manager-title">统一浏览器插件</h2>
                 <button id="import-extension-plugin" class="browser-default-settings-btn" type="button">手动导入插件</button>
               </div>
               <div id="extension-plugin-list" class="extension-plugin-list" aria-live="polite">
@@ -206,6 +215,7 @@
     </div>
     </section>
   </div>
+  <script src="../../shared/app-assets.js"></script>
   <script src="../sidebar/client/scripts/logo-assets.js"></script>
   <script src="../renderer/controllers/shared/controller-utils.js"></script>
   <script src="../../shared/version-utils.js"></script>

@@ -124,7 +124,7 @@ Common development environment variables:
 
 ## Bundled Extensions
 
-The current `packagedExtensions` configuration is empty. AI automation is provided by the authenticated Chromium Runtime Bridge and is not packaged as a browser extension.
+`packagedExtensions` currently includes `aixdownloader-9.0.58`. AI automation is provided by the authenticated Chromium Runtime Bridge and is not packaged as a browser extension.
 - `remove_watermark`: browser copy and media-processing helpers.
 - `transform`: web page, input, image, PDF, and video-subtitle translation.
 

@@ -5,6 +5,8 @@ const crypto = require('crypto');
 const os = require('os');
 const path = require('path');
 const asar = require('@electron/asar');
+const vm = require('vm');
+const { pathToFileURL, fileURLToPath } = require('url');
 
 const REQUIRED_CLASH_ASSETS = [
   'geoip.metadb',
@@ -151,6 +153,28 @@ function verifyUnpackedRuntimeFiles(projectDir, resourcesDir, extractDir) {
   }
 }
 
+function verifyPackagedLogoResolution(extractDir, resourcesDir) {
+  const shared = fs.readFileSync(path.join(extractDir, 'src/app/shared/app-assets.js'), 'utf8');
+  const client = fs.readFileSync(path.join(extractDir, 'src/app/frontend/sidebar/client/scripts/logo-assets.js'), 'utf8');
+  const appRoot = path.join(resourcesDir, 'app.asar');
+  for (const page of ['frontend/sidebar/ai-control.html', 'frontend/sidebar/account-center.html', 'frontend/views/app-shell.html']) {
+    let logoUrl;
+    const context = vm.createContext({
+      URL,
+      window: { location: { href: pathToFileURL(path.join(appRoot, 'src/app', page)).href } },
+      document: {
+        currentScript: { src: pathToFileURL(path.join(appRoot, 'src/app/frontend/sidebar/client/scripts/logo-assets.js')).href },
+        querySelectorAll: () => [{ getAttribute: () => '', setAttribute: (_key, value) => { logoUrl = value; } }],
+      },
+    });
+    vm.runInContext(shared, context);
+    vm.runInContext(client, context);
+    const resolved = fileURLToPath(logoUrl);
+    if (resolved !== path.join(resourcesDir, 'resource', 'logo.ico')) throw new Error(`打包 Logo 解析位置错误: ${resolved}`);
+    assertFile(resolved, 128);
+  }
+}
+
 function verifyAsarIntegrity(projectDir, appOutDir) {
   const resourcesDir = path.join(appOutDir, 'resources');
   const archivePath = path.join(resourcesDir, 'app.asar');
@@ -174,6 +198,7 @@ function verifyAsarIntegrity(projectDir, appOutDir) {
     // 缺失的文件都会在这里直接失败，禁止继续生成安装包。
     asar.extractAll(archivePath, extractDir);
     verifyUnpackedRuntimeFiles(projectDir, resourcesDir, extractDir);
+    verifyPackagedLogoResolution(extractDir, resourcesDir);
     const sidebarRoot = path.join(extractDir, 'src', 'app', 'frontend', 'sidebar');
     const sidebarPath = path.join(sidebarRoot, 'ai-control.html');
     const accountPath = path.join(sidebarRoot, 'account-center.html');
@@ -199,17 +224,20 @@ function verifyAsarIntegrity(projectDir, appOutDir) {
     if ((sidebar.match(/<img[^>]*data-app-logo/g) || []).length !== 1
       || (account.match(/<img[^>]*data-app-logo/g) || []).length !== 1
       || !sidebar.includes('<script src="./client/scripts/logo-assets.js"></script>')
-      || !logoResolver.includes("const PACKAGED_LOGO_PATH = '../../../../resource/logo.ico';")) {
+      || !logoResolver.includes('AiFreeAppAssets.resolveLogoUrl')) {
       throw new Error('侧边栏 Logo 未通过运行时解析器指向打包后的外置资源');
     }
     if (appShell.includes('id="account-center-btn"')
       || !appShell.includes('../sidebar/client/scripts/logo-assets.js')
-      || (appShell.match(/<img[^>]*data-app-logo/g) || []).length !== 2
+      || (appShell.match(/<img[^>]*data-app-logo/g) || []).length !== 1
       || !appShell.includes('id="ai-free-settings-panel"')
       || appShell.includes('id="automation-workbench"')
-      || !sidebar.includes('data-tab="account-center-panel"')
+      || !appShell.includes('id="add-tab-btn"')
+      || !appShell.includes('个人中心')
+      || !appShell.includes('id="shell-ai-control-btn"')
+      || !appShell.includes('AI 控制')
       || !account.includes('id="account-center-panel"')) {
-      throw new Error('独立个人中心页面缺失，或主窗口头像入口仍然存在');
+      throw new Error('独立个人中心页面缺失，或主窗口个人中心入口异常');
     }
   } finally {
     fs.rmSync(extractDir, { recursive: true, force: true });

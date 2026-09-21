@@ -265,7 +265,13 @@ class BrowserTabLauncher {
       normalWindowWidth: mainWindow.getNormalBounds?.().width,
       retainCurrentWidth: true,
     });
-    return { x: 0, y: 0, width: contentWidth - sidebarWidth, height: Math.max(0, contentHeight - 41) };
+    const uiScale = Math.min(1.2, Math.max(1, Number(this.deps.getUiScale?.()) || 1));
+    return {
+      x: 0,
+      y: 0,
+      width: contentWidth - sidebarWidth,
+      height: Math.max(0, contentHeight - Math.round(41 * uiScale)),
+    };
   }
 
   createStartingTab(id, url, options, identity, browserSettings, proxy, urls) {

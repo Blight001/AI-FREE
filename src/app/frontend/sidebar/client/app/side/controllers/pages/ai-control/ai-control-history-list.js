@@ -14,36 +14,40 @@
   }
 
   function renderQuota(quota) {
-    state.quota = firstQuotaValue(window.AiFreeQuotaDisplay?.normalizeAIQuota?.(quota), quota);
-    window.renderAccountAiUsage?.(state.quota);
-    const widget = el('ai-chat-quota');
-    const ring = el('ai-chat-quota-ring');
-    const valueEl = el('ai-chat-quota-value');
-    if (!widget || !ring || !valueEl) return;
+    try {
+      state.quota = firstQuotaValue(window.AiFreeQuotaDisplay?.normalizeAIQuota?.(quota), quota);
+      window.renderAccountAiUsage?.(state.quota);
+      const widget = el('ai-chat-quota');
+      const ring = el('ai-chat-quota-ring');
+      const valueEl = el('ai-chat-quota-value');
+      if (!widget || !ring || !valueEl) return;
 
-    const lastCost = state.lastQuotaCost == null ? '' : ` · 本次 ${formatQuota(state.lastQuotaCost)}`;
-    const multiplier = selectedModelMultiplier();
-    const multiplierTip = multiplier ? ` · 倍率 ×${formatQuota(multiplier)}` : '';
+      const lastCost = state.lastQuotaCost == null ? '' : ` · 本次 ${formatQuota(state.lastQuotaCost)}`;
+      const multiplier = selectedModelMultiplier();
+      const multiplierTip = multiplier ? ` · 倍率 ×${formatQuota(multiplier)}` : '';
 
-    if (selectedModelIsCustom()) {
-      return setQuotaDisplay(ring, valueEl, widget, '100%', 'API', '自定义 API 不消耗软件端 AI 额度');
+      if (selectedModelIsCustom()) {
+        return setQuotaDisplay(ring, valueEl, widget, '100%', 'API', '自定义 API 不消耗软件端 AI 额度');
+      }
+
+      if (!state.quota) {
+        return setQuotaDisplay(ring, valueEl, widget, '0%', '--', '选择模型后即可开始对话');
+      }
+
+      if (state.quota.unlimited) {
+        const title = `对话额度：不限量 · 已使用 ${formatQuota(state.quota.used)} 点${multiplierTip}${lastCost}`;
+        return setQuotaDisplay(ring, valueEl, widget, '100%', '∞', title);
+      }
+
+      const total = Math.max(0, quotaNumber(state.quota.quota));
+      const used = quotaNumber(state.quota.used);
+      const remaining = Math.max(0, Number(state.quota.remaining ?? (total - used)));
+      const percent = total > 0 ? Math.max(0, Math.min(100, (remaining / total) * 100)) : 0;
+      const title = `剩余 ${formatQuota(remaining)} / ${formatQuota(total)} 点 · 已使用 ${formatQuota(state.quota.used)}${multiplierTip}${lastCost}`;
+      return setQuotaDisplay(ring, valueEl, widget, `${percent}%`, `${Math.round(percent)}`, title);
+    } catch (error) {
+      console.warn('[AI 控制] 额度显示失败:', error?.message || error);
     }
-
-    if (!state.quota) {
-      return setQuotaDisplay(ring, valueEl, widget, '0%', '--', '选择模型后即可开始对话');
-    }
-
-    if (state.quota.unlimited) {
-      const title = `对话额度：不限量 · 已使用 ${formatQuota(state.quota.used)} 点${multiplierTip}${lastCost}`;
-      return setQuotaDisplay(ring, valueEl, widget, '100%', '∞', title);
-    }
-
-    const total = Math.max(0, quotaNumber(state.quota.quota));
-    const used = quotaNumber(state.quota.used);
-    const remaining = Math.max(0, Number(state.quota.remaining ?? (total - used)));
-    const percent = total > 0 ? Math.max(0, Math.min(100, (remaining / total) * 100)) : 0;
-    const title = `剩余 ${formatQuota(remaining)} / ${formatQuota(total)} 点 · 已使用 ${formatQuota(state.quota.used)}${multiplierTip}${lastCost}`;
-    return setQuotaDisplay(ring, valueEl, widget, `${percent}%`, `${Math.round(percent)}`, title);
   }
 
   /* ---------------- 对话历史（下拉） ---------------- */

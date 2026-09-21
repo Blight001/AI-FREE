@@ -151,6 +151,7 @@ function startMainApp() {
     getActiveTabId: appRuntime.getActiveTabId,
     setActiveTabId: appRuntime.setActiveTabId,
     getIsSidebarVisible: appRuntime.getIsSidebarVisible,
+    getUiScale: () => appShell.getUiScale?.() || 1,
     setIsSidebarVisible: appRuntime.setIsSidebarVisible,
     getSetTabAccountId: () => setTabAccountId,
     getAuth: late.getAuth,

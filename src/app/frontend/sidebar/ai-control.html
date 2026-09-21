@@ -19,48 +19,17 @@
       } catch (_) {}
     })();
   </script>
+  <script src="./client/scripts/ui-scale.js"></script>
   <link rel="stylesheet" href="./client/styles/control-panel.css" />
   <link rel="stylesheet" href="./client/app/side/styles/side.css" />
   <link rel="stylesheet" href="./client/app/side/styles/modules/ai-control-files.css" />
   <link rel="stylesheet" href="./client/app/side/styles/modules/website-console-theme.css" />
-  <link rel="stylesheet" href="./client/app/side/styles/modules/ai-control-workflow.css" />
   <link rel="stylesheet" href="./client/app/side/styles/modules/sidebar-navigation.css" />
   <script defer src="./client/scripts/sidebar-navigation.js"></script>
 </head>
 <body>
   <div class="control-shell">
     <!-- data-dev-only 保留为兼容标记；调试控制台已移到独立窗口。 -->
-    <section id="network-magic-sidebar-dialog" class="network-magic-sidebar-dialog" role="dialog" aria-modal="true" aria-labelledby="network-magic-sidebar-title" hidden>
-      <button class="network-magic-sidebar-backdrop" type="button" data-network-magic-close aria-label="关闭网络魔法"></button>
-      <div class="network-magic-sidebar-panel">
-        <header class="network-magic-sidebar-header">
-          <h2 id="network-magic-sidebar-title">网络魔法</h2>
-          <button class="network-magic-sidebar-close" type="button" data-network-magic-close aria-label="关闭">&times;</button>
-        </header>
-        <div class="shell-network-magic-menu-primary">
-          <button id="VPN-switch" class="shell-network-magic-action VPN-btn" type="button" disabled>开启魔法代理</button>
-          <button id="vpn-node-selector-toggle-btn" class="shell-network-magic-action" type="button" aria-expanded="false" aria-controls="vpn-node-selector-panel" disabled>切换节点</button>
-        </div>
-        <fieldset id="network-magic-proxy-mode" class="network-magic-proxy-mode shell-network-magic-menu-modes" aria-label="网络魔法代理模式">
-          <legend>代理模式</legend>
-          <label><input type="radio" name="network-magic-proxy-mode" value="port" checked><span>端口代理</span></label>
-          <label><input type="radio" name="network-magic-proxy-mode" value="system"><span>系统代理</span></label>
-          <label><input type="radio" name="network-magic-proxy-mode" value="global"><span>全局代理</span></label>
-        </fieldset>
-        <div id="vpn-node-selector-panel" class="vpn-node-selector-dialog" hidden>
-          <div class="vpn-node-selector-panel vpn-node-selector-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="vpn-node-selector-group">
-            <div class="vpn-node-selector-panel-head">
-              <span id="vpn-node-selector-group" class="vpn-node-selector-panel-subtitle">节点选择</span>
-              <div class="vpn-node-selector-panel-heading">
-                <button id="vpn-node-retest-all-btn" class="vpn-node-retest-all" type="button" disabled>重新测速</button>
-                <button class="vpn-node-selector-dialog-close" type="button" data-vpn-node-selector-close aria-label="关闭节点选择">&times;</button>
-              </div>
-            </div>
-            <div id="vpn-node-selector-grid" class="vpn-node-selector-grid"></div>
-          </div>
-        </div>
-      </div>
-    </section>
     <div class="main-wrapper">
 
       <section id="ai-control-panel" class="ai-control-panel panel active" aria-label="AI 控制">
@@ -76,16 +45,6 @@
             </div>
           </div>
         </header>
-        <section class="ai-control-workflow" aria-label="浏览器工作流">
-          <label for="ai-control-workflow-mode">工作模式</label>
-          <select id="ai-control-workflow-mode"><option value="automation">自动化</option><option value="debug">调试</option></select>
-          <button id="ai-control-workflow-pause" type="button">暂停接管</button>
-          <button id="ai-control-workflow-resume" type="button">恢复</button>
-          <button id="ai-control-workflow-report" type="button">最近报告</button>
-          <button id="ai-control-workflow-cancel" type="button">结束流程</button>
-          <p id="ai-control-workflow-status" aria-live="polite">选择浏览器后可管理工作模式</p>
-          <pre id="ai-control-workflow-detail" hidden></pre>
-        </section>
         <div class="ai-chat-body">
           <div id="ai-chat-messages" class="ai-chat-messages" role="log" aria-live="polite">
             <div class="ai-chat-welcome">
@@ -180,6 +139,7 @@
               <div class="ai-custom-api-title-tabs" role="tablist" aria-label="添加模型方式">
                 <button id="ai-custom-api-title" class="is-active" type="button" role="tab" aria-selected="true" data-ai-config-page="custom">自定义 API</button>
                 <button id="ai-server-device-title" type="button" role="tab" aria-selected="false" data-ai-config-page="server">AI 服务器</button>
+                <button id="ai-external-codex-title" type="button" role="tab" aria-selected="false" data-ai-config-page="codex">外部 Codex</button>
               </div>
               <p id="ai-config-page-subtitle">支持 OpenAI Chat Completions 兼容接口</p>
             </div>
@@ -217,6 +177,26 @@
               <button id="ai-server-device-login" class="ai-custom-api-save" type="submit">登录并连接</button>
             </footer>
           </form>
+          <section id="ai-external-codex-panel" data-ai-config-content="codex" hidden>
+            <div class="ai-custom-api-body">
+              <div class="ai-external-codex-status-row">
+                <strong>桥接状态</strong>
+                <span id="external-codex-status" class="ai-custom-api-status" role="status" aria-live="polite">检查中…</span>
+              </div>
+              <ol class="ai-external-codex-steps">
+                <li>先安装 Codex CLI，或在 VS Code / Cursor 中安装 Codex 插件。</li>
+                <li>保持 AI-FREE 运行，并登录已授权账号。</li>
+                <li>复制这段说明，粘贴给 Codex，让它按自己的 MCP 配置方式接到 AI-FREE。</li>
+                <li>Codex 完成后，新开任务即可调用 AI-FREE 已授权的 MCP 工具。</li>
+              </ol>
+            </div>
+            <footer class="ai-custom-api-footer">
+              <span></span>
+              <span></span>
+              <button type="button" data-ai-custom-api-close>关闭</button>
+              <button id="copy-external-codex-config" class="ai-custom-api-save" type="button">复制给 Codex</button>
+            </footer>
+          </section>
         </section>
       </section>
 
@@ -263,6 +243,7 @@
   </div>
 
 
+  <script src="../../shared/app-assets.js"></script>
   <script src="./client/scripts/logo-assets.js"></script>
   <script src="./client/scripts/control-panel.js"></script>
   <script src="./client/app/side/controllers/shared/sidebar-resizer.js"></script>
@@ -271,8 +252,8 @@
   <script src="../../shared/quota-display.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-selection.js"></script>
-  <script src="./client/app/side/controllers/pages/ai-control/ai-control-workflow.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-server-device.js"></script>
+  <script src="./client/app/side/controllers/pages/side-panel/modules/external-codex-preference.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-prompt-diagnostics.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-selectors.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-card-selector.js"></script>
@@ -327,6 +308,5 @@
   <script src="./client/app/side/controllers/pages/side-panel/modules/bootstrap.js"></script>
   <script src="./client/app/side/controllers/pages/side-panel/index.js"></script>
   <script src="./client/app/side/controllers/pages/side-panel/dream-opener.js"></script>
-  <script src="./client/app/side/controllers/pages/side-panel/network-magic-sidebar.js"></script>
 </body>
 </html>

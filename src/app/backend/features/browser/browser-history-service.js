@@ -141,6 +141,19 @@ function getManagedTabUrl(tab) {
   return text(tab && tab.requestedUrl);
 }
 
+const MAX_HISTORY_ICON_LENGTH = 524288;
+
+function resolveTabIconUrl(tab) {
+  const raw = text(tab && tab.firstWebsiteIconUrl);
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (/^data:image\//i.test(raw) && raw.length <= MAX_HISTORY_ICON_LENGTH) return raw;
+  return '';
+}
+
+function resolveHistoryIconUrl(record, tab) {
+  return resolveTabIconUrl(tab) || text(record && record.lastClosedIconUrl);
+}
+
 function tabValues(ui) {
   const tabs = ui && typeof ui.getTabs === 'function' ? ui.getTabs() : new Map();
   return tabs && typeof tabs.values === 'function' ? tabs.values() : [];
@@ -183,12 +196,14 @@ function createHistoryRecord(history, tab, match) {
 function updateHistoryRecord(tab, match) {
   const record = match.record;
   const liveUrl = getManagedTabUrl(tab);
+  const iconUrl = resolveTabIconUrl(tab);
   const updates = {
     profileId: match.profileId,
     accountId: match.accountId,
     hideToolbar: tab && tab.hideBrowserToolbar === true,
   };
   if (liveUrl) updates.url = liveUrl;
+  if (iconUrl) updates.lastClosedIconUrl = iconUrl;
   if (tab && tab.isTutorialTab === true) updates.kind = 'tutorial';
   let changed = false;
   for (const [field, value] of Object.entries(updates)) {
@@ -266,6 +281,7 @@ function serializeBrowserHistory(history, ui) {
         ...record,
         ...(accountMetaById.get(String(record.accountId || '').trim()) || {}),
         url: liveUrl || record.url,
+        iconUrl: resolveHistoryIconUrl(record, openTab),
         tabId: openTab ? String(openTab.id || '') : '',
         isOpen: !!openTab,
         isActive: !!openTab && String(openTab.id || '') === activeTabId,
@@ -314,6 +330,19 @@ async function openBrowserHistoryRecord(ui, historyIdInput) {
     name: record.name,
     alreadyOpen: Boolean(openTab && openTab.id),
   };
+}
+
+function persistClosedTabIconToBrowserHistory(ui, tab) {
+  const iconUrl = resolveTabIconUrl(tab);
+  if (!iconUrl) return false;
+  const history = readBrowserHistorySafe();
+  const match = findTabHistoryRecord(history, tab);
+  if (!match.record) return false;
+  if (match.record.lastClosedIconUrl === iconUrl) return false;
+  match.record.lastClosedIconUrl = iconUrl;
+  writeBrowserHistorySafe(history);
+  callOptional(ui, 'sendToSide', 'browser-history-changed');
+  return true;
 }
 
 function applyBrowserHistoryRecordChanges(record, history, historyId, changes) {
@@ -429,6 +458,9 @@ module.exports = {
   getManagedTabUrl,
   makeUniqueBrowserName,
   openBrowserHistoryRecord,
+  persistClosedTabIconToBrowserHistory,
+  resolveHistoryIconUrl,
+  resolveTabIconUrl,
   readBrowserHistorySafe,
   renameBrowserHistoryRecord,
   serializeBrowserHistory,

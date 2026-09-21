@@ -1,10 +1,32 @@
 #browser-empty-state {
   position: absolute;
-  inset: 0 var(--app-shell-sidebar-width, 30%) 0 0;
+  top: 0;
+  left: 0;
+  width: calc((100% - var(--app-shell-sidebar-width, 30%)) / var(--ui-scale, 1));
+  height: calc(100% / var(--ui-scale, 1));
   display: block;
-  overflow: auto;
+  overflow: hidden;
   box-sizing: border-box;
   pointer-events: auto;
+  transform: scale(var(--ui-scale, 1));
+  transform-origin: top left;
+  background-color: transparent;
+}
+
+#browser-empty-state::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: url("../../../../assets/background.png");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+
+html:not(.theme-light) #browser-empty-state::before {
+  filter: brightness(0.48);
 }
 
 #browser-empty-state[hidden] {
@@ -13,14 +35,16 @@
 
 #browser-empty-state > #ai-free-settings-panel {
   position: relative;
+  z-index: 1;
   inset: auto;
   width: 100%;
-  min-height: 100%;
-  height: auto;
-  overflow: visible;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
   box-sizing: border-box;
+  background: transparent;
 }
 
 html.sidebar-collapsed #browser-empty-state {
-  right: 0;
+  width: calc(100% / var(--ui-scale, 1));
 }

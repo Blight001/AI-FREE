@@ -19,6 +19,7 @@
       } catch (_) {}
     })();
   </script>
+  <script src="./client/scripts/ui-scale.js"></script>
   <link rel="stylesheet" href="./client/styles/control-panel.css" />
   <link rel="stylesheet" href="./client/app/side/styles/side.css" />
   <link rel="stylesheet" href="./client/app/side/styles/modules/website-console-theme.css" />
@@ -34,8 +35,22 @@
         <div class="container">
           <div class="account-profile-shell">
             <section id="sidebar-account-session" class="account-profile-card" aria-label="账号资料卡" data-authenticated="false">
-              <div class="account-profile-cover" aria-hidden="true">
-                <span>AI-FREE</span>
+              <div class="account-profile-cover">
+                <div class="account-profile-brand">
+                  <span>AI-FREE</span>
+                  <button id="announcement-mail-btn" class="announcement-mail-btn" type="button" aria-label="公告" aria-expanded="false" aria-controls="announcement-bar">
+                    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+                      <path fill="currentColor" d="M3.5 6.75A2.25 2.25 0 0 1 5.75 4.5h12.5A2.25 2.25 0 0 1 20.5 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25H5.75A2.25 2.25 0 0 1 3.5 17.25V6.75Zm2.4.75 6.1 4.07L18.1 7.5H5.9Zm12.35 1.62-6.36 4.24a1.25 1.25 0 0 1-1.38 0L4.15 9.87v7.38c0 .14.11.25.25.25h15.1a.25.25 0 0 0 .25-.25V9.87Z"/>
+                    </svg>
+                    <span id="announcement-mail-dot" class="announcement-mail-dot"></span>
+                  </button>
+                  <button id="account-settings-btn" class="account-settings-btn" type="button" aria-label="常规设置" aria-expanded="false" aria-controls="account-general-settings">
+                    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">
+                      <path fill="currentColor" d="M10.3 3.3h3.4l.4 2.1a6.7 6.7 0 0 1 1.6.9l2-1 1.7 2.9-1.6 1.4c.1.4.2.9.2 1.4s-.1 1-.2 1.4l1.6 1.4-1.7 2.9-2-1a6.7 6.7 0 0 1-1.6.9l-.4 2.1h-3.4l-.4-2.1a6.7 6.7 0 0 1-1.6-.9l-2 1-1.7-2.9 1.6-1.4A6.4 6.4 0 0 1 7 12c0-.5.1-1 .2-1.4L5.6 9.2 7.3 6.3l2 1c.5-.4 1-.7 1.6-.9l.4-2.1ZM12 9.4A2.6 2.6 0 1 0 12 14.6 2.6 2.6 0 0 0 12 9.4Z"/>
+                    </svg>
+                    <b>设置</b>
+                  </button>
+                </div>
               </div>
               <div class="account-profile-main">
                 <button id="account-profile-avatar" class="account-profile-avatar" type="button" aria-label="账号菜单" aria-haspopup="menu" aria-expanded="false">
@@ -186,20 +201,19 @@
                 <div id="wool-platform-buttons" class="wool-platform-buttons" hidden></div>
               </section>
 
-              <!-- 公告保留在账号资料卡中。 -->
-              <div class="announcement-bar" id="announcement-bar">
+              <div class="announcement-bar" id="announcement-bar" hidden>
                 <div class="announcement-header">
                   <div class="announcement-title-wrap">
-                    <span id="announcement-icon" class="announcement-icon">📢</span>
+                    <span id="announcement-icon" class="announcement-icon">✉️</span>
                     <span id="announcement-title" class="announcement-title">公告</span>
                   </div>
                 </div>
                 <div class="announcement-content" id="announcement-content">
-                  <p>欢迎使用 AI-FREE，最新功能已上线！</p>
+                  <p>欢迎来到AI-FREE，自由探索AI浏览器自动化的领域！</p>
                 </div>
               </div>
 
-              <details class="account-general-settings">
+              <details id="account-general-settings" class="account-general-settings">
                 <summary>
                   <span>常规设置</span>
                   <span class="account-general-settings-chevron" aria-hidden="true"></span>
@@ -224,10 +238,32 @@
                       <span>退出</span>
                     </label>
                   </fieldset>
+                  <div class="account-ui-scale-preference">
+                    <div class="account-ui-scale-copy">
+                      <strong>
+                        界面大小
+                        <span class="account-pref-hint-wrap">
+                          <button type="button" class="account-pref-hint" aria-expanded="false" aria-describedby="ui-scale-hint-pop" aria-label="界面大小说明">?</button>
+                          <span id="ui-scale-hint-pop" class="account-pref-hint-pop" role="tooltip">调整字体、控件和底部任务栏的显示大小。</span>
+                        </span>
+                      </strong>
+                    </div>
+                    <div class="account-ui-scale-control">
+                      <span class="account-ui-scale-label">小</span>
+                      <input id="ui-scale" type="range" min="100" max="120" step="5" value="110" aria-label="界面大小">
+                      <span class="account-ui-scale-label">大</span>
+                    </div>
+                    <p id="ui-scale-status" class="account-app-preferences-status" role="status" aria-live="polite"></p>
+                  </div>
                   <div class="account-startup-preference">
                     <div>
-                      <strong>开机启动</strong>
-                      <p>登录 Windows 后自动启动，并隐藏到系统托盘。</p>
+                      <strong>
+                        开机启动
+                        <span class="account-pref-hint-wrap">
+                          <button type="button" class="account-pref-hint" aria-expanded="false" aria-describedby="app-startup-hint-pop" aria-label="开机启动说明">?</button>
+                          <span id="app-startup-hint-pop" class="account-pref-hint-pop" role="tooltip">登录 Windows 后自动启动。关闭方式为后台时隐藏到系统托盘；询问或退出时正常打开窗口。</span>
+                        </span>
+                      </strong>
                     </div>
                     <p id="app-startup-status" class="account-app-preferences-status" role="status" aria-live="polite"></p>
                     <label class="account-switch">
@@ -235,14 +271,6 @@
                       <span aria-hidden="true"></span>
                       <b>启用</b>
                     </label>
-                  </div>
-                  <div class="account-codex-bridge">
-                    <div class="account-codex-bridge-copy">
-                      <strong>外部 Codex</strong>
-                      <p>桥接默认启动，让 Codex 调用 AI-FREE 已授权的 MCP 工具。</p>
-                      <span id="external-codex-status" class="account-app-preferences-status" role="status" aria-live="polite">检查中…</span>
-                    </div>
-                    <button id="copy-external-codex-config" class="account-codex-bridge-button" type="button">复制连接配置</button>
                   </div>
                 </section>
               </details>
@@ -275,7 +303,6 @@
             <div id="vip-permission-rows">
               <div class="vip-permission-row"><span>独立浏览器</span><span>最多 5 个</span><strong>不限数量</strong><strong>不限数量</strong></div>
               <div class="vip-permission-row"><span>自定义模型</span><span>不可使用</span><strong>允许使用</strong><strong>允许使用</strong></div>
-              <div class="vip-permission-row"><span>土豪金主题</span><span>不可使用</span><strong>专属主题</strong><strong>专属主题</strong></div>
               <div class="vip-permission-row"><span>每周 AI 额度</span><span>无赠送</span><strong>100 点</strong><strong>500 点</strong></div>
               <div class="vip-permission-row"><span>每周魔法流量</span><span>无赠送</span><strong>10 GB</strong><strong>50 GB</strong></div>
             </div>
@@ -289,7 +316,6 @@
 
           <div id="vip-plan-status" class="vip-plan-status" role="status">价格由服务器实时下发</div>
           <footer class="vip-benefits-actions">
-            <button id="vip-gold-theme-action" class="vip-gold-theme-action" type="button">👑 启用土豪金主题</button>
             <button id="vip-use-gift-code" class="vip-use-gift-code" type="button">使用 VIP 礼品码开通</button>
           </footer>
         </div>
@@ -297,18 +323,7 @@
 
     </div>
   </div>
-
-
-  <div class="sidebar-bottom-actions" aria-label="侧边栏操作">
-    <button class="sidebar-bottom-button is-active" type="button" data-open-account-center aria-current="page">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg>
-      <span>个人中心</span>
-    </button>
-    <button class="sidebar-bottom-button" type="button" data-open-ai-control>
-      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="16" height="14" rx="4"/><path d="M12 3v3M8 11h.01M16 11h.01M8 16h8"/></svg>
-      <span>AI 控制</span>
-    </button>
-  </div>
+  <script src="../../shared/app-assets.js"></script>
   <script src="./client/scripts/logo-assets.js"></script>
   <script src="./client/scripts/control-panel.js"></script>
   <script src="./client/app/side/controllers/shared/sidebar-resizer.js"></script>
@@ -349,9 +364,10 @@
   <script src="./client/app/side/controllers/pages/side-panel/modules/account-auth-usage.js"></script>
   <script src="./client/app/side/controllers/pages/side-panel/modules/account-auth-actions.js"></script>
   <script src="./client/app/side/controllers/pages/side-panel/modules/account-auth-bindings.js"></script>
+  <script src="./client/app/side/controllers/pages/side-panel/modules/account-pref-hint.js"></script>
   <script src="./client/app/side/controllers/pages/side-panel/modules/window-close-preference.js"></script>
+  <script src="./client/app/side/controllers/pages/side-panel/modules/ui-scale-preference.js"></script>
   <script src="./client/app/side/controllers/pages/side-panel/modules/app-startup-preference.js"></script>
-  <script src="./client/app/side/controllers/pages/side-panel/modules/external-codex-preference.js"></script>
   <script src="./client/app/side/controllers/pages/side-panel/modules/entry-links.js"></script>
   <script src="./client/app/side/controllers/pages/side-panel/modules/region.js"></script>
   <script src="./client/app/side/controllers/pages/side-panel/modules/vpn.js"></script>
@@ -372,6 +388,5 @@
   <script src="./client/app/side/controllers/pages/side-panel/modules/bootstrap.js"></script>
   <script src="./client/app/side/controllers/pages/side-panel/index.js"></script>
   <script src="./client/app/side/controllers/pages/side-panel/dream-opener.js"></script>
-  <script src="./client/app/side/controllers/pages/side-panel/network-magic-sidebar.js"></script>
 </body>
 </html>

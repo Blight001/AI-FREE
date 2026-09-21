@@ -28,6 +28,7 @@ ipcMain.handle('account-get-session', () => {
   return { authenticated: false };
 });
 ipcMain.on('request-account-center', () => { accountCenterRequests += 1; });
+ipcMain.on('open-account-center-sidebar', () => { accountCenterRequests += 1; });
 ipcMain.handle('get-window-close-behavior', () => ({ ok: true, data: { behavior: windowCloseBehavior } }));
 ipcMain.handle('set-window-close-behavior', (_event, payload = {}) => {
   windowCloseBehavior = String(payload.behavior || '');
@@ -37,7 +38,7 @@ ipcMain.handle('get-startup-settings', () => ({ ok: true, data: startupSettings 
 ipcMain.handle('set-startup-settings', (_event, payload = {}) => {
   startupSettings = {
     openAtLogin: payload.enabled === true,
-    startMinimized: payload.enabled === true,
+    startMinimized: payload.enabled === true && windowCloseBehavior === 'hide',
   };
   return { ok: true, data: startupSettings };
 });
@@ -69,7 +70,32 @@ ipcMain.handle('ai-control-manage-automation-card', () => ({
   ok: true, data: { success: true, selectedId: '', items: [] },
 }));
 for (const [channel, response] of /** @type {Array<[string, any]>} */ ([
-  ['get-extension-manager-state', { ok: true, extensions: [] }],
+  ['get-extension-manager-state', {
+    ok: true,
+    state: {
+      developerModeEnabled: true,
+      plugins: [
+        {
+          id: 'translate',
+          name: '翻译插件',
+          description: '把网页内容翻译成中文，适合对照阅读长文。',
+          hint: '点击网页右侧粉色按钮翻译',
+          version: '1.2.0',
+          enabled: true,
+          builtin: true,
+        },
+        {
+          id: 'remove-watermark',
+          name: '去水印插件',
+          description: '右键保存视频和图片时自动去掉水印。',
+          hint: '右键视频图片直接下载',
+          version: '1.0.0',
+          enabled: true,
+          builtin: true,
+        },
+      ],
+    },
+  }],
   ['get-clash-mini-status', { running: false }],
   ['get-user-credentials', { ok: true, credentials: {} }],
   ['get-all-accounts', []],
@@ -150,6 +176,7 @@ app.whenReady().then(async () => {
     const magicToggle = document.getElementById('shell-network-magic-toggle');
     const magicMenu = document.getElementById('shell-network-magic-menu');
     magicToggle?.click();
+    const magicDialogOpened = magicToggle?.getAttribute('aria-expanded') === 'true';
     const magicMenuVisible = magicMenu === null
       || (magicMenu.hidden === false && magicToggle?.getAttribute('aria-expanded') === 'true');
     const sidebarWidthPx = parseFloat(
@@ -192,6 +219,25 @@ app.whenReady().then(async () => {
     if (nodeToggle) nodeToggle.disabled = nodeToggleWasDisabled;
     const magicMenuClosedAfterNode = !magicMenu || magicMenu.hidden === true;
     await new Promise((resolve) => setTimeout(resolve, 20));
+    const extensionList = document.getElementById('extension-plugin-list');
+    const extensionReadyStartedAt = Date.now();
+    while (extensionList?.textContent.includes('正在读取统一插件') && Date.now() - extensionReadyStartedAt < 1000) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    const extensionItems = Array.from(document.querySelectorAll('.extension-plugin-item'));
+    const extensionListStyle = extensionList ? getComputedStyle(extensionList) : null;
+    const firstExtensionBox = extensionItems[0]?.getBoundingClientRect();
+    const secondExtensionBox = extensionItems[1]?.getBoundingClientRect();
+    const firstExtensionWidth = firstExtensionBox?.width || 0;
+    const extensionsShareRow = !!firstExtensionBox && !!secondExtensionBox
+      && Math.abs(firstExtensionBox.top - secondExtensionBox.top) < 8
+      && secondExtensionBox.left > firstExtensionBox.right - 1;
+    const detailsBtn = document.querySelector('.extension-plugin-details');
+    const detailsBody = document.querySelector('.extension-plugin-detail-body');
+    const detailsHiddenBefore = detailsBody?.hidden === true;
+    detailsBtn?.click();
+    const detailsOpened = detailsBody?.hidden === false
+      && (detailsBody?.textContent || '').includes('把网页内容翻译成中文');
     const automationWorkbenchRemoved = !document.getElementById('automation-workbench-dialog')
       && !document.getElementById('automation-workbench')
       && !document.getElementById('automation-workbench-open')
@@ -219,6 +265,7 @@ app.whenReady().then(async () => {
         && !document.querySelector('#browser-empty-state .settings-network-tools-proxy-title')
         && !document.getElementById('browser-empty-state')?.textContent.includes('内置代理'),
       magicLauncherVisible: magicToggle?.getBoundingClientRect().width > 0,
+      magicDialogOpened,
       magicMenuOpened: magicMenuVisible,
       magicMenuClearOfSidebar,
       magicMenuClosedAfterNode,
@@ -248,6 +295,15 @@ app.whenReady().then(async () => {
       accountHistoryRemoved: !document.getElementById('account-history-toggle-btn') && !document.getElementById('account-panel'),
       unifiedExtensionSectionVisible: !!document.getElementById('extension-plugin-list')
         && !!document.getElementById('import-extension-plugin'),
+      unifiedExtensionHintRemoved: !document.querySelector('#extension-manager-title')?.parentElement?.querySelector('p')
+        && !(document.querySelector('.extension-manager-inline')?.textContent || '').includes('这里启用的插件会安装到全部'),
+      unifiedExtensionWraps: extensionListStyle?.flexWrap === 'wrap' && extensionsShareRow,
+      unifiedExtensionCardCapped: extensionItems.length >= 2
+        && firstExtensionWidth > 0
+        && firstExtensionWidth <= 230,
+      unifiedExtensionDetailsInline: !!detailsBtn
+        && detailsBtn.previousElementSibling?.classList.contains('extension-plugin-summary'),
+      unifiedExtensionDetailsOpened: detailsHiddenBefore && detailsOpened,
       woolResourceMovedOut: !document.getElementById('wool-platform-buttons')
         && !document.getElementById('wool-resource-title'),
       automationWorkbenchRemoved,
@@ -273,6 +329,7 @@ app.whenReady().then(async () => {
     || !result.woolResourceMovedOut
     || !result.homeProxyRemoved
     || !result.magicLauncherVisible
+    || !result.magicDialogOpened
     || !result.magicMenuOpened
     || !result.magicMenuClearOfSidebar
     || !result.magicMenuClosedAfterNode
@@ -302,6 +359,11 @@ app.whenReady().then(async () => {
     || !result.browserHistoryText.includes('自动删除：')
     || !result.accountHistoryRemoved
     || !result.unifiedExtensionSectionVisible
+    || !result.unifiedExtensionHintRemoved
+    || !result.unifiedExtensionWraps
+    || !result.unifiedExtensionCardCapped
+    || !result.unifiedExtensionDetailsInline
+    || !result.unifiedExtensionDetailsOpened
     || !result.removedNetworkHeading
     || result.rows < 30
     || required.some((label) => !result.labels.includes(label))
@@ -389,6 +451,31 @@ app.whenReady().then(async () => {
     || !aiWelcomeResult.welcomeStillVisible) {
     throw new Error(`AI 新对话首页校验失败: ${JSON.stringify(aiWelcomeResult)}`);
   }
+  const externalCodexResult = await win.webContents.executeJavaScript(`(async () => {
+    const dialog = document.getElementById('ai-custom-api-dialog');
+    const tab = document.getElementById('ai-external-codex-title');
+    const panel = document.getElementById('ai-external-codex-panel');
+    const status = document.getElementById('external-codex-status');
+    const copyButton = document.getElementById('copy-external-codex-config');
+    const steps = panel?.textContent || '';
+    tab?.click();
+    await new Promise((done) => setTimeout(done, 30));
+    const ready = status?.textContent === '已就绪 · 0 个工具';
+    copyButton?.click();
+    await new Promise((done) => setTimeout(done, 30));
+    return {
+      tabInCustomDialog: tab?.closest('#ai-custom-api-dialog') === dialog,
+      tabLabel: tab?.textContent === '外部 Codex',
+      panelVisibleAfterTab: panel?.hidden === false,
+      explainsPlugin: steps.includes('安装 Codex 插件') || steps.includes('Codex 插件'),
+      explainsPasteToCodex: steps.includes('粘贴给 Codex'),
+      ready,
+      copied: status?.textContent === '配置已复制到剪贴板',
+    };
+  })()`);
+  if (Object.values(externalCodexResult).some((value) => value !== true)) {
+    throw new Error(`AI 控制外部 Codex 栏目校验失败: ${JSON.stringify(externalCodexResult)}`);
+  }
   if (process.env.AI_FREE_AI_WELCOME_CAPTURE) {
     win.setSize(500, 850);
     await new Promise((resolve) => setTimeout(resolve, 80));
@@ -421,8 +508,7 @@ app.whenReady().then(async () => {
   const accountCenterResult = await win.webContents.executeJavaScript(`new Promise((resolve) => {
     const panel = document.getElementById('account-center-panel');
     setTimeout(async () => {
-      const active = panel.classList.contains('active')
-        && document.querySelector('[data-tab="account-center-panel"]')?.classList.contains('active');
+      const active = panel.classList.contains('active');
       const profileVisible = !!panel.querySelector('#sidebar-account-session')
         && !!panel.querySelector('#announcement-bar');
       const accountCard = panel.querySelector('#sidebar-account-session');
@@ -466,8 +552,6 @@ app.whenReady().then(async () => {
       const closeBehaviorAsk = panel.querySelector('input[name="window-close-behavior"][value="ask"]');
       const closeBehaviorHide = panel.querySelector('input[name="window-close-behavior"][value="hide"]');
       const startupEnabled = panel.querySelector('#app-startup-enabled');
-      const externalCodexStatus = panel.querySelector('#external-codex-status');
-      const externalCodexButton = panel.querySelector('#copy-external-codex-config');
       const generalSettings = panel.querySelector('.account-general-settings');
       const settingsBelowAnnouncement = panel.querySelector('#announcement-bar')?.nextElementSibling === generalSettings;
       const generalSettingsCollapsed = generalSettings?.open === false
@@ -489,9 +573,6 @@ app.whenReady().then(async () => {
       }
       await new Promise((done) => setTimeout(done, 30));
       const persistedStartupSettings = await window.aiFree?.ui?.getStartupSettings?.();
-      const externalCodexReady = externalCodexStatus?.textContent === '已就绪 · 0 个工具';
-      externalCodexButton?.click();
-      await new Promise((done) => setTimeout(done, 30));
       const closeBehaviorSaved = closeBehaviorHide.checked === true
         && panel.querySelector('#window-close-behavior-status')?.textContent === '已保存';
       const closeBehaviorPersisted = persistedCloseBehavior?.ok === true
@@ -501,7 +582,9 @@ app.whenReady().then(async () => {
       const startupPersisted = persistedStartupSettings?.ok === true
         && persistedStartupSettings.data?.openAtLogin === true
         && persistedStartupSettings.data?.startMinimized === true;
-      const externalCodexCopied = externalCodexStatus?.textContent === '配置已复制到剪贴板';
+      const externalCodexMovedOut = !panel.querySelector('#external-codex-status')
+        && !panel.querySelector('#copy-external-codex-config')
+        && !panel.querySelector('.account-codex-bridge');
       resolve({
         active,
         profileVisible,
@@ -525,8 +608,7 @@ app.whenReady().then(async () => {
         startupLoaded,
         startupSaved,
         startupPersisted,
-        externalCodexReady,
-        externalCodexCopied,
+        externalCodexMovedOut,
       });
     }, 30);
   })`);
@@ -563,17 +645,28 @@ app.whenReady().then(async () => {
     await new Promise((resolve) => setTimeout(resolve, 30));
     homeButton?.click();
     homeCreateButton?.click();
+    appLauncher?.click();
     await new Promise((resolve) => setTimeout(resolve, 30));
     return {
       controlsOrdered: updateWidget?.nextElementSibling === version
-        && version?.nextElementSibling === document.getElementById('shell-network-magic')
-        && document.getElementById('shell-network-magic')?.nextElementSibling === theme
-        && theme?.nextElementSibling === appLauncher,
+        && version?.nextElementSibling === theme
+        && theme?.nextElementSibling === document.getElementById('shell-network-magic')
+        && document.getElementById('shell-network-magic')?.nextElementSibling === appLauncher
+        && appLauncher?.nextElementSibling === document.getElementById('shell-ai-control-btn'),
       versionVisible: version?.hidden === false && version.textContent === 'v2.6.38',
       homeButtonFirst: document.getElementById('tabs-container')?.firstElementChild === homeButton,
       avatarRemoved: !document.getElementById('account-center-btn'),
       themeToggled: document.documentElement.classList.contains('theme-light') !== wasLight,
-      appLogoLauncher: !!appLauncher?.querySelector('img.shell-app-logo[data-app-logo]'),
+      accountCenterButton: appLauncher?.tagName === 'BUTTON'
+        && appLauncher?.textContent.trim() === '个人中心'
+        && !!appLauncher?.querySelector('.shell-action-icon'),
+      networkMagicButton: document.getElementById('shell-network-magic-toggle')?.textContent.trim() === '内置代理'
+        && !!document.getElementById('shell-network-magic-toggle')?.querySelector('.shell-action-icon'),
+      aiControlButton: document.getElementById('shell-ai-control-btn')?.textContent.trim() === 'AI 控制'
+        && !!document.getElementById('shell-ai-control-btn')?.querySelector('.shell-action-icon'),
+      matchingActionIcons: !!appLauncher?.querySelector('.shell-action-icon')
+        && !!document.getElementById('shell-ai-control-btn')?.querySelector('.shell-action-icon')
+        && !!document.getElementById('shell-network-magic-toggle')?.querySelector('.shell-action-icon'),
       modernCreateIcon: !!createButton?.querySelector('svg.new-window-icon') && createButton.textContent.trim() === '',
       taskbarAtBottom: document.getElementById('tab-bar')?.getBoundingClientRect().bottom === window.innerHeight,
       homeVisible: document.getElementById('browser-empty-state')?.hidden === false,
@@ -585,6 +678,7 @@ app.whenReady().then(async () => {
   })()`);
   shellAccountResult.taskbarAndHomeCreateRequestedBrowsers = independentBrowserCreateRequests === 2;
   shellAccountResult.homeButtonOpenedHomeOnly = homeSwitchRequests === 1;
+  shellAccountResult.accountCenterOpened = Number(accountCenterRequests) === 2;
   await new Promise((resolve) => setTimeout(resolve, 30));
   if (Object.values(shellAccountResult).some((value) => value !== true)) {
     throw new Error(`主窗口内置首页与控件校验失败: ${JSON.stringify(shellAccountResult)}`);

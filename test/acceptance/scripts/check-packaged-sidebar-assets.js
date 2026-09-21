@@ -82,18 +82,28 @@ async function main() {
     return {
       avatarRemoved: !document.getElementById('account-center-btn'),
       controlsOrdered: updateWidget?.nextElementSibling === version
-        && version?.nextElementSibling === document.getElementById('shell-network-magic')
-        && document.getElementById('shell-network-magic')?.nextElementSibling === theme
-        && theme?.nextElementSibling === appLauncher,
+        && version?.nextElementSibling === theme
+        && theme?.nextElementSibling === document.getElementById('shell-network-magic')
+        && document.getElementById('shell-network-magic')?.nextElementSibling === appLauncher
+        && appLauncher?.nextElementSibling === document.getElementById('shell-ai-control-btn'),
       homeButtonFirst: document.getElementById('tabs-container')?.firstElementChild?.id === 'home-tab-btn',
-      appLogoLauncher: !!appLauncher?.querySelector('img.shell-app-logo[data-app-logo]'),
+      accountCenterButton: appLauncher?.tagName === 'BUTTON'
+        && appLauncher?.textContent.trim() === '个人中心'
+        && !!appLauncher?.querySelector('.shell-action-icon'),
+      networkMagicButton: document.getElementById('shell-network-magic-toggle')?.textContent.trim() === '内置代理'
+        && !!document.getElementById('shell-network-magic-toggle')?.querySelector('.shell-action-icon'),
+      aiControlButton: document.getElementById('shell-ai-control-btn')?.textContent.trim() === 'AI 控制'
+        && !!document.getElementById('shell-ai-control-btn')?.querySelector('.shell-action-icon'),
+      matchingActionIcons: !!appLauncher?.querySelector('.shell-action-icon')
+        && !!document.getElementById('shell-ai-control-btn')?.querySelector('.shell-action-icon')
+        && !!document.getElementById('shell-network-magic-toggle')?.querySelector('.shell-action-icon'),
       modernCreateIcon: !!createButton?.querySelector('svg.new-window-icon') && createButton.textContent.trim() === '',
       taskbarAtBottom: document.getElementById('tab-bar')?.getBoundingClientRect().bottom === window.innerHeight,
     };
   })()`);
   console.log(JSON.stringify({ sidebarPath, accountPath, logos, accountPanel, appShellPath, shellControls }));
   if (Object.values(shellControls).some((value) => value !== true)) {
-    throw new Error('主窗口底部任务栏控件顺序、图标或个人中心头像移除异常');
+    throw new Error('主窗口底部任务栏控件顺序、图标或个人中心入口异常');
   }
   window.destroy();
 }

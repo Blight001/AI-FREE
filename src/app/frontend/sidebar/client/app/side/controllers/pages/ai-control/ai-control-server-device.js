@@ -5,7 +5,7 @@ function aiServerDeviceErrorMessage(error, fallback = '') {
 }
 
 function showAiConfigPage(page = 'custom') {
-  const selected = page === 'server' ? 'server' : 'custom';
+  const selected = page === 'server' || page === 'codex' ? page : 'custom';
   document.querySelectorAll('[data-ai-config-page]').forEach((button) => {
     const active = button.dataset.aiConfigPage === selected;
     button.classList.toggle('is-active', active);
@@ -18,9 +18,12 @@ function showAiConfigPage(page = 'custom') {
   if (subtitle) {
     subtitle.textContent = selected === 'server'
       ? '登录 HeySure，把当前软件注册为可调用 MCP 的自定义设备'
-      : '支持 OpenAI Chat Completions 兼容接口';
+      : selected === 'codex'
+        ? '桥接默认启动，让 Codex 调用 AI-FREE 已授权的 MCP 工具'
+        : '支持 OpenAI Chat Completions 兼容接口';
   }
   if (selected === 'server') void loadAiServerDeviceStatus();
+  if (selected === 'codex') window.refreshExternalCodexPreference?.();
 }
 
 function setAiServerDeviceBusy(busy) {

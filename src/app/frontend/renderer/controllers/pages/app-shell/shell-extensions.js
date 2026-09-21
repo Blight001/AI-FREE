@@ -2,6 +2,7 @@
   const el = (id) => document.getElementById(id);
   let state = { plugins: [] };
   let busy = false;
+  const openDetailIds = new Set();
 
   function status(message, type = '') {
     const target = el('extension-manager-status');
@@ -15,6 +16,36 @@
     target.type = 'button'; target.className = className; target.textContent = label;
     target.disabled = disabled; target.addEventListener('click', handler);
     return target;
+  }
+
+  function pluginIntro(plugin) {
+    if (plugin.missing === true) return '插件目录不存在，请重新导入';
+    return String(plugin.hint || plugin.description || `版本 ${plugin.version || '未知'}`).trim();
+  }
+
+  function pluginDetails(plugin) {
+    if (plugin.missing === true) return '';
+    const description = String(plugin.description || '').trim();
+    const hint = String(plugin.hint || '').trim();
+    const lines = [];
+    if (description) lines.push(description);
+    if (hint && hint !== description) lines.push(hint);
+    if (plugin.version) lines.push(`版本 ${plugin.version}`);
+    return lines.join('\n');
+  }
+
+  function pluginDetailId(plugin) {
+    const safeId = String(plugin.id || '').replace(/[^a-zA-Z0-9_-]/g, '');
+    return safeId ? `extension-plugin-detail-${safeId}` : '';
+  }
+
+  function applyDetailsOpen(pluginId, detailsBtn, detailsBody, open) {
+    if (!detailsBtn || !detailsBody) return;
+    detailsBody.hidden = !open;
+    detailsBtn.textContent = open ? '收起' : '详情';
+    detailsBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) openDetailIds.add(pluginId);
+    else openDetailIds.delete(pluginId);
   }
 
   function render() {
@@ -39,15 +70,38 @@
       }
       const main = document.createElement('div'); main.className = 'extension-plugin-main';
       const name = document.createElement('strong'); name.textContent = plugin.name || '未命名插件';
-      const detail = document.createElement('span');
-      detail.textContent = plugin.missing ? '插件目录不存在，请重新导入' : (plugin.description || plugin.hint || `版本 ${plugin.version || '未知'}`);
-      main.append(name, detail);
+      const intro = document.createElement('div'); intro.className = 'extension-plugin-intro';
+      const summary = document.createElement('span');
+      summary.className = 'extension-plugin-summary';
+      summary.textContent = pluginIntro(plugin);
+      intro.append(summary);
+      const detailsText = pluginDetails(plugin);
+      let detailsBtn = null;
+      const detailsBody = document.createElement('p');
+      detailsBody.className = 'extension-plugin-detail-body';
+      const detailId = pluginDetailId(plugin);
+      if (detailId) detailsBody.id = detailId;
+      detailsBody.textContent = detailsText;
+      if (detailsText) {
+        detailsBtn = button('详情', 'extension-plugin-details', () => {
+          applyDetailsOpen(plugin.id, detailsBtn, detailsBody, detailsBody.hidden);
+        });
+        if (detailId) detailsBtn.setAttribute('aria-controls', detailId);
+        applyDetailsOpen(plugin.id, detailsBtn, detailsBody, openDetailIds.has(plugin.id));
+        intro.append(detailsBtn);
+      } else {
+        detailsBody.hidden = true;
+      }
+      main.append(name, intro);
       const actions = document.createElement('div'); actions.className = 'extension-plugin-actions';
       const toggle = button(plugin.enabled === true ? '已启用' : '已停用', 'extension-plugin-toggle', () => void setEnabled(plugin), busy || plugin.missing === true);
       toggle.classList.toggle('is-enabled', plugin.enabled === true);
       actions.append(toggle);
       if (!plugin.builtin) actions.append(button('删除', 'extension-plugin-remove', () => void removePlugin(plugin), busy));
-      row.append(main, actions); list.append(row);
+      row.append(main);
+      if (detailsText) row.append(detailsBody);
+      row.append(actions);
+      list.append(row);
     });
   }
 

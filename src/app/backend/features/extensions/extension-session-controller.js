@@ -62,8 +62,10 @@ class ExtensionSessionController {
 
   resolveEnabledPluginPath(plugin) {
     if (plugin?.enabled !== true || plugin?.missing === true) return '';
-    const source = this.deps.prepareCompatExtensionPath(plugin) || plugin.path;
-    return this.deps.normalizeAbsolutePath(source);
+    // Unified browser launches must use the directory selected by the user.
+    // Compatibility preparation used to create a second runtime copy, which
+    // made edits and updates to the selected extension invisible to Chromium.
+    return this.deps.normalizeAbsolutePath(plugin.path);
   }
 
   hasManifest(pluginPath) {

@@ -52,9 +52,9 @@ function createAiSupportService(deps = {}) {
     return true;
   }
   async function workflow(input = {}) {
-    const { connection_id: connectionId, action, mode } = input;
+    const { connection_id: connectionId, ...args } = input;
     if (!deps.browserAutomationBridge?.dispatch) throw new Error('浏览器控制尚未就绪');
-    return deps.browserAutomationBridge.dispatch(connectionId, 'browser_workflow', { action, ...(mode !== undefined ? { mode } : {}) });
+    return deps.browserAutomationBridge.dispatch(connectionId, 'browser_workflow', args);
   }
 
   return {

@@ -3,6 +3,7 @@ const { createBrowserTutorialController } = require('../features/browser/browser
 const { createBrowserNetworkController } = require('../features/browser/browser-network-controller');
 const { createBrowserTabLauncher } = require('../features/browser/browser-tab-launcher');
 const { createBrowserRuntimeSettingsController } = require('../features/browser/browser-runtime-settings-controller');
+const { persistClosedTabIconToBrowserHistory } = require('../features/browser/browser-history-service');
 
 function isUsableWebContents(webContents) {
   return Boolean(webContents) && !webContents.isDestroyed?.();
@@ -159,6 +160,7 @@ class TabManagerRuntime {
       resolveActiveTabId: () => this.resolveActiveTabId(),
       resolveDefaultTabUrl: this.resolveDefaultTabUrl,
       resolveIsSidebarVisible: () => this.resolveIsSidebarVisible(),
+      getUiScale: this.deps.getUiScale,
       resolveMainWindow: () => this.resolveMainWindow(),
       resolveSideView: () => this.resolveSideView(),
       resolveTabBrowserProfile: this.deps.resolveTabBrowserProfile,
@@ -233,7 +235,13 @@ class TabManagerRuntime {
     try {
       const response = await this.deps.browserRuntimeManager.listTabs(tabId, 'chromium');
       const website = readLiveWebsite(resolveLiveChromiumTab(response));
-      if (applyLiveWebsite(tab, website)) this.deps.updateTabs(true);
+      if (applyLiveWebsite(tab, website)) {
+        persistClosedTabIconToBrowserHistory({
+          getTabs: () => this.resolveTabs(),
+          sendToSide: this.deps.sendToSide,
+        }, tab);
+        this.deps.updateTabs(true);
+      }
     } catch (_) {}
     this.scheduleWebsiteIconSync(tabId, 2000);
   }
@@ -346,6 +354,10 @@ class TabManagerRuntime {
     this.clearWebsiteIconSync(tabId);
     const orderedTabIds = Array.from(tabs.keys());
     const tabToClose = tabs.get(tabId);
+    persistClosedTabIconToBrowserHistory({
+      getTabs: () => tabs,
+      sendToSide: this.deps.sendToSide,
+    }, tabToClose);
     this.hideClosingTab(tabId);
     tabs.delete(tabId);
     this.notifyClosedAccount(tabId, tabToClose);

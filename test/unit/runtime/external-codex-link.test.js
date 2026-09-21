@@ -7,6 +7,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const {
+  buildCodexCopyText,
   buildCodexMcpConfig,
   createExternalCodexLink,
   mergeCodexConfig,
@@ -23,6 +24,21 @@ test('Codex link uses a dynamic stdio adapter instead of a rotating HTTP token',
   assert.ok(config.includes(JSON.stringify('C:/AI-FREE/AI-FREE.exe')));
   assert.match(config, /--descriptor/);
   assert.doesNotMatch(config, /token|x-ai-free-mcp-token/);
+});
+
+test('copied Codex text is a setup prompt, not a raw config.toml dump', () => {
+  const copyText = buildCodexCopyText({
+    executablePath: 'C:/AI-FREE/AI-FREE.exe',
+    entryPath: 'C:/AI-FREE/codex-entry.js',
+    descriptorPath: 'C:/AI-FREE/bridge.json',
+  });
+  assert.match(copyText, /接到本机正在运行的 AI-FREE/);
+  assert.match(copyText, /安装 Codex 插件/);
+  assert.match(copyText, /codex mcp add ai_free/);
+  assert.match(copyText, /AI-FREE\.exe/);
+  assert.match(copyText, /--descriptor/);
+  assert.doesNotMatch(copyText, /\[mcp_servers\.ai_free\]/);
+  assert.doesNotMatch(copyText, /token|x-ai-free-mcp-token/);
 });
 
 test('Codex link updates only its managed block and preserves user config', () => {
@@ -53,6 +69,8 @@ test('Codex link writes an atomic config and reports automatic connection', () =
     assert.equal(link.connect().linked, true);
     assert.equal(link.getStatus().linked, true);
     assert.match(link.getConfig(), /AI-FREE\.exe/);
+    assert.match(link.getCopyText(), /codex mcp add ai_free/);
+    assert.doesNotMatch(link.getCopyText(), /\[mcp_servers\.ai_free\]/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

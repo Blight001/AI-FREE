@@ -27,24 +27,9 @@ function bindVipPlanControls() {
     closeVipBenefitsDialog();
     safeGetEl('unified-gift-code')?.focus?.();
   });
-  safeGetEl('vip-gold-theme-action')?.addEventListener('click', activateVipGoldTheme);
   safeGetEl('account-vip-card')?.addEventListener('click', openVipAccountCenter);
   safeGetEl('unified-redeem-gift')?.addEventListener('click', redeemUnifiedGiftCode);
   safeGetEl('unified-gift-code')?.addEventListener('keydown', redeemGiftCodeOnEnter);
-}
-
-function activateVipGoldTheme() {
-  const status = safeGetEl('vip-plan-status');
-  if (window.isSidebarVipActive?.() !== true) {
-    if (status) status.textContent = '土豪金主题为 VIP 专属权益，请先开通 VIP';
-    return;
-  }
-  document.documentElement.classList.remove('theme-light');
-  document.documentElement.classList.add('theme-gold');
-  document.documentElement.dataset.theme = 'gold';
-  try { localStorage.setItem('ai-free.control-panel.theme', 'gold'); } catch (_) {}
-  window.aiFree?.ui?.emitAppThemeChanged?.('gold');
-  if (status) status.textContent = '土豪金主题已启用';
 }
 
 function redeemGiftCodeOnEnter(event) {

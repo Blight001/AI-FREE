@@ -1,6 +1,5 @@
 const crypto = require('crypto');
 const { createExtensionFileUtils } = require('../features/extensions/extension-file-utils');
-const { createExtensionCompatService } = require('../features/extensions/extension-compat-service');
 const { createExtensionDiscoveryService } = require('../features/extensions/extension-discovery-service');
 const { createExtensionSessionController } = require('../features/extensions/extension-session-controller');
 const { createExtensionWatcher } = require('../features/extensions/extension-watcher');
@@ -11,29 +10,6 @@ const { readJsonFileSafe, readStoreConfigFile, writeStoreConfigFile } = require(
 function createManagerFileUtils(runtime) {
   const { app, fs, path } = runtime.deps;
   return createExtensionFileUtils({ app, fs, path, compatCacheDirName: config.COMPAT_CACHE_DIR_NAME });
-}
-
-function createManagerCompatService(runtime) {
-  const { fs, logger, path } = runtime.deps;
-  const files = runtime.files;
-  return createExtensionCompatService({
-    compatCacheSchema: config.COMPAT_CACHE_SCHEMA,
-    compatShimFile: config.COMPAT_SHIM_FILE,
-    compatShimMarker: config.COMPAT_SHIM_MARKER,
-    copyDirectoryRecursive: files.copyDirectoryRecursive,
-    fs,
-    hashId: runtime.hashId.bind(runtime),
-    isPathInside: files.isPathInside,
-    listExtensionTextFiles: files.listExtensionTextFiles,
-    logger,
-    normalizeAbsolutePath: runtime.normalizeAbsolutePath.bind(runtime),
-    path,
-    readJsonFile: runtime.readJsonFile.bind(runtime),
-    resolveCompatCacheRoot: files.resolveCompatCacheRoot,
-    sanitizeManifestPermissionsForElectron: config.sanitizeManifestPermissionsForElectron,
-    scanExtensionCompatNeeds: files.scanExtensionCompatNeeds,
-    toSafeFileName: files.toSafeFileName,
-  });
 }
 
 function createManagerDiscovery(runtime) {
@@ -60,7 +36,6 @@ function createManagerSessions(runtime) {
     app, fs, getActiveTabId, getTabs, logger, path,
     getState: () => runtime.state,
     normalizeAbsolutePath: runtime.normalizeAbsolutePath.bind(runtime),
-    prepareCompatExtensionPath: runtime.compat.prepareCompatExtensionPath,
   });
 }
 
@@ -105,7 +80,6 @@ class ExtensionManagerRuntime {
     });
     this.state = { developerModeEnabled: true, plugins: [] };
     this.files = createManagerFileUtils(this);
-    this.compat = createManagerCompatService(this);
     this.discovery = createManagerDiscovery(this);
     this.sessions = createManagerSessions(this);
     this.watcher = createManagerWatcher(this);

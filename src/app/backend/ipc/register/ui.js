@@ -1,6 +1,7 @@
 const { BrowserWindow, clipboard, nativeTheme, shell } = require('electron');
 const { resolveTabTitle } = require('../../services/tab-common');
 const { createTabContextMenuController } = require('../../features/browser/tab-context-menu-controller');
+const { createNetworkMagicPopupController } = require('../../features/network/network-magic-popup-controller');
 const { createSidebarFocusHandler } = require('../../features/browser/sidebar-focus-controller');
 const {
   readWindowCloseBehavior,
@@ -10,6 +11,7 @@ const {
   isStartupSupported,
   readStartupSettings,
   updateStartupSettings,
+  withCloseBehaviorStartupSettings,
 } = require('../../features/window/startup-preference');
 
 function uiIpcError(error) {
@@ -307,11 +309,19 @@ function registerSidebarNavigationIPC(ipc, ui) {
   });
 }
 
+function alignedStartupPayload(ctx, overrides = {}) {
+  const current = readStartupSettings(ctx.readStoreConfigSafe, ctx.app);
+  return withCloseBehaviorStartupSettings(
+    { ...current, ...overrides },
+    readWindowCloseBehavior(ctx.readStoreConfigSafe),
+  );
+}
+
 function registerStartupPreferenceIPC(ipc, ctx) {
   ipc.handle('get-startup-settings', async () => ({
     ok: true,
     data: {
-      ...readStartupSettings(ctx.readStoreConfigSafe, ctx.app),
+      ...alignedStartupPayload(ctx),
       supported: isStartupSupported(ctx.app, process.platform),
     },
   }));
@@ -320,7 +330,7 @@ function registerStartupPreferenceIPC(ipc, ctx) {
       app: ctx.app,
       readStoreConfigSafe: ctx.readStoreConfigSafe,
       writeStoreConfigSafe: ctx.writeStoreConfigSafe,
-      payload: { openAtLogin: payload?.enabled === true, startMinimized: payload?.enabled === true },
+      payload: alignedStartupPayload(ctx, { openAtLogin: payload?.enabled === true }),
       options: { platform: process.platform, execPath: process.execPath },
     })
   ));
@@ -336,10 +346,10 @@ function registerExternalCodexIPC(ipc, ctx) {
     };
   });
   ipc.handle('copy-external-codex-config', async () => {
-    const linkedConfig = ctx.externalCodexLink?.getConfig?.();
-    if (!linkedConfig) return { ok: false, error: '外部 Codex 自动连接组件尚未装配' };
+    const copyText = ctx.externalCodexLink?.getCopyText?.() || ctx.externalCodexLink?.getConfig?.();
+    if (!copyText) return { ok: false, error: '外部 Codex 自动连接组件尚未装配' };
     try {
-      clipboard.writeText(linkedConfig);
+      clipboard.writeText(copyText);
       return { ok: true, data: { mode: 'stdio' } };
     } catch (error) {
       return { ok: false, error: uiIpcError(error) };
@@ -361,25 +371,40 @@ function registerUiUtilityIPC(ipc, ctx) {
     const width = ui.setSidebarWidth?.(payload.width) || 0;
     return width > 0 ? { ok: true, width } : { ok: false, message: '侧边栏当前不可调整' };
   });
+  ipc.on('set-ui-scale', (_event, payload = {}) => {
+    ui.setUiScale?.(payload.scale);
+  });
   ipc.handle('get-window-close-behavior', async () => ({
     ok: true,
     data: { behavior: readWindowCloseBehavior(ctx.readStoreConfigSafe) },
   }));
-  ipc.handle('set-window-close-behavior', async (_event, payload = {}) => (
-    writeWindowCloseBehavior(
+  ipc.handle('set-window-close-behavior', async (_event, payload = {}) => {
+    const saved = writeWindowCloseBehavior(
       ctx.readStoreConfigSafe,
       ctx.writeStoreConfigSafe,
       String(payload?.behavior || ''),
-    )
-  ));
+    );
+    if (!saved.ok) return saved;
+    const current = readStartupSettings(ctx.readStoreConfigSafe, ctx.app);
+    const aligned = withCloseBehaviorStartupSettings(current, saved.data?.behavior);
+    if (current.startMinimized !== aligned.startMinimized) {
+      const synced = updateStartupSettings({
+        app: ctx.app,
+        readStoreConfigSafe: ctx.readStoreConfigSafe,
+        writeStoreConfigSafe: ctx.writeStoreConfigSafe,
+        payload: aligned,
+        options: { platform: process.platform, execPath: process.execPath },
+      });
+      if (!synced.ok) return synced;
+    }
+    return saved;
+  });
   registerStartupPreferenceIPC(ipc, ctx);
   registerExternalCodexIPC(ipc, ctx);
   registerSidebarNavigationIPC(ipc, ui);
+  const networkMagicPopup = createNetworkMagicPopupController({ ui });
   ipc.on('toggle-network-magic-panel', (_event, payload = {}) => {
-    ui.ensureSidebarVisible?.();
-    ui.sendToSide?.('network-magic-panel-toggle', {
-      open: payload?.open === true,
-    });
+    networkMagicPopup.toggle(payload);
   });
   ipc.on('ensure-sidebar-visible', () => ui.ensureSidebarVisible?.());
   ipc.on('request-account-center', () => {

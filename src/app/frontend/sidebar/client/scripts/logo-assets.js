@@ -1,24 +1,10 @@
 (function initLogoAssets() {
   'use strict';
 
-  const SOURCE_LOGO_PATH = '../../../assets/logo.ico';
-  const PACKAGED_LOGO_PATH = '../../../../resource/logo.ico';
+  const moduleUrl = document.currentScript.src;
 
-  function isPackagedSidebarUrl(url = window.location.href) {
-    try {
-      return decodeURIComponent(new URL(url).pathname)
-        .split('/')
-        .some((segment) => segment.toLowerCase() === 'app.asar');
-    } catch (_) {
-      return false;
-    }
-  }
-
-  function resolveLogoUrl(url = window.location.href) {
-    const relativePath = isPackagedSidebarUrl(url)
-      ? PACKAGED_LOGO_PATH
-      : SOURCE_LOGO_PATH;
-    return new URL(relativePath, url).href;
+  function resolveLogoUrl(url = moduleUrl) {
+    return globalThis.AiFreeAppAssets.resolveLogoUrl(url);
   }
 
   function applyLogoSources(root = document) {

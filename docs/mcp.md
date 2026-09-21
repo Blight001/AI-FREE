@@ -213,6 +213,6 @@ AI 对话和 HeySure 设备端都会发现当前所有已连接浏览器的工�
 - 本地 AI、Codex Bridge 和 HeySure adapter 共用
   [`automation-tool-contract.js`](../src/app/backend/services/automation-tool-contract.js)
   中的 Schema、浏览器路由、超时、路由参数清理和错误规范化规则；三端仅保留各自的传输与鉴权适配。
-- AI-FREE 启动时会自动启动本机 Codex Bridge，并在检测到 `~/.codex/config.toml` 时写入受标记管理的 `ai_free` MCP 配置。配置使用本地 stdio adapter 动态读取桥接描述文件，因此桥接令牌刷新或应用重启后不需要重新复制令牌；个人中心的“复制连接配置”可用于手动安装或修复该配置。
+- AI-FREE 启动时会自动启动本机 Codex Bridge，并在检测到 `~/.codex/config.toml` 时写入受标记管理的 `ai_free` MCP 配置。配置使用本地 stdio adapter 动态读取桥接描述文件，因此桥接令牌刷新或应用重启后不需要重新复制令牌；AI 控制「添加自定义模型」弹窗中的「外部 Codex」栏目可复制一段给 Codex 看的对接说明，让它按自己的 MCP 配置方式接入。
 - Codex adapter 只访问 `127.0.0.1` 的 AI-FREE 网关，不把桥接令牌写入 Codex 配置；外部调用仍受现有 VIP 授权和浏览器 MCP 敏感参数限制。
 - 旧 `software_window`、`sandbox_files` 和 `browser_download` 名称只在执行层保留兼容，不再出现在公开工具目录；新调用分别使用 `windows_tab`、`run_command` 和 `browser_file`。

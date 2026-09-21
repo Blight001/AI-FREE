@@ -14,10 +14,13 @@ function renderVipPermissionComparison(items = [], tiers = []) {
   const container = safeGetEl('vip-permission-rows');
   const table = safeGetEl('vip-permission-table');
   const tierList = Array.isArray(tiers) ? tiers : [];
-  const comparisonItems = Array.isArray(items) ? items.filter((item) => (
-    item?.code !== 'weekly_wool_quota'
-    || tierList.some((tier) => Number(tier?.weekly_wool_quota || 0) > 0)
-  )) : [];
+  const comparisonItems = Array.isArray(items) ? items.filter((item) => {
+    const code = String(item?.code || '').toLowerCase();
+    const name = String(item?.name || '');
+    if (code.includes('gold') || name.includes('土豪金') || name.includes('专属主题')) return false;
+    return item?.code !== 'weekly_wool_quota'
+      || tierList.some((tier) => Number(tier?.weekly_wool_quota || 0) > 0);
+  }) : [];
   const hasComparison = Boolean(container && comparisonItems.length && tierList.length);
   if (table) table.hidden = !hasComparison;
   if (!hasComparison) {
@@ -126,13 +129,6 @@ function renderVipMembershipTitle(membership) {
   if (title) title.textContent = `${activeName} 已开通`;
 }
 
-function renderVipThemeAction(vipActive) {
-  const themeAction = safeGetEl('vip-gold-theme-action');
-  if (!themeAction) return;
-  themeAction.classList.toggle('is-locked', !vipActive);
-  themeAction.title = vipActive ? '立即切换土豪金主题' : '开通 VIP 后解锁土豪金主题';
-}
-
 function renderVipPlans(result = {}) {
   vipPlanCatalog = Array.isArray(result.plans) ? result.plans : [];
   vipTierCatalog = Array.isArray(result.tiers) ? result.tiers : [];
@@ -142,8 +138,6 @@ function renderVipPlans(result = {}) {
   const activeTier = membership.vip_tier;
   renderVipMembershipTitle(membership);
   renderVipPlanTier(activeTier || selectedVipTier);
-  const isSidebarVipActive = typeof window.isSidebarVipActive === 'function' && window.isSidebarVipActive() === true;
-  renderVipThemeAction(membership.is_vip === true || isSidebarVipActive);
 }
 
 async function loadVipPlans() {

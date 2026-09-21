@@ -96,6 +96,26 @@ test('完整聊天 schema 校验消息、配额、连接和流式控制字段', 
   );
 });
 
+test('AI 工作流 schema 允许报告详情开关', () => {
+  assert.deepEqual(validateIpcPayload('ai-control-workflow', {
+    connection_id: 'browser-1',
+    action: 'report',
+    include_details: true,
+  }), {
+    connection_id: 'browser-1',
+    action: 'report',
+    include_details: true,
+  });
+  assert.throws(
+    () => validateIpcPayload('ai-control-workflow', {
+      connection_id: 'browser-1',
+      action: 'report',
+      include_details: 'yes',
+    }),
+    IpcPayloadError,
+  );
+});
+
 test('AI 设置与自定义 API schema 兼容数字字符串并限制敏感字段形状', () => {
   assert.deepEqual(validateIpcPayload('set-ai-control-settings', { mcpCallLimit: '100' }), { mcpCallLimit: '100' });
   assert.throws(

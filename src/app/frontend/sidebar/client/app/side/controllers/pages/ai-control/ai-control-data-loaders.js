@@ -1,6 +1,6 @@
   async function refreshModelAccessState() {
     try {
-      const session = await window.aiFree.account.getSession();
+      const session = await window.aiFree?.account?.getSession?.();
       state.accountAuthenticated = session?.authenticated === true;
       state.vipActive = window.isSidebarVipActive?.(session) === true;
     } catch (_) {
@@ -36,31 +36,57 @@
     select.disabled = false;
   }
 
+  function selectHasModelOptions(select) {
+    return Array.from(select?.options || []).some((option) => option.value);
+  }
+
+  let modelsLoadPromise = null;
+  let modelsLoadQueued = false;
   async function loadModels(preferredModelId = '') {
+    if (modelsLoadPromise) {
+      modelsLoadQueued = true;
+      return modelsLoadPromise;
+    }
     const select = el('ai-chat-model');
     const getModels = getAiModelsApi();
     if (!select || !getModels) return;
     const preferred = String(preferredModelId || state.currentSession?.modelId || select.value || '');
-    select.disabled = true;
-    select.innerHTML = '<option value="">正在读取可用模型...</option>';
-    syncSelectUi(select);
-    setStatus('');
-    try {
-      await refreshModelAccessState();
-      syncSendState();
-      const result = requireAiDataResult(await getModels(), '模型加载失败');
-      const models = Array.isArray(result.models) ? result.models : [];
-      renderModelOptions(select, models, preferred);
+    const showingPlaceholder = !selectHasModelOptions(select);
+    if (showingPlaceholder) {
+      select.disabled = true;
+      select.innerHTML = '<option value="">正在读取可用模型...</option>';
       syncSelectUi(select);
-      renderQuota(result.quota);
-    } catch (error) {
-      select.innerHTML = '<option value="" disabled>暂无可用模型</option>';
-      select.disabled = false;
-      syncSelectUi(select);
-      renderQuota(null);
-      setStatus(aiDataErrorMessage(error));
     }
-    syncSendState();
+    setStatus('');
+    modelsLoadPromise = (async () => {
+      try {
+        await refreshModelAccessState();
+        syncSendState();
+        const result = requireAiDataResult(await getModels(), '模型加载失败');
+        const models = Array.isArray(result.models) ? result.models : [];
+        renderModelOptions(select, models, preferred);
+        syncSelectUi(select);
+        renderQuota(result.quota);
+      } catch (error) {
+        if (!selectHasModelOptions(select)) {
+          select.innerHTML = '<option value="" disabled>暂无可用模型</option>';
+          select.disabled = false;
+          syncSelectUi(select);
+          renderQuota(null);
+        }
+        setStatus(aiDataErrorMessage(error));
+      }
+      syncSendState();
+    })();
+    try {
+      await modelsLoadPromise;
+    } finally {
+      modelsLoadPromise = null;
+      if (modelsLoadQueued) {
+        modelsLoadQueued = false;
+        void loadModels(preferredModelId);
+      }
+    }
   }
 
   // 兼容旧版将兑换入口放在 AI 控制页的结构；统一入口使用新的元素 ID，

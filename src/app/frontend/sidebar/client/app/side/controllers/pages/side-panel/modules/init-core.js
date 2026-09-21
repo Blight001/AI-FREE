@@ -11,13 +11,7 @@ function initSidePanelCore() {
     window.MessageModal.initServerMessageListener();
   }
 
-  const isDevMode = !!(
-    window.env
-    && (
-      String(window.env.APP_DEV_CONSOLE) === '1'
-      || /^(dev|development)$/i.test(String(window.env.NODE_ENV || ''))
-    )
-  );
+  const isDevMode = document.documentElement.classList.contains('development-mode');
 
   if (!isDevMode) {
     document.querySelectorAll('.debug-only').forEach((button) => {

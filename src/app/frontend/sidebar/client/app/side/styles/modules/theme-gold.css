@@ -237,7 +237,7 @@ html.theme-gold .browser-history-item.is-open .browser-history-name {
   color: #e8d9ae;
 }
 
-html.theme-gold .browser-history-item.is-open .browser-history-name::before {
+html.theme-gold .browser-history-item.is-open .browser-history-name-row::before {
   background: #d4b776;
   box-shadow: 0 0 0 2px rgba(212, 183, 118, .18);
 }
@@ -262,10 +262,6 @@ html.theme-gold .info-group {
 
 html.theme-gold .account-profile-cover {
   box-shadow: 0 0 22px rgba(212, 183, 118, .16);
-}
-
-html.theme-gold .vip-gold-theme-action {
-  box-shadow: 0 0 12px rgba(212, 183, 118, .18);
 }
 
 html.theme-gold .settings-primary-btn {

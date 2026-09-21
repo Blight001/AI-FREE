@@ -37,7 +37,11 @@ function createAiModelService(deps = {}) {
     const key = firstText(credentials.key).trim();
     const deviceId = firstText(credentials.deviceId).trim();
     const customModel = createCustomModel(store, licenseCache);
-    if ((!key || !deviceId) && customModel) return { ok: true, models: [customModel], quota: null };
+    if (!key || !deviceId) {
+      return customModel
+        ? { ok: true, models: [customModel], quota: null }
+        : remoteUnavailable(customModel);
+    }
     const httpClient = callOptional(deps, 'getGlobalHttpClient');
     if (!httpClient || typeof httpClient.getAIControlModels !== 'function') {
       return remoteUnavailable(customModel);

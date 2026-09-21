@@ -73,6 +73,15 @@
   line-height: 1.35;
 }
 
+html.theme-light .wool-platform-buttons .open-wool-platform-btn {
+  background: #2f8ae6;
+  box-shadow: none;
+}
+
+html.theme-light .wool-platform-buttons .open-wool-platform-btn:hover:not(:disabled) {
+  background: #1f7bd8;
+}
+
 .wool-platform-remaining {
   margin-left: 2px;
   font-size: .5em;

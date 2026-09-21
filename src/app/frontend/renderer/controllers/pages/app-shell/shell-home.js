@@ -12,6 +12,7 @@
     aiButton?.addEventListener('click', async () => {
       aiButton.disabled = true;
       try {
+        rememberSidebarToggleSource?.('ai-control');
         window.aiFree?.ui?.openAiControlSidebar?.();
       } catch (error) {
         window.MessageModal?.showErrorMessage?.(error?.message || String(error));

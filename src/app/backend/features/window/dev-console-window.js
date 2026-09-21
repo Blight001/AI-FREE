@@ -40,7 +40,7 @@ function createDevConsoleWindowController(deps) {
       if (deps.getDevConsoleWindow() === window) deps.setDevConsoleWindow(null);
     });
     try {
-      await window.loadFile(path.join(__dirname, '../../frontend/views/dev-console.html'));
+      await window.loadFile(path.join(__dirname, '../../views/dev-console.html'));
       if (window.isDestroyed()) return failure('WINDOW_CLOSED', '调试窗口已关闭');
       window.show();
       window.focus();

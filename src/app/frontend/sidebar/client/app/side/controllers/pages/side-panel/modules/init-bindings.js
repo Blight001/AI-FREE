@@ -7,6 +7,11 @@ function initSidePanelBindings() {
   }
   sidePanelBindingsInitialized = true;
 
+  if (document.documentElement.classList.contains('network-magic-popup-page')) {
+    bindClashMiniControls();
+    return;
+  }
+
   const browserSettingsPage = document.documentElement.classList.contains('browser-settings-page');
   if (browserSettingsPage) {
     initSidebarUiListeners();
