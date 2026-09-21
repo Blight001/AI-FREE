@@ -7,11 +7,24 @@ const {
 } = require('./automation-tool-contract');
 
 const BLOCKED_CARD_TOOLS = new Set(['manage_card']);
+const CODEX_AIFREE_MARKER = '__aifree_';
 
 function text(value) { return String(value == null ? '' : value).trim(); }
 
+function normalizeCardToolName(value) {
+  const raw = text(value);
+  if (!raw) return '';
+  if (raw.startsWith('mcp__')) {
+    const markerIndex = raw.lastIndexOf(CODEX_AIFREE_MARKER);
+    if (markerIndex >= 0) return raw.slice(markerIndex + CODEX_AIFREE_MARKER.length).replace(/[-+.]+/g, '_');
+  }
+  if (raw.startsWith('aifree.')) return raw.slice('aifree.'.length).replace(/[-+.]+/g, '_');
+  if (raw.startsWith('aifree_')) return raw.slice('aifree_'.length).replace(/[-+.]+/g, '_');
+  return raw;
+}
+
 function toolDefinition(source = {}) {
-  const name = text(source.name);
+  const name = normalizeCardToolName(source.name);
   if (!name || BLOCKED_CARD_TOOLS.has(name)) return null;
   return {
     name,
@@ -58,12 +71,12 @@ class AutomationCardMcpRouter {
 
   requireBrowserTool(connection, toolName) {
     const tools = this.getConnection(connection.id)?.tools || [];
-    if (tools.some((tool) => text(tool?.name) === toolName)) return;
+    if (tools.some((tool) => normalizeCardToolName(tool?.name) === toolName)) return;
     throw new Error(`窗口「${text(connection.name) || connection.id}」不支持 MCP 工具: ${toolName}`);
   }
 
   async execute(defaultConnectionId, name, rawArgs = {}, options = {}) {
-    const toolName = text(name);
+    const toolName = normalizeCardToolName(name);
     if (!toolName) throw new Error('MCP 步骤缺少 tool');
     if (BLOCKED_CARD_TOOLS.has(toolName)) throw new Error(`自动化卡片禁止递归调用 ${toolName}`);
     const args = rawArgs && typeof rawArgs === 'object' && !Array.isArray(rawArgs) ? { ...rawArgs } : {};
