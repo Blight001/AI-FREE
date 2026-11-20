@@ -9,8 +9,9 @@ test('runtime launch timing exposes profile, host, pipe, process, handshake and 
   const state = { status: 'ready' };
   const runtime = {
     logger: { info: (message) => messages.push(message) },
-    store: { getState: () => state },
-    isProfileVisible: () => false,
+    store: { releaseLock: () => {  } },
+    stateStore: { getState: () => state },
+    isProfileRunning: () => false,
     prepareProfileLaunch: (_id, _profile, _bounds, span) => {
       span.mark('boundsNormalize');
       span.mark('profileStorage');

@@ -4,29 +4,25 @@ const os = require('os');
 const fs = require('fs');
 const path = require('path');
 const projectRoot = path.resolve(__dirname, '../../..');
+const { applyChromiumSessionStartupPolicy, assertSafeChromiumArgs, buildChromiumArgs, buildChromiumEnvironment, getSystemChromiumCandidates, resolveChromiumExecutable, shouldIgnoreChromiumDiagnostic } = require('../../../src/app/backend/browser-runtime/chromium-launcher');
 const {
-  applyChromiumSessionStartupPolicy,
-  assertSafeChromiumArgs,
-  buildChromiumArgs,
-  buildChromiumEnvironment,
   captureChromiumSessionFiles,
-  getSystemChromiumCandidates,
   persistStableChromiumSession,
   prepareChromiumSessionRecovery,
   repairBlankLatestSession,
-  resolveChromiumExecutable,
   restoreChromiumSessionFiles,
-  shouldIgnoreChromiumDiagnostic,
   snapshotHasRestorableSession,
-} = require('../../../src/app/backend/browser-runtime/chromium-launcher');
+} = require('../../../src/app/backend/browser-runtime/chromium-session-recovery');
 const { encodeFrame, MAX_MESSAGE_BYTES, PROTOCOL_VERSION } = require('../../../src/app/backend/browser-runtime/chromium-command-client');
 const {
   legacySafeProfileId,
   ProfileRuntimeStore,
   safeProfileId,
 } = require('../../../src/app/backend/browser-runtime/profile-runtime-store');
+const { RuntimeStateStore } = require('../../../src/app/backend/browser-runtime/runtime-state-store');
 const { RUNTIME_STATUS } = require('../../../src/app/backend/browser-runtime/runtime-types');
 const { prepareSessionImport } = require('../../../src/app/backend/browser-runtime/session-import');
+const { createConfigurationManager } = require('../../fixtures/browser-configuration-runtime');
 const { ChromiumRuntime } = require('../../../src/app/backend/browser-runtime/chromium-runtime');
 const { createTabManager, resolveChromiumExtensionPaths } = require('../../../src/app/backend/services/tab-manager');
 const { createBrowserPartitionCleaner } = require('../../../src/app/backend/services/browser-partitions');
@@ -66,14 +62,15 @@ const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-runtime-test-'));
 try {
   assert.equal(shouldIgnoreChromiumDiagnostic('WSALookupServiceBegin failed with: 10108'), true);
   assert.equal(shouldIgnoreChromiumDiagnostic('WSALookupServiceBegin failed with: 10022'), false);
+  const stateStore = new RuntimeStateStore();
   const store = new ProfileRuntimeStore({ rootDir: root, logger: { warn() {} } });
   const paths = store.ensureProfile({ profileId: 'profile_001', runtimeType: 'chromium' });
   assert(fs.existsSync(paths.chromiumData));
   assert(fs.existsSync(paths.downloads));
-  store.createState('profile_001', 'chromium');
-  store.transition('profile_001', RUNTIME_STATUS.STARTING);
-  store.transition('profile_001', RUNTIME_STATUS.WAITING_PIPE);
-  assert.throws(() => store.transition('profile_001', RUNTIME_STATUS.READY), /非法运行时状态迁移/);
+  stateStore.createState('profile_001', 'chromium');
+  stateStore.transition('profile_001', RUNTIME_STATUS.STARTING);
+  stateStore.transition('profile_001', RUNTIME_STATUS.WAITING_PIPE);
+  assert.throws(() => stateStore.transition('profile_001', RUNTIME_STATUS.READY), /非法运行时状态迁移/);
   store.acquireLock('profile_001');
   assert.throws(() => new ProfileRuntimeStore({ rootDir: root }).acquireLock('profile_001'), /已被进程/);
   assert.throws(() => store.clearBrowserData('profile_001'), /仍在运行/);
@@ -203,9 +200,9 @@ try {
     legacySafeProfileId('本地::same@example.com'),
     '测试数据必须能够复现旧版有损目录名碰撞',
   );
-  store.createState('豆包::account@example.com', 'chromium');
-  assert.equal(store.getState('豆包::account@example.com').profileId, '豆包::account@example.com');
-  store.clearState('豆包::account@example.com');
+  stateStore.createState('豆包::account@example.com', 'chromium');
+  assert.equal(stateStore.getState('豆包::account@example.com').profileId, '豆包::account@example.com');
+  stateStore.clearState('豆包::account@example.com');
 
   const legacyBusinessId = '豆包::legacy@example.com';
   const legacyProfileRoot = path.join(root, legacySafeProfileId(legacyBusinessId));
@@ -516,7 +513,7 @@ try {
   );
   const restartRuntime = new ChromiumRuntime({ logger: { info() {}, warn() {} } });
   const originalProfile = { profileId: 'restart-profile', initialUrl: 'https://example.com/work', extensionPaths: ['extension-a'] };
-  restartRuntime.store = { getState: () => ({ bounds: { x: 0, y: 0, width: 800, height: 600 } }) };
+  restartRuntime.stateStore = { getState: () => ({ bounds: { x: 0, y: 0, width: 800, height: 600 } }) };
   restartRuntime.instances.set('restart-profile', { profile: originalProfile });
   restartRuntime.stop = async () => {};
   let relaunchedProfile = null;
@@ -536,8 +533,8 @@ try {
   let clearCalled = false;
   let clearStopOptions = null;
   let clearedRelaunch = null;
+  clearRuntime.stateStore = { getState: () => ({ bounds: { x: 2, y: 3, width: 900, height: 700 } }) };
   clearRuntime.store = {
-    getState: () => ({ bounds: { x: 2, y: 3, width: 900, height: 700 } }),
     clearBrowserData(profileId) {
       assert.equal(profileId, 'clear-profile');
       clearCalled = true;
@@ -562,7 +559,7 @@ try {
   const serializedOrder = [];
   let finishNavigation;
   const navigationGate = new Promise((resolve) => { finishNavigation = resolve; });
-  serializedRuntime.store = { getState: () => ({ status: RUNTIME_STATUS.READY, bounds: { x: 0, y: 0, width: 800, height: 600 } }) };
+  serializedRuntime.stateStore = { getState: () => ({ status: RUNTIME_STATUS.READY, bounds: { x: 0, y: 0, width: 800, height: 600 } }) };
   serializedRuntime.instances.set('serialized-profile', {
     profile: { profileId: 'serialized-profile', initialUrl: 'about:blank' },
     commandClient: {
@@ -792,10 +789,10 @@ try {
   const magicManager = createTabManager({
     browserRuntimeManager: {
       chromium: { instances: magicInstances, on() {} },
-      async restart(id) {
+      ...createConfigurationManager(magicInstances, async (id) => {
         magicRestarts.push({ id, proxyServer: magicInstances.get(id).profile.proxyServer });
         return { status: 'ready' };
-      },
+      }),
     },
     getTabs: () => magicTabs,
     updateTabs() {},

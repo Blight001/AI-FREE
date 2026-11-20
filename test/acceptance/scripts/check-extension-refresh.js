@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { createTabManager } = require('../../../src/app/backend/services/tab-manager');
+const { createConfigurationManager } = require('../../fixtures/browser-configuration-runtime');
 
 let chromiumRestarts = 0;
 let sidebarEvent = null;
@@ -14,7 +15,8 @@ const tabs = new Map([
 
 const browserRuntimeManager = {
   chromium: { instances: new Map([['chromium-tab', { profile: chromiumProfile }]]) },
-  restart: async () => { chromiumRestarts += 1; return { status: 'ready' }; },
+  ...createConfigurationManager(new Map([['chromium-tab', { profile: chromiumProfile }]]),
+    async () => { chromiumRestarts += 1; return { status: 'ready' }; }),
 };
 const extensionManager = { getEnabledExtensionPaths: () => ['enabled-extension'] };
 const manager = createTabManager({

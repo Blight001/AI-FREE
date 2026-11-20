@@ -112,12 +112,14 @@ function attachChromiumLaunchLogging(options) {
   }
   callOptional(logger, 'info', `[ChromiumRuntime] PID=${child.pid}`);
   forwardOutput(child.stdout, (line) => {
-    diagnostics.record('stdout', line);
-    callOptional(logger, 'log', `[Chromium:${child.pid}] ${line}`);
+    const safeLine = redactSensitiveText(line);
+    diagnostics.record('stdout', safeLine);
+    callOptional(logger, 'log', `[Chromium:${child.pid}] ${safeLine}`);
   });
   forwardOutput(child.stderr, (line) => {
-    diagnostics.record('stderr', line);
-    callOptional(logger, 'warn', `[Chromium:${child.pid}] ${line}`);
+    const safeLine = redactSensitiveText(line);
+    diagnostics.record('stderr', safeLine);
+    callOptional(logger, 'warn', `[Chromium:${child.pid}] ${safeLine}`);
   }, shouldIgnore);
   return diagnostics;
 }

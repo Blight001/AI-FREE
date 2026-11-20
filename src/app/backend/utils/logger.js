@@ -1,6 +1,6 @@
 const fs = require('fs');
 const { appContext } = require('../runtime/app-context');
-const os = require('os');
+const { resolveUserDataDir } = require('../config/user-data-path');
 const path = require('path');
 const util = require('util');
 
@@ -37,44 +37,6 @@ function installShutdownUncaughtExceptionGuard({ processRef = process } = {}) {
   processRef.prependListener('uncaughtException', handler);
   shutdownExceptionGuardTargets.add(processRef);
   return true;
-}
-
-// 处理：safeGetAppPath的具体业务逻辑。
-function safeGetAppPath(app, name) {
-  try {
-    if (app && typeof app.getPath === 'function') {
-      const value = app.getPath(name);
-      if (value) return value;
-    }
-  } catch (_) {}
-  return '';
-}
-
-// 获取/读取/解析：resolveUserDataDir的具体业务逻辑。
-function resolveUserDataDir(app) {
-  const fromElectron = safeGetAppPath(app, 'userData');
-  if (fromElectron) return fromElectron;
-
-  const appName = String(
-    (app && typeof app.getName === 'function' && app.getName())
-    || process.env.ELECTRON_APP_NAME
-    || process.env.npm_package_name
-    || 'ai-free'
-  ).trim() || 'ai-free';
-
-  if (process.platform === 'win32') {
-    const roaming = process.env.APPDATA;
-    if (roaming) return path.join(roaming, appName);
-  }
-
-  if (process.platform === 'darwin') {
-    return path.join(os.homedir(), 'Library', 'Application Support', appName);
-  }
-
-  const xdgConfig = process.env.XDG_CONFIG_HOME;
-  if (xdgConfig) return path.join(xdgConfig, appName);
-
-  return path.join(os.homedir(), '.config', appName);
 }
 
 // 格式化/规范化：formatRunStamp的具体业务逻辑。

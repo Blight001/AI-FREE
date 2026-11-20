@@ -1,5 +1,5 @@
-'use strict';
-
+// Bundled inside the environment template; config is supplied by its lexical scope.
+(() => {
 function defineNavigatorValue(target, key, value) {
   if (target == null || value == null || value === '') return;
   try { Object.defineProperty(target, key, { configurable: true, get: () => value }); } catch (_) {}
@@ -13,10 +13,13 @@ function hideNavigatorValue(target, key) {
   try { Object.defineProperty(target, key, { configurable: true, value: undefined }); } catch (_) {}
 }
 
+/** @param {any} navigatorObject
+ * @param {ReturnType<typeof import('../../app/backend/browser-runtime/browser-environment-script').normalizeBrowserEnvironmentScriptSettings>} config
+ */
 function installUserAgentData(navigatorObject, config) {
   const nativeData = navigatorObject.userAgentData;
   const customBrands = config.secChUaBrands.length > 0;
-  if (!customBrands && !config.model && !config.userAgentDataPlatform) return;
+  if (!customBrands && !config.model && !config.uaDataPlatform) return;
   const brands = customBrands
     ? config.secChUaBrands.map((item) => Object.freeze({ ...item }))
     : Array.from(nativeData?.brands || [], (item) => Object.freeze({ brand: item.brand, version: item.version }));
@@ -24,7 +27,7 @@ function installUserAgentData(navigatorObject, config) {
     ? config.highEntropy.fullVersionList.map((item) => Object.freeze({ ...item }))
     : Array.from(nativeData?.brands || [], (item) => Object.freeze({ brand: item.brand, version: item.version }));
   const highEntropy = { ...config.highEntropy, fullVersionList };
-  const platform = config.userAgentDataPlatform || nativeData?.platform || config.platformName;
+  const platform = config.uaDataPlatform || nativeData?.platform || config.platformName;
   const data = Object.freeze({
     brands: Object.freeze(brands),
     mobile: Boolean(config.mobile),
@@ -196,16 +199,5 @@ function installBrowserNavigatorEnvironment(config) {
   installWebRtc(config.webrtcMode);
 }
 
-function buildBrowserNavigatorEnvironmentSource() {
-  const dependencies = [
-    defineNavigatorValue, defineNavigatorMethod, hideNavigatorValue, installUserAgentData,
-    getUserAgentHighEntropyValues, hasConfiguredHint,
-    installGeolocation, withGeolocationPermission, createConfiguredPosition, installWebRtc,
-    wrapRelayConfiguration, relayConfiguration, replaceWebRtcConstructor, webRtcBlockedError,
-    installBrowserNavigatorEnvironment,
-  ];
-  const declarations = dependencies.map((fn) => `const ${fn.name} = ${fn.toString()};`).join('\n');
-  return `(() => { ${declarations}\ninstallBrowserNavigatorEnvironment(config); })();`;
-}
-
-module.exports = { buildBrowserNavigatorEnvironmentSource };
+installBrowserNavigatorEnvironment(config);
+})();

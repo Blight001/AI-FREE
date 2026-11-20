@@ -1,8 +1,7 @@
 'use strict';
 
-const { buildBrowserGraphicsEnvironmentSource } = require('./browser-environment-graphics');
-const { buildBrowserMediaEnvironmentSource } = require('./browser-environment-media');
-const { buildBrowserNavigatorEnvironmentSource } = require('./browser-environment-navigator');
+const { loadBrowserEnvironmentTemplate } = require('./browser-environment-assets');
+const { resolveBrowserIdentity } = require('./browser-environment-identity');
 
 function record(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
@@ -18,49 +17,12 @@ function boundedNumber(value, minimum, maximum) {
   return number;
 }
 
-function normalizeBrands(value) {
-  if (!Array.isArray(value)) return [];
-  return value.slice(0, 8).map((item) => ({
-    brand: limitedText(item?.brand, 64),
-    version: limitedText(item?.version, 32),
-  })).filter((item) => item.brand && item.version);
-}
-
-function platformValues(value) {
-  const platform = limitedText(value, 32).toLowerCase();
-  if (platform.includes('mac')) return { navigator: 'MacIntel', uaData: 'macOS' };
-  if (platform.includes('linux')) return { navigator: 'Linux x86_64', uaData: 'Linux' };
-  return { navigator: 'Win32', uaData: 'Windows' };
-}
-
 function normalizeGeolocation(value) {
   const source = record(value);
   const latitude = boundedNumber(source.latitude, -90, 90);
   const longitude = boundedNumber(source.longitude, -180, 180);
   if (latitude === null || longitude === null || source.permission === 'block' || source.enabled === false) return null;
   return { latitude, longitude, accuracy: boundedNumber(source.accuracy, 1, 100000) || 100 };
-}
-
-function normalizeHighEntropy(settings, brands) {
-  const deviceName = record(settings.deviceName);
-  const result = {
-    architecture: limitedText(settings.architecture, 32),
-    bitness: limitedText(settings.bitness, 8),
-    model: limitedText(deviceName.mode === 'custom' ? deviceName.value : settings.model, 64),
-    platformVersion: limitedText(settings.platformVersion, 32),
-    uaFullVersion: limitedText(settings.uaFullVersion, 32),
-    fullVersionList: normalizeBrands(settings.uaFullVersionList),
-    wow64: settings.wow64 === true,
-  };
-  const majorVersion = limitedText(settings.browserVersion, 16).split('.')[0];
-  if (!result.uaFullVersion && majorVersion) result.uaFullVersion = `${majorVersion}.0.0.0`;
-  if (!result.fullVersionList.length && brands.length) {
-    result.fullVersionList = brands.map((item) => ({
-      brand: item.brand,
-      version: `${item.version.split('.')[0]}.0.0.0`,
-    }));
-  }
-  return result;
 }
 
 function normalizeScreen(value) {
@@ -72,24 +34,6 @@ function normalizeScreen(value) {
   return {
     width, height, availWidth: width, availHeight: height,
     availLeft: 0, availTop: 0, colorDepth: 24, pixelDepth: 24,
-  };
-}
-
-function normalizeUserAgent(settings, ua, secChUa, platform, brands) {
-  const customUserAgent = ua.mode === 'custom' ? limitedText(ua.value, 512) : '';
-  const highEntropy = normalizeHighEntropy(settings, brands);
-  return {
-    highEntropy,
-    mobile: secChUa.mode === 'custom'
-      ? secChUa.mobile === true
-      : /(?:\bmobile\b|android)/i.test(customUserAgent),
-    navigatorPlatform: platform.navigator,
-    navigatorVendor: limitedText(settings.navigatorVendor, 64),
-    platformName: platform.uaData,
-    secChUaBrands: brands,
-    secChUaPlatformVersion: highEntropy.platformVersion,
-    uaDataPlatform: platform.uaData,
-    userAgent: customUserAgent,
   };
 }
 
@@ -113,13 +57,9 @@ function normalizeVisualSettings(settings, canvas, webglImage) {
 
 function normalizeSettings(value) {
   const settings = record(value);
-  const secChUa = record(settings.secChUa);
-  const ua = record(settings.ua);
-  const platform = platformValues(settings.navigatorPlatform || settings.os);
-  const brands = secChUa.mode === 'custom' ? normalizeBrands(secChUa.brands) : [];
   const canvas = record(settings.canvas);
   const visual = normalizeVisualSettings(settings, canvas, record(settings.webglImage));
-  const identity = normalizeUserAgent(settings, ua, secChUa, platform, brands);
+  const identity = resolveBrowserIdentity(settings);
   const webrtc = record(settings.webrtc);
   return {
     audioContextMode: record(settings.audioContext).mode === 'noise' ? 'noise' : 'default',
@@ -138,7 +78,7 @@ function normalizeSettings(value) {
 function buildBrowserEnvironmentScript(rawSettings = {}) {
   const config = JSON.stringify(normalizeSettings(rawSettings))
     .replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
-  return `(() => { const config = ${config}; ${buildBrowserNavigatorEnvironmentSource()} ${buildBrowserGraphicsEnvironmentSource()} ${buildBrowserMediaEnvironmentSource()} })();`;
+  return loadBrowserEnvironmentTemplate().replace('__AI_FREE_ENVIRONMENT_CONFIG__', () => config);
 }
 
 module.exports = { buildBrowserEnvironmentScript, normalizeBrowserEnvironmentScriptSettings: normalizeSettings };

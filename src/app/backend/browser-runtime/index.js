@@ -34,23 +34,17 @@ class BrowserRuntimeManager {
     });
   }
 
-  resolveType(profile = {}) {
-    // 网页窗口统一使用项目内置的 AI-FREE Chromium Fork。Electron 只承载
-    // 应用外壳与侧栏，不能再被选作网页浏览运行时。
-    return RUNTIME_TYPES.CHROMIUM;
-  }
-  runtimeFor(_type) { return this.chromium; }
-  async launchProfile(profile, bounds) { return this.runtimeFor(this.resolveType(profile)).launchProfile(profile, bounds); }
+  async launchProfile(profile, bounds) { return this.chromium.launchProfile(profile, bounds); }
   async prewarmChromium() { return this.chromium.prewarm(); }
-  async show(profileId, type) { return this.runtimeFor(type).show(profileId); }
-  async hide(profileId, type) { return this.runtimeFor(type).hide(profileId); }
-  async resize(profileId, type, bounds) { return this.runtimeFor(type).resize(profileId, bounds); }
-  async focus(profileId, type) { return this.runtimeFor(type).focus(profileId); }
-  releaseFocus(profileId, type) { return this.runtimeFor(type).releaseFocus(profileId); }
-  async reload(profileId, type) { return this.runtimeFor(type).reload(profileId); }
-  async navigate(profileId, type, url) { return this.runtimeFor(type).navigate?.(profileId, url); }
-  async openTabs(profileId, type, urls) { return this.runtimeFor(type).openTabs?.(profileId, urls); }
-  async listTabs(profileId, type) { return this.runtimeFor(type).listTabs?.(profileId); }
+  async show(profileId, type) { return this.chromium.show(profileId); }
+  async hide(profileId, type) { return this.chromium.hide(profileId); }
+  async resize(profileId, type, bounds) { return this.chromium.resize(profileId, bounds); }
+  async focus(profileId, type) { return this.chromium.focus(profileId); }
+  releaseFocus(profileId, type) { return this.chromium.releaseFocus(profileId); }
+  async reload(profileId, type) { return this.chromium.reload(profileId); }
+  async navigate(profileId, type, url) { return this.chromium.navigate?.(profileId, url); }
+  async openTabs(profileId, type, urls) { return this.chromium.openTabs?.(profileId, urls); }
+  async listTabs(profileId, type) { return this.chromium.listTabs?.(profileId); }
   async dispatchInput(profileId, input) { return this.chromium.dispatchInput(profileId, input); }
   async dispatchInputByProcessId(processId, input) {
     return this.chromium.dispatchInputByProcessId(processId, input);
@@ -67,11 +61,14 @@ class BrowserRuntimeManager {
   async refreshEnvironmentProfile(profileId, update) {
     return this.chromium.refreshEnvironmentProfile(profileId, update);
   }
+  updateProfileConfiguration(profileId, update, options) {
+    return this.chromium.updateProfileConfiguration(profileId, update, options);
+  }
   async clearData(profileId) { return this.chromium.clearData(profileId); }
-  async stop(profileId, type, options) { return this.runtimeFor(type).stop(profileId, options); }
+  async stop(profileId, type, options) { return this.chromium.stop(profileId, options); }
   async stopAll(options) { return this.chromium.stopAll(options); }
-  getState(profileId) { return this.store.getState(profileId); }
-  listStates() { return this.store.listStates(); }
+  getState(profileId) { return this.chromium.getState(profileId); }
+  listStates() { return this.chromium.stateStore.listStates(); }
   isManagedBrowserProcess(processId) {
     const pid = Number(processId || 0) || 0;
     if (!pid) return false;
@@ -82,12 +79,18 @@ class BrowserRuntimeManager {
     }
     return false;
   }
-  deleteProfile(profileId) { return this.store.deleteProfile(profileId); }
+  deleteProfile(profileId) {
+    const deleted = this.store.deleteProfile(profileId);
+    this.chromium.stateStore.clearState(profileId);
+    return deleted;
+  }
   async deleteProfileAsync(profileId) {
     if (typeof this.store.deleteProfileAsync === 'function') {
-      return this.store.deleteProfileAsync(profileId);
+      const deleted = await this.store.deleteProfileAsync(profileId);
+      this.chromium.stateStore.clearState(profileId);
+      return deleted;
     }
-    return this.store.deleteProfile(profileId);
+    return this.deleteProfile(profileId);
   }
   async waitForLocalModelCleanup() { return this.localModelCleanup; }
   isChromiumAvailable() { return this.windowBridge.isAvailable(); }

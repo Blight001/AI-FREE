@@ -41,25 +41,20 @@ test('session import rejects top-level failed set-cookies response', async () =>
   assert.equal(calls, 2);
 });
 
-test('session phases reject failed protocol results individually', async () => {
-  for (const [method, command] of [
-    ['clearImportedSession', 'clear-session'],
-    ['importPreparedStorage', 'set-storage'],
-    ['navigateAfterSessionImport', 'navigate'],
-    ['setCookiesNow', 'set-cookies'],
-  ]) {
-    const runtime = runtimeWith({ ok: true, result: { success: false, errorCode: 'PHASE_FAILED' } });
-    await assert.rejects(
-      method === 'importPreparedStorage'
-        ? runtime[method]('p', { send: async () => ({ ok: true, result: { success: false, errorCode: 'PHASE_FAILED' } }) }, {
-          browserStorage: [{ origin: 'https://example.com', localStorage: {}, sessionStorage: {} }],
-        })
-        : method === 'navigateAfterSessionImport'
-          ? runtime[method]('p', { send: async () => ({ ok: true, result: { success: false, errorCode: 'PHASE_FAILED' } }) }, 'https://example.com')
-          : method === 'setCookiesNow'
-            ? runtime[method]('p', [{ name: 's', value: 'v', url: 'https://example.com/' }])
-            : runtime[method]('p', { send: async () => ({ ok: true, result: { success: false, errorCode: 'PHASE_FAILED' } }) }),
-      (error) => error.code === 'PHASE_FAILED' && error.command === command,
-    );
+test('session phases reject failed results through public operations', async () => {
+  for (const command of ['clear-session', 'set-storage', 'navigate', 'set-cookies']) {
+    const runtime = new ChromiumRuntime({ logger: { info() {}, warn() {} } });
+    runtime.getReadyInstance = () => ({ commandClient: { async send(name) {
+      return name === command
+        ? { ok: true, result: { success: false, errorCode: 'PHASE_FAILED' } }
+        : { ok: true, result: {} };
+    } } });
+    const operation = command === 'set-cookies'
+      ? runtime.setCookies('p', [{ name: 's', value: 'v', url: 'https://example.com/' }])
+      : runtime.importSession('p', {
+        targetUrl: 'https://example.com/',
+        browserStorage: [{ origin: 'https://example.com', localStorage: { fixture: 'value' }, sessionStorage: {} }],
+      });
+    await assert.rejects(operation, (error) => error.code === 'PHASE_FAILED' && error.command === command);
   }
 });

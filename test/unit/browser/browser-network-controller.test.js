@@ -2,6 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
+const { createConfigurationManager } = require('../../fixtures/browser-configuration-runtime');
 
 let clashStatus = { running: true, enabled: true, coreDir: 'fixture-core' };
 let endpoint = { host: '127.0.0.2', port: 17890 };
@@ -55,8 +56,7 @@ function createFixture(overrides = {}) {
   let profileLookups = 0;
   const controller = createBrowserNetworkController({
     browserRuntimeManager: {
-      chromium: { instances },
-      restart: async (id) => { restarts.push(id); return { status: 'running' }; },
+      ...createConfigurationManager(instances, async (id) => { restarts.push(id); return { status: 'running' }; }),
     },
     logger: { warn: (...args) => loggerMessages.push(args.join(' ')) },
     resolveTabBrowserProfile: async () => { profileLookups += 1; throw new Error('unexpected profile lookup'); },
@@ -133,16 +133,14 @@ test('proxy changes preserve BrowserProfile without any exit IP lookup', async (
 test('proxy restart failures remain diagnostic without starting a profile lookup', async () => {
   const fixture = createFixture({
     browserRuntimeManager: {
-      chromium: { instances: new Map() },
-      restart: async () => { throw new Error('restart failed'); },
+      ...createConfigurationManager(new Map(), async () => { throw new Error('restart failed'); }),
     },
   });
   const tab = { id: 'broken', browserSettings: { proxy: { mode: 'default' } } };
   fixture.tabs.set(tab.id, tab);
   fixture.controller = createBrowserNetworkController({
     browserRuntimeManager: {
-      chromium: { instances: fixture.instances },
-      restart: async () => { throw new Error('restart failed'); },
+      ...createConfigurationManager(fixture.instances, async () => { throw new Error('restart failed'); }),
     },
     logger: { warn: (...args) => fixture.loggerMessages.push(args.join(' ')) },
     resolveTabs: () => fixture.tabs,

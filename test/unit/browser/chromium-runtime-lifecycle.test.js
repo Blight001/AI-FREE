@@ -15,7 +15,7 @@ function createRuntime(status = RUNTIME_STATUS.WAITING_PIPE) {
     patchState: (_id, patch) => Object.assign(state, patch),
     transition: (_id, next) => { state.status = next; },
   };
-  const runtime = new ChromiumRuntime({ store, logger: { warn() {} } });
+  const runtime = new ChromiumRuntime({ store, stateStore: store, logger: { warn() {} } });
   const child = new EventEmitter();
   child.exitCode = null;
   child.pid = 1234;
@@ -25,6 +25,29 @@ function createRuntime(status = RUNTIME_STATUS.WAITING_PIPE) {
   runtime.instances.set('slow-profile', instance);
   return { instance, runtime, state };
 }
+
+test('crash notifications contain a synchronous state snapshot', () => {
+  const { runtime, state } = createRuntime(RUNTIME_STATUS.READY);
+  runtime.windowBridge = { hideHostWindow() {} };
+  let notification;
+  runtime.once('crashed', (value) => { notification = value; });
+  runtime.markCrashed('slow-profile', { code: 'CHROMIUM_WINDOW_LOST' });
+  assert.equal(notification.profileId, 'slow-profile');
+  assert.equal(notification.status, RUNTIME_STATUS.CRASHED);
+  assert.equal(notification.lastError.code, 'CHROMIUM_WINDOW_LOST');
+  assert.notEqual(notification, state);
+  notification.status = 'changed-by-listener';
+  assert.equal(runtime.getState('slow-profile').status, RUNTIME_STATUS.CRASHED);
+});
+
+test('state queries are immediate and do not change the stored state', () => {
+  const { runtime, state } = createRuntime(RUNTIME_STATUS.HIDDEN);
+  const snapshot = runtime.getState('slow-profile');
+  assert.equal(snapshot.status, RUNTIME_STATUS.HIDDEN);
+  assert.notEqual(snapshot, state);
+  snapshot.status = RUNTIME_STATUS.STOPPED;
+  assert.equal(state.status, RUNTIME_STATUS.HIDDEN);
+});
 
 test('停止中的 Profile 会立即取消尚在等待的 Chromium 握手', async () => {
   const { instance, runtime, state } = createRuntime();

@@ -8,9 +8,9 @@ const test = require('node:test');
 const { buildChromiumProfileArgs } = require('../../../src/app/backend/browser-runtime/chromium-profile-args');
 const { snapshotAppliedChromiumProfile } = require('../../../src/app/backend/browser-runtime/chromium-profile-snapshot');
 const {
-  cleanupChromiumProfileEnvironment,
   prepareChromiumProfileEnvironment,
 } = require('../../../src/app/backend/browser-runtime/chromium-runtime-environment');
+const { ChromiumLaunchResources } = require('../../../src/app/backend/browser-runtime/chromium-launch-resources');
 const { launchChromiumProfile } = require('../../../src/app/backend/browser-runtime/chromium-runtime-launch');
 
 test('launch profile uses an isolated auth bridge and document injector without exposing credentials', async (t) => {
@@ -34,6 +34,8 @@ test('launch profile uses an isolated auth bridge and document injector without 
     },
   };
 
+  context.resources = new ChromiumLaunchResources(context.paths, {}, null);
+  t.after(() => context.resources.dispose({ processExited: true }));
   const launchProfile = await prepareChromiumProfileEnvironment(context);
   const args = buildChromiumProfileArgs({}, launchProfile, {});
   const snapshot = snapshotAppliedChromiumProfile(context.profile, args);
@@ -43,16 +45,12 @@ test('launch profile uses an isolated auth bridge and document injector without 
   assert.ok(args.some((argument) => argument.startsWith('--load-extension=')));
   assert.doesNotMatch(JSON.stringify(args), /private-user|private-password/);
   assert.doesNotMatch(JSON.stringify(snapshot), /private-user|private-password/);
-  const script = fs.readFileSync(path.join(context.environmentExtensionDir, 'main.js'), 'utf8');
+  const script = fs.readFileSync(path.join(context.resources.environmentExtensionDir, 'main.js'), 'utf8');
   assert.match(script, /hardwareConcurrency/);
   assert.match(script, /Custom/);
 
-  await cleanupChromiumProfileEnvironment({
-    paths: context.paths,
-    proxyAuthBridge: context.proxyAuthBridge,
-    environmentExtensionDir: context.environmentExtensionDir,
-  });
-  assert.equal(fs.existsSync(context.environmentExtensionDir), false);
+  await context.resources.dispose({ processExited: true });
+  assert.equal(fs.existsSync(context.resources.environmentExtensionDir), false);
 });
 
 test('failed profile launch closes the proxy bridge and removes its environment extension', async (t) => {
@@ -77,21 +75,28 @@ test('failed profile launch closes the proxy bridge and removes its environment 
       },
     },
   };
+  context.resources = new ChromiumLaunchResources(context.paths, {
+    destroyHostWindow: () => { hostDestroyed = true; },
+  }, null);
+  context.resources.hostHwnd = context.hostHwnd;
+  context.resources.commandClient = context.commandClient;
+  t.after(() => context.resources.dispose({ processExited: true }));
   const runtime = {
     logger: null,
     instances: new Map(),
-    isProfileVisible: () => false,
+    isProfileRunning: () => false,
     prepareProfileLaunch: () => context,
     createProfileInstance: async (profileContext) => {
       await prepareChromiumProfileEnvironment(profileContext);
-      const close = profileContext.proxyAuthBridge.close.bind(profileContext.proxyAuthBridge);
-      profileContext.proxyAuthBridge.close = async () => {
+      const close = profileContext.resources.proxyAuthBridge.close.bind(profileContext.resources.proxyAuthBridge);
+      profileContext.resources.proxyAuthBridge.close = async () => {
         await close();
         bridgeClosed = true;
       };
       throw new Error('simulated launch failure');
     },
-    store: {
+    store: { releaseLock: () => { lockReleased = true; } },
+    stateStore: {
       getState: () => state,
       releaseLock: () => { lockReleased = true; },
       patchState: (_id, update) => { state = { ...state, ...update }; },

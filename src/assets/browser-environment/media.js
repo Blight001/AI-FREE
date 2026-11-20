@@ -1,5 +1,5 @@
-'use strict';
-
+// Bundled inside the environment template; config is supplied by its lexical scope.
+(() => {
 function defineMediaMethod(target, name, method) {
   try { Object.defineProperty(target, name, { configurable: true, value: method }); } catch (_) {}
 }
@@ -162,14 +162,5 @@ function installBrowserMediaEnvironment(config) {
   if (config.speechVoicesMode === 'noise') installSpeechVoiceNoise(config.mediaSeed);
 }
 
-function buildBrowserMediaEnvironmentSource() {
-  const dependencies = [
-    defineMediaMethod, installAudioNoise, patchAnalyser, patchOfflineAudio, addOfflineAudioNoise,
-    addAudioNoise, installClientRectsNoise, patchRectMethod, addRectListNoise, addRectNoise,
-    rectIdentity, installSpeechVoiceNoise, voiceIdentity, mediaSeedHash, installBrowserMediaEnvironment,
-  ];
-  const declarations = dependencies.map((fn) => `const ${fn.name} = ${fn.toString()};`).join('\n');
-  return `(() => { ${declarations}\ninstallBrowserMediaEnvironment(config); })();`;
-}
-
-module.exports = { buildBrowserMediaEnvironmentSource };
+installBrowserMediaEnvironment(config);
+})();

@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const service = require('../src/assets/extensions/aixdownloader-9.0.58/save-service.js');
+const service = require('../../../src/assets/extensions/aixdownloader-9.0.58/save-service.js');
 
 test('settings migrate the old AIX server key and normalize theme', () => {
   assert.deepEqual(service.normalizeSettings({ aixAssetServer: 'http://localhost:58112/', theme: 'nope' }), {

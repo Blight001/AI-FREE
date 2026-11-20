@@ -9,7 +9,7 @@ function createRuntime() {
   const store = {
     getState: (profileId) => profileId === 'profile-a' ? { status: 'ready' } : null,
   };
-  const runtime = new ChromiumRuntime({ store, logger: { warn() {} } });
+  const runtime = new ChromiumRuntime({ store, stateStore: store, logger: { warn() {} } });
   runtime.instances.set('profile-a', {
     child: { pid: 4321, exitCode: null },
     commandClient: {

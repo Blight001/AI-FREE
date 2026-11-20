@@ -6,7 +6,25 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { createChromiumLaunchLog } = require('../../../src/app/backend/browser-runtime/chromium-launch-log');
+const { createChromiumLaunchLog, attachChromiumLaunchLogging } = require('../../../src/app/backend/browser-runtime/chromium-launch-log');
+
+test('Chromium console output redacts restart credentials on both streams', () => {
+  const output = [];
+  attachChromiumLaunchLogging({
+    child: { pid: 123, stdout: 'stdout', stderr: 'stderr' },
+    args: [],
+    logger: { log: (line) => output.push(line), warn: (line) => output.push(line) },
+    forwardOutput: (stream, write) => {
+      write(`${stream} --hs-runtime-token=test-only-secret`);
+      write('ordinary browser diagnostic');
+    },
+  });
+  assert.equal(output.length, 4);
+  assert.ok(output.every((line) => !line.includes('test-only-secret')));
+  assert.match(output[0], /--hs-runtime-token=<redacted>/);
+  assert.match(output[2], /--hs-runtime-token=<redacted>/);
+  assert.match(output[1], /ordinary browser diagnostic/);
+});
 
 test('Chromium 独立启动日志记录环境并清理启动 token 和代理凭据', (t) => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-chromium-log-'));

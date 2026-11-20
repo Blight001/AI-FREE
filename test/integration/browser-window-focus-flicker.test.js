@@ -10,7 +10,7 @@ test('refocusing the app keeps Chromium above delayed Electron renderer reorderi
   const parentWindow = new EventEmitter();
   const calls = [];
   const runtime = new ChromiumRuntime({
-    store: {
+    stateStore: {
       getState: () => ({
         status: RUNTIME_STATUS.READY,
         hostHwnd: 'host-1',
@@ -49,7 +49,7 @@ test('an already loaded legacy native host skips focus repaint safely', () => {
 test('releasing Chromium focus delegates the active browser HWND to the native bridge', () => {
   const calls = [];
   const runtime = new ChromiumRuntime({
-    store: { getState: () => ({ browserHwnd: 'child-1' }) },
+    stateStore: { getState: () => ({ browserHwnd: 'child-1' }) },
     windowBridge: {
       releaseChildWindowFocus: (hwnd) => {
         calls.push(hwnd);

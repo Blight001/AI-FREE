@@ -23,7 +23,7 @@ test('runtime file selection rejects paths outside the configured AI workspace',
 
 function createRuntime(sent) {
   const store = { getState: () => ({ status: 'ready' }) };
-  const runtime = new ChromiumRuntime({ store, logger: { warn() {} } });
+  const runtime = new ChromiumRuntime({ store, stateStore: store, logger: { warn() {} } });
   runtime.instances.set('profile-a', {
     child: { pid: 4321, exitCode: null },
     commandClient: {

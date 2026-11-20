@@ -1,5 +1,5 @@
-'use strict';
-
+// Bundled inside the environment template; config is supplied by its lexical scope.
+(() => {
 function installBrowserGraphicsEnvironment(config) {
   installScreen(config.screen);
   installWebGl(config);
@@ -177,14 +177,5 @@ function noisePlan(width, height, seed) {
   return { x: hash % width, y: (hash >>> 8) % height };
 }
 
-function buildBrowserGraphicsEnvironmentSource() {
-  const dependencies = [
-    installBrowserGraphicsEnvironment, installScreen, defineValue, installWebGl, patchWebGlParameters,
-    patchReadPixels, addWebGlNoise, installCanvasNoise, addCanvasNoise, seedHash,
-    patchCanvasSerialization, patchOffscreenSerialization, noisyCanvasCopy, noisePlan,
-  ];
-  const declarations = dependencies.map((fn) => `const ${fn.name} = ${fn.toString()};`).join('\n');
-  return `(() => { ${declarations}\ninstallBrowserGraphicsEnvironment(config); })();`;
-}
-
-module.exports = { buildBrowserGraphicsEnvironmentSource };
+installBrowserGraphicsEnvironment(config);
+})();

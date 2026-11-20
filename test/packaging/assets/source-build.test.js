@@ -63,7 +63,19 @@ test('统一源码构建生成可加载主进程模块和可追踪 manifest', ()
   const registryPath = path.join(buildRoot, 'src/app/backend/features/ai-chat/chat-run-registry.js');
   delete require.cache[require.resolve(registryPath)];
   assert.equal(typeof require(registryPath).createChatRunRegistry, 'function');
+  assertEnvironmentAssets(buildRoot);
 });
+
+function assertEnvironmentAssets(root) {
+  const template = path.join(root, 'src/assets/browser-environment/runtime-template.js');
+  assert.equal(fs.existsSync(template), true);
+  const modulePath = path.join(root, 'src/app/backend/browser-runtime/browser-environment-script.js');
+  const script = require(modulePath).buildBrowserEnvironmentScript({ os: 'mac', cpu: 8 });
+  const context = { navigator: {} };
+  vm.runInNewContext(script, context);
+  assert.equal(context.navigator.hardwareConcurrency, 8);
+  assert.equal(context.navigator.userAgentData.platform, 'macOS');
+}
 
 test('重建开发源码不影响预打包输入，打包成功或失败后均清理临时目录', async () => {
   const readme = path.join('src', 'app', 'README.md');
@@ -71,6 +83,7 @@ test('重建开发源码不影响预打包输入，打包成功或失败后均�
   await withPackagedSource(async (root) => {
     packagedRoot = root;
     assert.notEqual(root, buildRoot);
+    assertEnvironmentAssets(root);
     const before = fs.readFileSync(path.join(root, readme));
     buildSource();
     assert.deepEqual(fs.readFileSync(path.join(root, readme)), before);

@@ -5,6 +5,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { app } = require('electron');
 const { resolveCurrentAccountType } = require('../../utils/normalizers');
+const { resolveUserDataDir } = require('../../config/user-data-path');
 
 const SESSION_CREDENTIAL_FIELDS = [
   'cookies', 'cookiesEncrypted', 'cookiesEncryptionMethod', 'cookiesEncryptionVersion',
@@ -26,9 +27,7 @@ class SessionStoragePaths {
 
   getSessionsDir() {
     if (this.sessionsDirCache) return this.sessionsDirCache;
-    let userDataDir = '';
-    try { userDataDir = app?.getPath?.('userData') || ''; } catch (_) {}
-    this.sessionsDirCache = path.join(userDataDir || path.join(process.cwd(), 'userData'), 'account_sessions');
+    this.sessionsDirCache = path.join(resolveUserDataDir(app), 'account_sessions');
     return this.sessionsDirCache;
   }
 

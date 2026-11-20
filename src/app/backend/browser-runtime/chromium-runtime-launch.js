@@ -20,7 +20,7 @@ async function showExistingProfile(runtime, profileId, rawBounds) {
 }
 
 function stopOwnsLaunchCleanup(runtime, profileId, error) {
-  const state = runtime.store.getState(profileId);
+  const state = runtime.stateStore.getState(profileId);
   return error?.code === 'CHROMIUM_LAUNCH_CANCELLED'
     && [RUNTIME_STATUS.STOPPING, RUNTIME_STATUS.STOPPED].includes(state?.status);
 }
@@ -38,7 +38,7 @@ async function cleanupLaunchFailure(runtime, profileId, context, error, span) {
 async function launchChromiumProfile(runtime, rawProfile = {}, rawBounds = {}) {
   const profileId = String(rawProfile.profileId || rawProfile.id || '').trim();
   if (!profileId) throw new Error('缺少 Profile ID');
-  if (runtime.isProfileVisible(profileId)) {
+  if (runtime.isProfileRunning(profileId)) {
     return showExistingProfile(runtime, profileId, rawBounds);
   }
   const span = createChromiumPerformanceSpan(runtime.logger, 'runtime-launch');

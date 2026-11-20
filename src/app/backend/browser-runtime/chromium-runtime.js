@@ -1,37 +1,41 @@
 const crypto = require('crypto');
+const { ChromiumLaunchResources } = require('./chromium-launch-resources');
+const { RuntimeStateStore, cloneRuntimeState } = require('./runtime-state-store');
+const { ChromiumSessionImporter } = require('./chromium-session-importer');
+const { updateProfileConfiguration } = require('./chromium-profile-configuration');
 const path = require('path');
-const { BrowserRuntime } = require('./browser-runtime');
+const { EventEmitter } = require('events');
 const { ChromiumCommandClient, createPipeName } = require('./chromium-command-client');
 const { ChromiumHealthMonitor } = require('./chromium-health');
 const { launchChromium } = require('./chromium-launcher');
-const { prepareSessionImport } = require('./session-import');
 const { assertActiveChromiumLaunch, normalizeBounds, RUNTIME_STATUS, RUNTIME_TYPES } = require('./runtime-types');
 const { restartChromiumProfile, stopChromiumProfile } = require('./chromium-runtime-process');
 const { launchChromiumProfile } = require('./chromium-runtime-launch');
 const { bindChromiumProcessFailure } = require('./chromium-process-diagnostics');
 const { snapshotAppliedChromiumProfile } = require('./chromium-profile-snapshot');
 const { attachChildWindowWithRetry } = require('./chromium-window-attachment');
-const { groupCookiesByOrigin } = require('./chromium-cookie-groups');
 const { dispatchRuntimeInput, dispatchRuntimeInputByProcessId } = require('./runtime-input');
 const { dispatchRuntimeAutomationByProcessId } = require('./runtime-automation');
-const { openChromiumTabs } = require('./chromium-tab-actions');
 const { waitForBrowserWindow } = require('./chromium-handshake-waiter');
 const { startChromiumPreflightWarmup } = require('./chromium-preflight-warmup');
-const { assertRuntimeCommandSuccess } = require('./runtime-command-result');
 const {
-  cleanupChromiumProfileEnvironment,
   prepareChromiumProfileEnvironment,
   refreshChromiumEnvironmentProfile,
 } = require('./chromium-runtime-environment');
 
-class ChromiumRuntime extends BrowserRuntime {
+class ChromiumRuntime extends EventEmitter {
   constructor(options = {}) {
-    super(options);
+    super();
+    this.logger = options.logger || console;
     this.store = options.store;
+    this.stateStore = options.stateStore || new RuntimeStateStore((state) => { this.emit('state-changed', state); });
     this.windowBridge = options.windowBridge;
     this.getParentWindow = options.getParentWindow;
     this.launchOptions = { resourcesPath: options.resourcesPath, chromiumLogPath: options.chromiumLogPath, chromiumDiagnosticDir: options.chromiumDiagnosticDir, chromiumUserDataDir: options.chromiumUserDataDir, appVersion: options.appVersion };
     this.instances = new Map();
+    this.sessionImporter = new ChromiumSessionImporter({
+      logger: this.logger, getCommandClient: (profileId) => this.getReadyInstance(profileId).commandClient,
+    });
     // 同一 Profile 的重启、导航、会话注入和刷新必须排队，避免误判运行状态。
     this.profileOperationQueues = new Map();
   }
@@ -63,8 +67,8 @@ class ChromiumRuntime extends BrowserRuntime {
     });
   }
 
-  isProfileVisible(profileId) {
-    return ['ready', 'hidden'].includes(this.store.getState(profileId)?.status);
+  isProfileRunning(profileId) {
+    return ['ready', 'hidden'].includes(this.stateStore.getState(profileId)?.status);
   }
 
   prepareProfileLaunch(profileId, rawProfile, rawBounds, performanceSpan) {
@@ -81,7 +85,7 @@ class ChromiumRuntime extends BrowserRuntime {
     const runtimeProfileId = String(paths.id || '').trim();
     this.store.acquireLock(profileId, { runtimeType: RUNTIME_TYPES.CHROMIUM });
     performanceSpan?.mark('profileLock');
-    this.store.createState(profileId, RUNTIME_TYPES.CHROMIUM, { bounds, status: RUNTIME_STATUS.STARTING, startedAt: Date.now() });
+    this.stateStore.createState(profileId, RUNTIME_TYPES.CHROMIUM, { bounds, status: RUNTIME_STATUS.STARTING, startedAt: Date.now() });
     performanceSpan?.mark('stateCreate');
     return {
       profileId,
@@ -89,8 +93,7 @@ class ChromiumRuntime extends BrowserRuntime {
       paths,
       runtimeProfileId,
       bounds,
-      hostHwnd: null,
-      commandClient: null,
+      resources: new ChromiumLaunchResources(paths, this.windowBridge, this.logger),
       performanceSpan,
     };
   }
@@ -103,7 +106,7 @@ class ChromiumRuntime extends BrowserRuntime {
       parentHwnd: parentWindow.getNativeWindowHandle(),
       ...context.bounds,
     });
-    context.hostHwnd = hostHwnd;
+    context.resources.hostHwnd = hostHwnd;
     this.windowBridge.hideHostWindow(hostHwnd);
     context.performanceSpan?.mark('hostWindow');
     const pipeName = createPipeName(context.profileId);
@@ -111,10 +114,10 @@ class ChromiumRuntime extends BrowserRuntime {
     const commandClient = new ChromiumCommandClient({
       profileId: context.runtimeProfileId, pipeName, launchToken, logger: this.logger,
     });
-    context.commandClient = commandClient;
+    context.resources.commandClient = commandClient;
     await commandClient.listen();
     context.performanceSpan?.mark('pipeListen');
-    this.store.transition(context.profileId, RUNTIME_STATUS.WAITING_PIPE, { hostHwnd, pipeName });
+    this.stateStore.transition(context.profileId, RUNTIME_STATUS.WAITING_PIPE, { hostHwnd, pipeName });
     const launched = await launchChromium({
       ...context,
       profile: launchProfile,
@@ -125,6 +128,7 @@ class ChromiumRuntime extends BrowserRuntime {
       executablePath: context.profile.executablePath,
       logger: this.logger,
     });
+    context.resources.child = launched.child;
     context.performanceSpan?.mark('processLaunch');
     const instance = this.recordProfileInstance(context, parentWindow, commandClient, launched);
     this.bindInstance(context.profileId, instance);
@@ -140,7 +144,7 @@ class ChromiumRuntime extends BrowserRuntime {
       paths: context.paths,
       child,
       commandClient,
-      hostHwnd: context.hostHwnd,
+      resources: context.resources,
       parentWindow,
       runtimeProfileId: context.runtimeProfileId,
       expectedExit: false,
@@ -150,18 +154,16 @@ class ChromiumRuntime extends BrowserRuntime {
       parentFocusHandler: null,
       parentFocusRaiseTimers: new Set(),
       performanceSpan: context.performanceSpan,
-      proxyAuthBridge: context.proxyAuthBridge || null,
-      environmentExtensionDir: context.environmentExtensionDir || '',
     };
     this.instances.set(context.profileId, instance);
-    this.store.patchState(context.profileId, { pid: child.pid });
+    this.stateStore.patchState(context.profileId, { pid: child.pid });
     return instance;
   }
 
   async completeProfileLaunch(profileId, instance, bounds) {
     const browserHwnd = await this.waitForBrowserWindow(profileId, instance);
     instance.performanceSpan?.mark('pipeHandshake');
-    assertActiveChromiumLaunch(this.instances.get(String(profileId)) === instance, this.store.getState(profileId)?.status);
+    assertActiveChromiumLaunch(this.instances.get(String(profileId)) === instance, this.stateStore.getState(profileId)?.status);
     this.assertCompleteHandshake(profileId, browserHwnd);
     await this.attachProfileWindow(profileId, instance, browserHwnd, bounds);
     instance.performanceSpan?.mark('windowAttach');
@@ -169,15 +171,14 @@ class ChromiumRuntime extends BrowserRuntime {
       isWindowAlive: (hwnd) => this.windowBridge.isWindowAlive(hwnd),
       onFailure: (error) => this.markCrashed(profileId, error),
     });
-    instance.monitor.start(() => this.store.getState(profileId));
+    instance.monitor.start(() => this.stateStore.getState(profileId));
     this.bindParentWindowFocus(profileId, instance);
-    this.emit('state-changed', this.getState(profileId));
     instance.performanceSpan?.mark('runtimeFinalize');
   }
 
   assertCompleteHandshake(profileId, browserHwnd) {
     const prototypeMode = String(process.env.AI_FREE_CHROMIUM_HANDSHAKE || '').toLowerCase() === 'prototype';
-    const state = this.store.getState(profileId);
+    const state = this.stateStore.getState(profileId);
     if (prototypeMode || (state?.bridgeConnected && state?.sessionId && browserHwnd)) return;
     const error = /** @type {Error & {code?: string}} */ (new Error('AI-FREE Chromium Fork 握手状态不完整'));
     error.code = 'CHROMIUM_HANDSHAKE_INCOMPLETE';
@@ -185,10 +186,11 @@ class ChromiumRuntime extends BrowserRuntime {
   }
 
   async attachProfileWindow(profileId, instance, browserHwnd, bounds) {
-    assertActiveChromiumLaunch(this.instances.get(String(profileId)) === instance, this.store.getState(profileId)?.status);
-    this.store.transition(profileId, RUNTIME_STATUS.ATTACHING, { browserHwnd });
+    assertActiveChromiumLaunch(this.instances.get(String(profileId)) === instance, this.stateStore.getState(profileId)?.status);
+    this.stateStore.transition(profileId, RUNTIME_STATUS.ATTACHING, { browserHwnd });
+    instance.resources.browserHwnd = browserHwnd;
     const attached = await attachChildWindowWithRetry(this.windowBridge, {
-      hostHwnd: instance.hostHwnd,
+      hostHwnd: instance.resources.hostHwnd,
       childHwnd: browserHwnd,
       childPid: instance.child.pid,
       title: 'AI-FREE',
@@ -199,22 +201,28 @@ class ChromiumRuntime extends BrowserRuntime {
       throw error;
     }
     this.windowBridge.setChildWindowTitle(browserHwnd, 'AI-FREE');
-    this.windowBridge.setHostBounds(instance.hostHwnd, bounds);
-    this.windowBridge.showHostWindow(instance.hostHwnd);
-    this.store.transition(profileId, RUNTIME_STATUS.READY, {
+    this.windowBridge.setHostBounds(instance.resources.hostHwnd, bounds);
+    this.windowBridge.showHostWindow(instance.resources.hostHwnd);
+    this.stateStore.transition(profileId, RUNTIME_STATUS.READY, {
       productName: 'AI-FREE', embedded: true, lastHeartbeatAt: Date.now(),
     });
   }
 
   bindInstance(profileId, instance) {
     instance.commandClient.on('hello', (message) => {
-      this.store.patchState(profileId, { bridgeConnected: true, sessionId: message.sessionId, lastHeartbeatAt: Date.now() });
+      this.stateStore.patchState(profileId, { bridgeConnected: true, sessionId: message.sessionId, lastHeartbeatAt: Date.now() });
     });
-    instance.commandClient.on('heartbeat', () => this.store.patchState(profileId, { lastHeartbeatAt: Date.now() }));
+    instance.commandClient.on('heartbeat', () => this.stateStore.patchState(profileId, { lastHeartbeatAt: Date.now() }));
     // Keep the transport-only ASCII ID out of application-facing runtime events.
     instance.commandClient.on('event', (message) => this.emit('runtime-event', { ...message, profileId }));
     bindChromiumProcessFailure(instance, (error) => this.markCrashed(profileId, error),
-      () => cleanupChromiumProfileEnvironment(instance));
+      () => {
+        instance.monitor?.stop();
+        this.unbindParentWindowFocus(instance);
+        void instance.resources?.dispose({ processExited: true }).catch(() => {
+          this.logger?.warn?.('[ChromiumRuntime] 浏览器退出后的资源释放失败');
+        });
+      });
   }
 
   bindParentWindowFocus(profileId, instance) {
@@ -224,7 +232,7 @@ class ChromiumRuntime extends BrowserRuntime {
       instance.parentFocusRaiseTimers = new Set();
     }
     const raiseEmbeddedHost = () => {
-        const state = this.store.getState(profileId);
+        const state = this.stateStore.getState(profileId);
         if (state?.status !== RUNTIME_STATUS.READY || !state.hostHwnd) return;
         try {
           // This only repairs sibling Z-order. It deliberately avoids bounds
@@ -272,39 +280,42 @@ class ChromiumRuntime extends BrowserRuntime {
     return waitForBrowserWindow(this, profileId, instance);
   }
 
-  async attach(profileId) { return this.getState(profileId); }
   async show(profileId) {
-    const state = this.store.getState(profileId);
+    const state = this.stateStore.getState(profileId);
     if (!state?.hostHwnd) return state;
     this.windowBridge.setHostBounds(state.hostHwnd, state.bounds);
     this.windowBridge.showHostWindow(state.hostHwnd);
-    if (state.status === RUNTIME_STATUS.HIDDEN) this.store.transition(profileId, RUNTIME_STATUS.READY);
+    if (state.status === RUNTIME_STATUS.HIDDEN) this.stateStore.transition(profileId, RUNTIME_STATUS.READY);
     return this.getState(profileId);
   }
   async hide(profileId) {
-    const state = this.store.getState(profileId);
+    const state = this.stateStore.getState(profileId);
     if (!state?.hostHwnd) return state;
     this.windowBridge.hideHostWindow(state.hostHwnd);
-    if (state.status === RUNTIME_STATUS.READY) this.store.transition(profileId, RUNTIME_STATUS.HIDDEN);
+    if (state.status === RUNTIME_STATUS.READY) this.stateStore.transition(profileId, RUNTIME_STATUS.HIDDEN);
     return this.getState(profileId);
   }
   async resize(profileId, rawBounds) {
-    const state = this.store.getState(profileId);
+    const state = this.stateStore.getState(profileId);
     if (!state) return null;
     const bounds = normalizeBounds(rawBounds);
     if (state.hostHwnd) this.windowBridge.setHostBounds(state.hostHwnd, bounds);
-    this.store.patchState(profileId, { bounds });
+    this.stateStore.patchState(profileId, { bounds });
     return this.getState(profileId);
   }
   async focus(profileId) {
-    const state = this.store.getState(profileId);
+    const state = this.stateStore.getState(profileId);
     return state?.browserHwnd ? this.windowBridge.focusChildWindow(state.browserHwnd) : false;
   }
-  releaseFocus(profileId) { const state = this.store.getState(profileId); return state?.browserHwnd ? this.windowBridge.releaseChildWindowFocus(state.browserHwnd) : false; }
-  async getState(profileId) { const state = this.store.getState(profileId); return state ? { ...state } : null; }
+  releaseFocus(profileId) { const state = this.stateStore.getState(profileId); return state?.browserHwnd ? this.windowBridge.releaseChildWindowFocus(state.browserHwnd) : false; }
+  /** @returns {ReturnType<typeof import('./runtime-types').createRuntimeState> | null} */
+  getState(profileId) {
+    const state = this.stateStore.getState(profileId);
+    return state ? cloneRuntimeState(state) : null;
+  }
   getReadyInstance(profileId) {
     const id = String(profileId || '').trim();
-    const state = this.store.getState(id);
+    const state = this.stateStore.getState(id);
     const instance = this.instances.get(id);
     if (!instance || !state || ![RUNTIME_STATUS.READY, RUNTIME_STATUS.HIDDEN].includes(state.status)) {
       /** @type {Error & {code?: string}} */
@@ -346,7 +357,10 @@ class ChromiumRuntime extends BrowserRuntime {
     ));
   }
 
-  async openTabs(profileId, urls = []) { return openChromiumTabs(this, profileId, urls); }
+  async openTabs(profileId, urls = []) {
+    return this.enqueueProfileOperation(profileId, () => this.getReadyInstance(profileId).commandClient.send(
+      'open-tabs', { urls: Array.isArray(urls) ? urls : [] }, { timeoutMs: 30000 }));
+  }
 
   async listTabs(profileId) {
     return this.enqueueProfileOperation(profileId, () => (
@@ -365,127 +379,11 @@ class ChromiumRuntime extends BrowserRuntime {
   }
 
   async importSession(profileId, rawSession = {}) {
-    return this.enqueueProfileOperation(profileId, () => this.importSessionNow(profileId, rawSession));
-  }
-
-  async importSessionNow(profileId, rawSession = {}) {
-    const instance = this.getReadyInstance(profileId);
-    const prepared = prepareSessionImport(rawSession);
-    const commandClient = instance.commandClient;
-    this.logSkippedSessionData(profileId, prepared);
-    const clearResult = await this.clearImportedSession(profileId, commandClient);
-    const cookieResult = await this.importPreparedCookies(profileId, commandClient, prepared);
-    const storageResults = await this.importPreparedStorage(profileId, commandClient, prepared);
-    const navigation = rawSession.navigateAfterImport === false
-      ? { result: { skipped: true } }
-      : await this.navigateAfterSessionImport(profileId, commandClient, prepared.targetUrl);
-    return this.createSessionImportResult(profileId, prepared, clearResult, cookieResult, storageResults, navigation);
-  }
-
-  logSkippedSessionData(profileId, prepared) {
-    if (prepared.skippedCookies > 0 || prepared.skippedStorageOrigins > 0) {
-      this.logger?.warn?.(
-        `[ChromiumRuntime] importSession ${profileId}: 跳过与目标站点无关的数据 `
-        + `(Cookie ${prepared.skippedCookies} 个, Storage ${prepared.skippedStorageOrigins} 个)`,
-      );
-    }
-  }
-
-  async clearImportedSession(profileId, commandClient) {
-    this.logger?.info?.(`[ChromiumRuntime] importSession ${profileId}: clear-session`);
-    return assertRuntimeCommandSuccess(
-      'clear-session', await commandClient.send('clear-session', {}, { timeoutMs: 30000 }));
-  }
-
-  async importPreparedCookies(profileId, commandClient, prepared) {
-    if (!prepared.cookies.length) return { result: { imported: 0 } };
-    this.logger?.info?.(`[ChromiumRuntime] importSession ${profileId}: set-cookies (${prepared.cookies.length})`);
-    const response = await commandClient.send('set-cookies', {
-      cookies: prepared.cookies,
-      targetUrl: prepared.targetUrl,
-    }, { timeoutMs: 30000 });
-    return assertRuntimeCommandSuccess('set-cookies', response);
-  }
-
-  async importPreparedStorage(profileId, commandClient, prepared) {
-    const storageResults = [];
-    for (const entry of prepared.browserStorage) {
-      this.logger?.info?.(`[ChromiumRuntime] importSession ${profileId}: set-storage ${entry.origin}`);
-      const response = await commandClient.send('set-storage', {
-        ...entry,
-        targetUrl: prepared.targetUrl,
-      }, { timeoutMs: 30000 });
-      storageResults.push(assertRuntimeCommandSuccess('set-storage', response));
-    }
-    return storageResults;
-  }
-
-  async navigateAfterSessionImport(profileId, commandClient, targetUrl) {
-    this.logger?.info?.(`[ChromiumRuntime] importSession ${profileId}: navigate ${targetUrl}`);
-    try {
-      const response = await commandClient.send('navigate', { url: targetUrl }, { timeoutMs: 30000 });
-      return assertRuntimeCommandSuccess('navigate', response);
-    } catch (error) {
-      return this.normalizeImportNavigationError(profileId, error);
-    }
-  }
-
-  normalizeImportNavigationError(profileId, error) {
-    const message = String(error?.message || '');
-    const timedOut = ['NAVIGATION_TIMEOUT', 'RUNTIME_COMMAND_TIMEOUT'].includes(error?.code);
-    const interrupted = error?.code === 'NAVIGATION_FAILED'
-      && (/页面加载失败:\s*-3(?:\s|$)/.test(message) || /ERR_ABORTED/i.test(message));
-    if (!timedOut && !interrupted) throw error;
-    this.logger?.warn?.(
-      interrupted
-        ? `[ChromiumRuntime] importSession ${profileId}: 页面导航被站点重定向，保留浏览器并等待最终页面`
-        : `[ChromiumRuntime] importSession ${profileId}: 页面加载超过等待时间，保留浏览器并继续加载`,
-    );
-    return {
-      result: {
-        pending: true,
-        timedOut,
-        interrupted,
-        message: interrupted ? '页面正在重定向，已保留浏览器窗口' : '页面仍在加载，已保留浏览器窗口',
-      },
-    };
-  }
-
-  createSessionImportResult(profileId, prepared, clearResult, cookieResult, storageResults, navigation) {
-    return {
-      ok: true,
-      profileId: String(profileId),
-      targetUrl: prepared.targetUrl,
-      cookiesImported: Number(cookieResult?.result?.imported || 0),
-      cookiesSkipped: prepared.skippedCookies,
-      storageOriginsImported: storageResults.length,
-      storageOriginsSkipped: prepared.skippedStorageOrigins,
-      storageResults: storageResults.map((item) => item.result || {}),
-      clearResult: clearResult.result || {},
-      navigation: navigation.result || {},
-    };
+    return this.enqueueProfileOperation(profileId, () => this.sessionImporter.importSession(profileId, rawSession));
   }
 
   async setCookies(profileId, rawCookies = []) {
-    return this.enqueueProfileOperation(profileId, () => this.setCookiesNow(profileId, rawCookies));
-  }
-
-  async setCookiesNow(profileId, rawCookies = []) {
-    const instance = this.getReadyInstance(profileId);
-    const groups = groupCookiesByOrigin(rawCookies);
-    let imported = 0;
-    let skipped = 0;
-    for (const [targetUrl, cookies] of groups) {
-      const prepared = prepareSessionImport({ targetUrl, cookies });
-      skipped += prepared.skippedCookies;
-      if (!prepared.cookies.length) continue;
-      const response = assertRuntimeCommandSuccess('set-cookies', await instance.commandClient.send('set-cookies', {
-        cookies: prepared.cookies,
-        targetUrl: prepared.targetUrl,
-      }, { timeoutMs: 30000 }));
-      imported += Number(response?.result?.imported || 0);
-    }
-    return { ok: true, imported, skipped };
+    return this.enqueueProfileOperation(profileId, () => this.sessionImporter.setCookies(profileId, rawCookies));
   }
 
   async restart(profileId, options = {}) {
@@ -499,7 +397,7 @@ class ChromiumRuntime extends BrowserRuntime {
   async clearDataNow(profileId) {
     const id = String(profileId);
     const instance = this.instances.get(id);
-    const state = this.store.getState(id);
+    const state = this.stateStore.getState(id);
     if (!instance || !state) throw new Error(`Chromium Profile ${id} 不存在`);
     if (typeof this.store.clearBrowserData !== 'function') {
       throw new Error('Chromium Profile 存储不支持清空浏览器数据');
@@ -519,6 +417,10 @@ class ChromiumRuntime extends BrowserRuntime {
     return refreshChromiumEnvironmentProfile(this, profileId, update);
   }
 
+  updateProfileConfiguration(profileId, update, options) {
+    return updateProfileConfiguration(this, profileId, update, options);
+  }
+
   async restartNow(profileId, options = {}) {
     return restartChromiumProfile(this, profileId, options);
   }
@@ -527,13 +429,13 @@ class ChromiumRuntime extends BrowserRuntime {
     return stopChromiumProfile(this, profileId, options);
   }
 
-  async stopAll(options = {}) { return Promise.all(this.store.listStates().filter((s) => s.runtimeType === RUNTIME_TYPES.CHROMIUM).map((s) => this.stop(s.profileId, options))); }
+  async stopAll(options = {}) { return Promise.all(this.stateStore.listStates().filter((s) => s.runtimeType === RUNTIME_TYPES.CHROMIUM).map((s) => this.stop(s.profileId, options))); }
 
   markCrashed(profileId, error) {
-    const state = this.store.getState(profileId);
+    const state = this.stateStore.getState(profileId);
     if (!state || [RUNTIME_STATUS.STOPPED, RUNTIME_STATUS.STOPPING, RUNTIME_STATUS.CRASHED].includes(state.status)) return;
     try { this.windowBridge.hideHostWindow(state.hostHwnd); } catch (_) {}
-    this.store.patchState(profileId, { status: RUNTIME_STATUS.CRASHED, browserHwnd: null, bridgeConnected: false, embedded: false, lastError: error, crashCount: Number(state.crashCount || 0) + 1 });
+    this.stateStore.patchState(profileId, { status: RUNTIME_STATUS.CRASHED, browserHwnd: null, bridgeConnected: false, embedded: false, lastError: error, crashCount: Number(state.crashCount || 0) + 1 });
     this.emit('crashed', this.getState(profileId));
   }
 

@@ -15,7 +15,7 @@ function assertLaunchStillActive(runtime, profileId, instance) {
   if (instance.launchFailure) throw instance.launchFailure;
   assertActiveChromiumLaunch(
     runtime.instances.get(String(profileId)) === instance,
-    runtime.store.getState(profileId)?.status,
+    runtime.stateStore.getState(profileId)?.status,
   );
   if (instance.child.exitCode !== null) throw launchExitError(instance);
 }

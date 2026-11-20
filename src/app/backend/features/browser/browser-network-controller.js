@@ -30,22 +30,6 @@ function getBrowserProxyEndpoint() {
   };
 }
 
-function getChromiumInstance(runtimeManager, tabId) {
-  const chromium = runtimeManager && runtimeManager.chromium;
-  const instances = chromium && chromium.instances;
-  return instances && typeof instances.get === 'function' ? instances.get(String(tabId)) : null;
-}
-
-function proxySettingsChanged(profile, server, bypassList) {
-  return firstText(profile.proxyServer) !== server || firstText(profile.proxyBypassList) !== bypassList;
-}
-
-function proxyAuthenticationChanged(current, next) {
-  if (!current || !next) return Boolean(current) !== Boolean(next);
-  return ['protocol', 'host', 'port', 'username', 'password']
-    .some((key) => current[key] !== next[key]);
-}
-
 function resolveTabProxy(tab, enabled, browserProxy) {
   if (enabled) return browserProxy || { enabled: false };
   return resolveConfiguredBrowserProxy(tab.browserSettings || {}) || { enabled: false };
@@ -55,28 +39,21 @@ async function applyProxyToTab(deps, tab, context) {
   const { enabled, browserProxy, failures } = context;
   try {
     const tabProxy = resolveTabProxy(tab, enabled, browserProxy);
-    const instance = getChromiumInstance(deps.browserRuntimeManager, tab.id);
-    if (!instance || !instance.profile) {
+    if (appContext.isShuttingDown()) return false;
+    const nextProxyServer = firstText(tabProxy.server);
+    const result = await deps.browserRuntimeManager.updateProfileConfiguration(tab.id, {
+      proxyServer: nextProxyServer,
+      proxyBypassList: tabProxy.enabled ? firstText(tabProxy.bypassRules) : '',
+      proxyAuthentication: resolveProxyAuthentication(tabProxy),
+    }, { restart: true, onlyIfChanged: true });
+    if (!result.data.found) {
       tab.networkMagicApplied = false;
       return false;
     }
-    const nextProxyServer = firstText(tabProxy.server);
-    const nextProxyBypassList = tabProxy.enabled ? firstText(tabProxy.bypassRules) : '';
-    const nextProxyAuthentication = resolveProxyAuthentication(tabProxy);
-    const proxyChanged = proxySettingsChanged(instance.profile, nextProxyServer, nextProxyBypassList)
-      || proxyAuthenticationChanged(instance.profile.proxyAuthentication, nextProxyAuthentication);
-    if (!proxyChanged) {
-      tab.networkMagicApplied = enabled && Boolean(nextProxyServer);
-      return false;
-    }
-    instance.profile.proxyServer = nextProxyServer;
-    instance.profile.proxyBypassList = nextProxyBypassList;
-    instance.profile.proxyAuthentication = nextProxyAuthentication;
-    if (appContext.isShuttingDown()) return false;
-    const runtimeState = await deps.browserRuntimeManager.restart(tab.id);
+    const runtimeState = result.data.state;
     tab.runtimeStatus = firstText(runtimeState && runtimeState.status, tab.runtimeStatus);
     tab.networkMagicApplied = enabled && Boolean(nextProxyServer);
-    return true;
+    return result.data.restarted;
   } catch (error) {
     tab.networkMagicApplied = false;
     const failure = { tabId: firstText(tab.id), message: firstText(error && error.message, error) };

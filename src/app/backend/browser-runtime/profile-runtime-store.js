@@ -1,7 +1,6 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const { canTransition, createRuntimeState, normalizeBounds } = require('./runtime-types');
 
 function normalizeProfileId(value) {
   const normalized = String(value || '').trim();
@@ -30,7 +29,6 @@ class ProfileRuntimeStore {
     this.rootDir = path.resolve(String(options.rootDir || 'chromium-profiles'));
     this.downloadsDir = options.downloadsDir ? path.resolve(String(options.downloadsDir)) : '';
     this.logger = options.logger || console;
-    this.states = new Map();
     this.locks = new Map();
   }
 
@@ -155,41 +153,6 @@ class ProfileRuntimeStore {
     return true;
   }
 
-  createState(profileId, runtimeType, patch = {}) {
-    const businessProfileId = normalizeProfileId(profileId);
-    const id = safeProfileId(businessProfileId);
-    const state = createRuntimeState(businessProfileId, runtimeType, patch);
-    this.states.set(id, state);
-    return state;
-  }
-
-  getState(profileId) {
-    return this.states.get(safeProfileId(profileId)) || null;
-  }
-
-  patchState(profileId, patch = {}) {
-    const id = safeProfileId(profileId);
-    const current = this.states.get(id);
-    if (!current) throw new Error(`Profile ${id} 没有运行状态`);
-    const next = { ...current, ...patch };
-    if (patch.bounds) next.bounds = normalizeBounds(patch.bounds);
-    this.states.set(id, next);
-    return next;
-  }
-
-  transition(profileId, status, patch = {}) {
-    const current = this.getState(profileId);
-    if (!current) throw new Error(`Profile ${profileId} 没有运行状态`);
-    if (!canTransition(current.status, status)) {
-      throw new Error(`非法运行时状态迁移: ${current.status} -> ${status}`);
-    }
-    return this.patchState(profileId, { ...patch, status });
-  }
-
-  listStates() {
-    return Array.from(this.states.values()).map((state) => ({ ...state }));
-  }
-
   listProfiles() {
     let entries = [];
     try {
@@ -232,10 +195,6 @@ class ProfileRuntimeStore {
       orphanCount: orphanProfiles.length,
       orphanProfiles,
     };
-  }
-
-  clearState(profileId) {
-    return this.states.delete(safeProfileId(profileId));
   }
 
   clearBrowserData(profileId) {
@@ -283,7 +242,6 @@ class ProfileRuntimeStore {
       }
       fs.rmSync(target, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
     }
-    this.states.delete(id);
     return true;
   }
 
@@ -314,7 +272,6 @@ class ProfileRuntimeStore {
       // libuv 工作线程执行，避免长时间阻塞 Electron 主进程和界面事件。
       await fs.promises.rm(target, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
     }
-    this.states.delete(id);
     return true;
   }
 }

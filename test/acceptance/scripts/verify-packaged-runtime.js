@@ -198,6 +198,9 @@ function verifyAsarIntegrity(projectDir, appOutDir) {
     // 缺失的文件都会在这里直接失败，禁止继续生成安装包。
     asar.extractAll(archivePath, extractDir);
     verifyUnpackedRuntimeFiles(projectDir, resourcesDir, extractDir);
+    for (const script of ['navigator.js', 'graphics.js', 'media.js', 'runtime-template.js']) {
+      assertFile(path.join(extractDir, 'src/assets/browser-environment', script), 128);
+    }
     verifyPackagedLogoResolution(extractDir, resourcesDir);
     const sidebarRoot = path.join(extractDir, 'src', 'app', 'frontend', 'sidebar');
     const sidebarPath = path.join(sidebarRoot, 'ai-control.html');

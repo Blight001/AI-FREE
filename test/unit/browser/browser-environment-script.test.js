@@ -14,6 +14,25 @@ function runScript(settings, globals = {}) {
   return context;
 }
 
+test('configured platform agrees between page metadata and native launch metadata', async () => {
+  const { buildChromiumUserAgentMetadataArgument } = require('../../../src/app/backend/browser-runtime/chromium-profile-args');
+  for (const [os, platform] of [['mac', 'macOS'], ['linux', 'Linux'], ['win11', 'Windows']]) {
+    const settings = { os, deviceName: { mode: 'custom', value: 'Configured Model' } };
+    const context = runScript(settings, { navigator: { userAgentData: {
+      brands: [{ brand: 'Chromium', version: '150' }], platform: 'Windows',
+      getHighEntropyValues: async () => ({ architecture: 'x86' }),
+    } } });
+    const argument = buildChromiumUserAgentMetadataArgument(settings);
+    const nativeMetadata = JSON.parse(Buffer.from(argument.split('=')[1], 'base64').toString('utf8'));
+    assert.equal(context.navigator.userAgentData.platform, platform);
+    assert.equal(nativeMetadata.platform, platform);
+    const values = await context.navigator.userAgentData.getHighEntropyValues(['model', 'architecture']);
+    assert.equal(values.model, 'Configured Model');
+    assert.equal(values.architecture, 'x86');
+    assert.equal(context.navigator.userAgentData.brands[0].version, '150');
+  }
+});
+
 test('normalizes only web-visible settings and bounds untrusted values', () => {
   const normalized = normalizeBrowserEnvironmentScriptSettings({
     cpu: 1000,

@@ -9,7 +9,12 @@ const test = require('node:test');
 const originalCwd = process.cwd();
 const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-session-storage-'));
 process.chdir(fixtureRoot);
+const electronPath = require.resolve('electron');
+const originalElectron = require.cache[electronPath];
+require.cache[electronPath] = { exports: { app: { getPath: () => path.join(fixtureRoot, 'profile') } } };
 const sessionStorage = require('../../../src/app/backend/lib/session-storage');
+if (originalElectron) require.cache[electronPath] = originalElectron;
+else delete require.cache[electronPath];
 
 test.after(() => {
   process.chdir(originalCwd);

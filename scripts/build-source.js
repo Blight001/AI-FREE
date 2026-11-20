@@ -5,6 +5,7 @@ const { spawnSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { buildBrowserEnvironmentTemplate } = require('../src/app/backend/browser-runtime/browser-environment-assets');
 
 const projectDir = path.resolve(__dirname, '..');
 const sourceRoot = path.join(projectDir, 'src');
@@ -176,6 +177,8 @@ function generateSource(outputRoot) {
     hash.update(result.relativePath).update(fs.readFileSync(filePath));
   }
   compileTypeScriptProjects(totals.pendingTypeScript, outputRoot);
+  const environmentTemplate = path.join(outputRoot, 'src/assets/browser-environment/runtime-template.js');
+  fs.writeFileSync(environmentTemplate, buildBrowserEnvironmentTemplate(), 'utf8');
   const extensionServiceWorkers = stampExtensionServiceWorkers(outputRoot);
   writeRuntimeFiles(outputRoot);
   const manifest = {

@@ -1,5 +1,7 @@
 'use strict';
 
+const { normalizeUserAgentBrands } = require('../../../shared/browser-identity');
+
 const { resolveBrowserGeolocation } = require('./browser-ip-geolocation');
 
 function hasResolvedLocation(permission, location) {
@@ -8,14 +10,6 @@ function hasResolvedLocation(permission, location) {
 
 function objectValue(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-}
-
-function normalizeBrands(value) {
-  if (!Array.isArray(value)) return [];
-  return value.slice(0, 8).map((item) => ({
-    brand: String(item?.brand || '').trim().slice(0, 64),
-    version: String(item?.version || '').trim().slice(0, 32),
-  })).filter((item) => item.brand && item.version);
 }
 
 function buildUaSettings(settings) {
@@ -28,7 +22,7 @@ function buildSecChUaSettings(settings, profile) {
   const brands = source.mode === 'custom' ? source.brands : profile.uaBrands || source.brands;
   return {
     mode: source.mode || 'default',
-    brands: normalizeBrands(brands),
+    brands: normalizeUserAgentBrands(brands),
     majorVersion: profile.majorVersion || '',
     platform: profile.os || settings.os || '',
     platformVersion: profile.platformVersion || '',
@@ -122,7 +116,7 @@ function buildBrowserEnvironmentSettings(settings = {}, profile = {}) {
     model: profile.model || '',
     platformVersion: profile.platformVersion || '',
     uaFullVersion: profile.uaFullVersion || '',
-    uaFullVersionList: normalizeBrands(profile.uaFullVersionList),
+    uaFullVersionList: normalizeUserAgentBrands(profile.uaFullVersionList),
     wow64: profile.wow64 === true,
     webglMetadata: buildWebGlSettings(settings),
     geolocation: buildGeolocationSettings(settings, profile),

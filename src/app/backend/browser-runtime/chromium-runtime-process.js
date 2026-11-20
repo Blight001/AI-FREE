@@ -8,10 +8,9 @@ const {
   persistStableChromiumSession,
   restoreChromiumSessionFiles,
   snapshotHasRestorableSession,
-} = require('./chromium-launcher');
+} = require('./chromium-session-recovery');
 const { RUNTIME_STATUS } = require('./runtime-types');
 const { createChromiumPerformanceSpan } = require('./chromium-performance');
-const { cleanupChromiumProfileEnvironment } = require('./chromium-runtime-environment');
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -88,12 +87,12 @@ function terminateProcessTree(pid, timeoutMs = 10000) {
 
 async function stopChromiumProfile(runtime, profileId, options = {}) {
   const id = String(profileId);
-  const state = runtime.store.getState(id);
+  const state = runtime.stateStore.getState(id);
   const instance = runtime.instances.get(id);
   if (!state) return null;
   const performanceSpan = createChromiumPerformanceSpan(runtime.logger, 'stop');
   if (![RUNTIME_STATUS.STOPPING, RUNTIME_STATUS.STOPPED].includes(state.status)) {
-    runtime.store.transition(id, RUNTIME_STATUS.STOPPING);
+    runtime.stateStore.transition(id, RUNTIME_STATUS.STOPPING);
   }
   performanceSpan.mark('stateTransition');
   try {
@@ -106,16 +105,14 @@ async function stopChromiumProfile(runtime, profileId, options = {}) {
   await finalizeStoppedProfile(runtime, id, instance, state);
   performanceSpan.mark('finalize');
   performanceSpan.finish();
-  runtime.emit('state-changed', runtime.getState(id));
   return runtime.getState(id);
 }
 
 async function finalizeStoppedProfile(runtime, id, instance, state) {
-  await cleanupChromiumProfileEnvironment(instance);
-  destroyEmbeddedWindow(runtime, state);
+  await instance?.resources?.dispose({ processExited: true });
   if (!instance || runtime.instances.get(id) === instance) runtime.instances.delete(id);
   runtime.store.releaseLock(id);
-  runtime.store.patchState(id, {
+  runtime.stateStore.patchState(id, {
     status: RUNTIME_STATUS.STOPPED,
     stoppedAt: Date.now(),
     browserHwnd: null,
@@ -128,9 +125,10 @@ async function finalizeStoppedProfile(runtime, id, instance, state) {
 }
 
 async function markChromiumStopFailed(runtime, id, instance, state, error) {
-  try { await instance?.commandClient?.close(); } catch (_) {}
-  destroyEmbeddedWindow(runtime, state);
-  runtime.store.patchState(id, {
+  await instance?.resources?.dispose({ processExited: false }).catch(() => {
+    runtime.logger?.warn?.('[ChromiumRuntime] 关闭失败后的资源释放失败，保留原始关闭错误');
+  });
+  runtime.stateStore.patchState(id, {
     status: RUNTIME_STATUS.CRASHED,
     browserHwnd: null,
     hostHwnd: null,
@@ -139,24 +137,22 @@ async function markChromiumStopFailed(runtime, id, instance, state, error) {
     lastError: { code: error.code || 'CHROMIUM_STOP_FAILED', message: error.message },
   });
   scheduleLateExitCleanup(runtime, id, instance);
-  runtime.emit('state-changed', runtime.getState(id));
 }
 
 function scheduleLateExitCleanup(runtime, id, instance) {
   if (!instance?.child) return;
   if (instance.child.exitCode !== null) {
-    void cleanupChromiumProfileEnvironment(instance);
+    void instance.resources?.dispose({ processExited: true }).catch(() => runtime.logger?.warn?.('[ChromiumRuntime] 延迟资源释放失败'));
     return;
   }
   instance.child.once('exit', () => {
     if (runtime.instances.get(id) !== instance) return;
-    void cleanupChromiumProfileEnvironment(instance);
+    void instance.resources?.dispose({ processExited: true }).catch(() => runtime.logger?.warn?.('[ChromiumRuntime] 延迟资源释放失败'));
     runtime.instances.delete(id);
     runtime.store.releaseLock(id);
-    const current = runtime.store.getState(id);
+    const current = runtime.stateStore.getState(id);
     if (!current || Number(current.pid || 0) !== Number(instance.child.pid || 0)) return;
-    runtime.store.patchState(id, { status: RUNTIME_STATUS.STOPPED, pid: 0, stoppedAt: Date.now() });
-    runtime.emit('state-changed', runtime.getState(id));
+    runtime.stateStore.patchState(id, { status: RUNTIME_STATUS.STOPPED, pid: 0, stoppedAt: Date.now() });
   });
 }
 
@@ -164,16 +160,11 @@ async function cleanupFailedChromiumLaunch(runtime, profileId, context) {
   const id = String(profileId);
   const instance = runtime.instances.get(id);
   runtime.unbindParentWindowFocus(instance);
-  const processExited = await terminateFailedLaunch(instance);
-  try { await context.commandClient?.close(); } catch (_) {}
-  if (processExited) {
-    await cleanupChromiumProfileEnvironment({
-      paths: context.paths,
-      proxyAuthBridge: context.proxyAuthBridge,
-      environmentExtensionDir: context.environmentExtensionDir,
-    });
-  }
-  try { if (context.hostHwnd) runtime.windowBridge.destroyHostWindow(context.hostHwnd); } catch (_) {}
+  const processOwner = instance || { child: context.resources.child, expectedExit: true };
+  const processExited = await terminateFailedLaunch(processOwner);
+  await context.resources.dispose({ processExited }).catch(() => {
+    runtime.logger?.warn?.('[ChromiumRuntime] 启动失败后的资源释放失败，保留原始启动错误');
+  });
   if (processExited) {
     runtime.instances.delete(id);
     runtime.store.releaseLock(id);
@@ -190,10 +181,10 @@ async function terminateFailedLaunch(instance) {
 }
 
 function patchFailedLaunchState(runtime, id, instance, error, processExited) {
-  const state = runtime.store.getState(id);
+  const state = runtime.stateStore.getState(id);
   if (!state) return;
   const cleanupFailed = !processExited;
-  runtime.store.patchState(id, {
+  runtime.stateStore.patchState(id, {
     status: RUNTIME_STATUS.CRASHED,
     pid: cleanupFailed ? Number(instance?.child?.pid || state.pid || 0) : 0,
     hostHwnd: null,
@@ -232,7 +223,6 @@ async function shutdownChromiumInstance(runtime, id, instance, options, performa
   if (instance.child.exitCode === null) throwChromiumExitTimeout(id);
   if (preserveSession) await preserveChromiumSession(runtime, id, instance, preCloseSnapshot, stableSnapshot);
   performanceSpan.mark('sessionPersist');
-  try { await instance.commandClient.close(); } catch (_) {}
   performanceSpan.mark('transportClose');
   void closeRequest;
 }
@@ -260,7 +250,7 @@ function throwChromiumExitTimeout(id) {
 async function restartChromiumProfile(runtime, profileId, options = {}) {
   const id = String(profileId);
   const instance = runtime.instances.get(id);
-  const state = runtime.store.getState(id);
+  const state = runtime.stateStore.getState(id);
   if (!instance || !state) throw new Error(`Chromium Profile ${id} 不存在`);
   const profile = { ...instance.profile };
   if (options.compatibilityMode === true) {
@@ -294,15 +284,6 @@ async function preserveChromiumSession(runtime, id, instance, preCloseSnapshot, 
   if (recoverySnapshot && restoreChromiumSessionFiles(recoverySnapshot, runtime.logger)) {
     persistStableChromiumSession(instance.paths, recoverySnapshot, runtime.logger);
     runtime.logger?.warn?.(`[ChromiumRuntime] ${id} 退出结果无活动标签，已恢复稳定 Session`);
-  }
-}
-
-function destroyEmbeddedWindow(runtime, state) {
-  if (state.browserHwnd) {
-    try { runtime.windowBridge.detachChildWindow({ hostHwnd: state.hostHwnd, childHwnd: state.browserHwnd }); } catch (_) {}
-  }
-  if (state.hostHwnd) {
-    try { runtime.windowBridge.destroyHostWindow(state.hostHwnd); } catch (_) {}
   }
 }
 

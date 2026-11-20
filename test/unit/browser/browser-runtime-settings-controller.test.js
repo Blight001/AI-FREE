@@ -2,6 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
+const { createConfigurationManager } = require('../../fixtures/browser-configuration-runtime');
 
 let clashStatus = { running: true, enabled: true };
 const settingsPath = require.resolve('../../../src/app/backend/utils/ai-free-browser-settings');
@@ -37,8 +38,7 @@ function createFixture(overrides = {}) {
   let updates = 0;
   const controller = createBrowserRuntimeSettingsController({
     browserRuntimeManager: {
-      chromium: { instances },
-      restart: async (id) => { restarts.push(id); return { status: 'running' }; },
+      ...createConfigurationManager(instances, async (id) => { restarts.push(id); return { status: 'running' }; }),
       setCookies: async (id, values) => {
         cookies.push({ id, values });
         return { imported: values.length };
@@ -82,7 +82,7 @@ test('settings application updates Chromium profile, cookies and restart state',
 test('settings application handles configured proxy, missing tabs and cookie failures', async () => {
   const fixture = createFixture({
     browserRuntimeManager: {
-      chromium: { instances: new Map() },
+      ...createConfigurationManager(new Map(), async () => ({ status: 'running' })),
       setCookies: async () => { throw new Error('cookie rejected'); },
     },
   });
@@ -128,8 +128,7 @@ test('extension refresh restarts active profiles and reports individual failures
   fixture.instances.get('bad').profile.extensionPaths = [];
   const failing = createBrowserRuntimeSettingsController({
     browserRuntimeManager: {
-      chromium: { instances: fixture.instances },
-      restart: async (id) => { if (id === 'bad') throw new Error('restart failed'); return { status: 'running' }; },
+      ...createConfigurationManager(fixture.instances, async (id) => { if (id === 'bad') throw new Error('restart failed'); return { status: 'running' }; }),
     },
     extensionManager: {},
     logger: { warn: (...args) => fixture.warnings.push(args.join(' ')) },

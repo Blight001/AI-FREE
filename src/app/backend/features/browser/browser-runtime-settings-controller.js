@@ -15,12 +15,6 @@ const { resolveLowSpecMode } = require('./low-spec-mode-policy');
 const { getChromiumHandshakeBudget } = require('../../browser-runtime/chromium-launch-recovery');
 const { callOptional, firstText } = require('../../../shared/safe-values');
 
-function getChromiumInstance(browserRuntimeManager, tabId) {
-  const chromium = browserRuntimeManager && browserRuntimeManager.chromium;
-  const instances = chromium && chromium.instances;
-  return instances && typeof instances.get === 'function' ? instances.get(String(tabId)) : null;
-}
-
 function resolveEffectiveBrowserProxy(deps, normalized) {
   const clashStatus = typeof getClashMiniStatus === 'function' ? getClashMiniStatus() : null;
   const globalMagicEnabled = Boolean(clashStatus && clashStatus.running === true && clashStatus.enabled === true);
@@ -30,13 +24,16 @@ function resolveEffectiveBrowserProxy(deps, normalized) {
   return { effectiveProxy: effectiveProxy || { enabled: false }, globalMagicEnabled };
 }
 
-function applyProfileToRuntime(instance, browserProfile, normalized, effectiveProxy) {
-  if (!instance || !instance.profile) return;
-  Object.assign(instance.profile, buildBrowserRuntimeEnvironment(normalized, browserProfile, effectiveProxy));
-  const lowSpecMode = resolveLowSpecMode({ settings: normalized.lowSpecMode, system: instance.profile.lowSpecSystem }).enabled;
-  instance.profile.lowSpecMode = lowSpecMode;
-  instance.profile.launchMode = lowSpecMode ? 'low-spec' : 'normal';
-  instance.profile.launchTimeoutMs = getChromiumHandshakeBudget({ lowSpecMode });
+function buildConfigurationUpdate(browserProfile, normalized, effectiveProxy) {
+  return ({ lowSpecSystem }) => {
+    const lowSpecMode = resolveLowSpecMode({ settings: normalized.lowSpecMode, system: lowSpecSystem }).enabled;
+    return {
+      ...buildBrowserRuntimeEnvironment(normalized, browserProfile, effectiveProxy),
+      lowSpecMode,
+      launchMode: lowSpecMode ? 'low-spec' : 'normal',
+      launchTimeoutMs: getChromiumHandshakeBudget({ lowSpecMode }),
+    };
+  };
 }
 
 function saveResolvedTabSettings(tab, tabs, normalized, browserProfile) {
@@ -77,15 +74,17 @@ async function setTabBrowserSettings(deps, tabId, settings, options = {}) {
         logger,
       });
       saveResolvedTabSettings(tab, tabs, normalized, browserProfile);
-      applyProfileToRuntime(getChromiumInstance(browserRuntimeManager, tab.id), browserProfile, normalized, proxyState.effectiveProxy);
       const cookieResult = await applyConfiguredCookies(deps, tab.id, normalized);
       const locationResult = browserProfile.geolocationWarning
         ? { geolocationWarning: browserProfile.geolocationWarning } : {};
+      const configuration = browserRuntimeManager
+        ? await browserRuntimeManager.updateProfileConfiguration(tab.id,
+          buildConfigurationUpdate(browserProfile, normalized, proxyState.effectiveProxy),
+          { restart: options.restartChromium === true })
+        : null;
       if (options.restartChromium === true && browserRuntimeManager) {
-        const environmentUpdate = buildBrowserRuntimeEnvironment(normalized, browserProfile, proxyState.effectiveProxy);
-        const state = typeof browserRuntimeManager.refreshEnvironmentProfile === 'function'
-          ? await browserRuntimeManager.refreshEnvironmentProfile(tab.id, environmentUpdate)
-          : await browserRuntimeManager.restart(tab.id);
+        if (!configuration.data.found) throw new Error(`Chromium Profile ${tab.id} 不存在`);
+        const state = configuration.data.state;
         tab.runtimeStatus = firstText(state && state.status, tab.runtimeStatus);
         tab.networkMagicApplied = proxyState.globalMagicEnabled && proxyState.effectiveProxy.enabled === true;
         updateTabs(true);
@@ -109,10 +108,11 @@ async function refreshBrowsersAfterExtensionChange(deps, change = {}) {
   
     for (const tab of entries) {
       try {
-        const instance = getChromiumInstance(browserRuntimeManager, tab.id);
-        if (!instance || !instance.profile) continue;
-        instance.profile.extensionPaths = resolveChromiumExtensionPaths(tab.browserSettings || {}, extensionManager);
-        const runtimeState = await browserRuntimeManager.restart(tab.id);
+        const result = await browserRuntimeManager.updateProfileConfiguration(tab.id, {
+          extensionPaths: resolveChromiumExtensionPaths(tab.browserSettings || {}, extensionManager),
+        }, { restart: true });
+        if (!result.data.found) continue;
+        const runtimeState = result.data.state;
         tab.runtimeStatus = firstText(runtimeState && runtimeState.status, tab.runtimeStatus);
         chromiumRestarted += 1;
       } catch (error) {
