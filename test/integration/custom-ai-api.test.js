@@ -3,6 +3,9 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const axios = require('axios');
+const { createAiSettingsService } = require('../../src/app/backend/features/ai-chat/ai-settings-service');
+const { createAiModelService } = require('../../src/app/backend/features/ai-chat/ai-model-service');
+const { createAiChatService } = require('../../src/app/backend/features/ai-chat/ai-chat-service');
 
 const {
   CUSTOM_AI_MODEL_ID,
@@ -17,6 +20,42 @@ const {
   resolveChatCompletionsUrl,
   sendCustomAIControlMessage,
 } = require('../../src/app/backend/services/custom-ai-api');
+
+test('未登录用户可配置并使用自定义模型，内置模型仍要求登录', async (t) => {
+  let store = {};
+  const readStoreConfigSafe = () => store;
+  const settings = createAiSettingsService({
+    readStore: readStoreConfigSafe,
+    writeStore: (value) => { store = value; return true; },
+  });
+  const models = createAiModelService({ readStoreConfigSafe });
+  const chat = createAiChatService({ readStoreConfigSafe });
+  const provider = t.mock.method(axios, 'post', async () => ({
+    status: 200, data: { choices: [{ message: { content: '本地模型回复' } }] },
+  }));
+
+  assert.equal(settings.getCustomApi().ok, true);
+  assert.equal(settings.setCustomApi({ baseUrl: 'http://127.0.0.1:11434/v1', model: 'local-model' }).ok, true);
+  const listed = await models.getModels();
+  assert.equal(listed.ok, true);
+  assert.equal(listed.models[0].id, CUSTOM_AI_MODEL_ID);
+  const messages = [{ role: 'user', content: '你好' }];
+  const quota = { remaining: 0 };
+  const reply = await chat.chat({}, { modelId: listed.models[0].id, messages, quota, disableTools: true });
+  assert.equal(reply.ok, true);
+  assert.equal(reply.message.content, '本地模型回复');
+  const builtin = await chat.chat({}, { modelId: 'builtin', messages });
+  assert.equal(builtin.ok, false);
+  assert.match(builtin.message, /登录/);
+  assert.equal(provider.mock.callCount(), 1);
+  assert.equal(provider.mock.calls[0].arguments[1].model, 'local-model');
+
+  assert.equal(settings.setCustomApi({ clear: true }).ok, true);
+  assert.equal((await models.getModels()).ok, false);
+  const missing = await chat.chat({}, { modelId: CUSTOM_AI_MODEL_ID, messages });
+  assert.match(missing.message, /尚未配置完整/);
+  assert.equal(provider.mock.callCount(), 1);
+});
 
 test('自定义 API 配置可识别且公开配置不会泄露 API Key', () => {
   const config = getCustomAiApiConfig({

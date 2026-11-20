@@ -5,7 +5,6 @@ const {
   isCustomAiApiConfigured,
   isCustomAiModelId,
 } = require('../../utils/ai-control-settings');
-const { createVipRequiredResult, resolveVipAccess } = require('../../utils/vip-access');
 const { normalizeAccountSession } = require('../../utils/account-session');
 const { enrichBrowserConnectionNames } = require('./connection-names');
 const { listAutomationCards } = require('./automation-card-service');
@@ -22,10 +21,7 @@ function validateQuota(quota) {
     : null;
 }
 
-function resolveCustomAccess(deps, store, modelId) {
-  if (!resolveVipAccess(deps.licenseCache?.getSnapshot?.() || {}).isVip) {
-    return { error: createVipRequiredResult('自定义模型') };
-  }
+function resolveCustomAccess(store, modelId) {
   const customApi = getCustomAiApiConfig(store);
   if (!isCustomAiApiConfigured(customApi)) {
     return { error: { ok: false, message: '自定义 API 尚未配置完整，请重新配置' } };
@@ -72,7 +68,7 @@ function resolveChatAccess(deps, input) {
   const store = deps.readStoreConfigSafe();
   const modelId = String(input.modelId || '').trim();
   return isCustomAiModelId(modelId)
-    ? resolveCustomAccess(deps, store, modelId)
+    ? resolveCustomAccess(store, modelId)
     : resolveBuiltinAccess(deps, store, input, modelId);
 }
 

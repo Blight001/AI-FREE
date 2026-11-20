@@ -543,7 +543,6 @@ body.ai-prompt-diagnostics-open { overflow: hidden; }
 }
 .ai-model-custom-api-action:hover,
 .ai-model-custom-api-action:focus-visible { color: #fff; }
-.ai-model-custom-api-action.is-vip-locked { color: #e4b85c; }
 
 .ai-custom-api-dialog[hidden] { display: none !important; }
 .ai-custom-api-dialog { position: fixed; inset: 0; z-index: 1500; display: grid; place-items: center; padding: 14px; box-sizing: border-box; }

@@ -5,24 +5,17 @@ const test = require('node:test');
 
 const { createAiModelService, createCustomModel, remoteUnavailable } = require('../../../src/app/backend/features/ai-chat/ai-model-service');
 
-const verifiedVip = {
-  vip_server_verified: true,
-  vip_verified_at: new Date().toISOString(),
-  is_vip: true,
-};
 const customStore = {
   aiControlSettings: { customApi: { enabled: true, name: 'Private', baseUrl: 'https://api.example.test', model: 'fixture-model' } },
 };
 
-test('custom model requires both verified VIP access and complete configuration', () => {
-  const vipCache = { getSnapshot: () => verifiedVip };
-  assert.deepEqual(createCustomModel(customStore, vipCache), {
+test('custom model requires complete configuration', () => {
+  assert.deepEqual(createCustomModel(customStore), {
     id: '__custom_openai_api__', name: 'Private', model: 'fixture-model', custom_api: true,
     supports_image_input: false,
   });
-  assert.equal(createCustomModel(customStore, { getSnapshot: () => ({}) }), null);
-  assert.equal(createCustomModel({ aiControlSettings: { customApi: { enabled: true } } }, vipCache), null);
-  assert.equal(createCustomModel({}, null), null);
+  assert.equal(createCustomModel({ aiControlSettings: { customApi: { enabled: true } } }), null);
+  assert.equal(createCustomModel({}), null);
 });
 
 test('remote unavailable response preserves an available custom model', () => {
@@ -34,7 +27,6 @@ test('remote unavailable response preserves an available custom model', () => {
 test('model service handles missing credentials and unavailable clients', async () => {
   const service = createAiModelService({
     readStoreConfigSafe: () => customStore,
-    licenseCache: { getSnapshot: () => verifiedVip },
     getGlobalHttpClient: () => null,
   });
   const local = await service.getModels();
@@ -64,7 +56,6 @@ test('model service merges remote models and degrades remote errors to custom-on
   const calls = [];
   const service = createAiModelService({
     readStoreConfigSafe: () => store,
-    licenseCache: { getSnapshot: () => verifiedVip },
     getGlobalHttpClient: () => ({ getAIControlModels: async (...args) => { calls.push(args); return response; } }),
   });
   const merged = await service.getModels();

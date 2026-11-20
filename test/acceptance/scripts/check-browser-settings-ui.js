@@ -133,6 +133,7 @@ for (const [channel, response] of /** @type {Array<[string, any]>} */ ([
   ['ai-control-get-automation-cards', { ok: true, cards: [], selectedId: '' }],
   ['ai-control-history-list', { ok: true, sessions: [] }],
   ['ai-control-get-models', { ok: true, models: [], quota: null }],
+  ['get-ai-control-custom-api', { ok: true, config: {} }],
   ['get-ai-server-device-status', {
     ok: true,
     status: {
@@ -462,6 +463,10 @@ app.whenReady().then(async () => {
   }
   const externalCodexResult = await win.webContents.executeJavaScript(`(async () => {
     const dialog = document.getElementById('ai-custom-api-dialog');
+    document.getElementById('ai-chat-model-trigger')?.click();
+    const addModel = document.querySelector('.ai-model-custom-api-action');
+    addModel?.click();
+    const opensWithoutLogin = addModel?.textContent === '添加自定义模型' && dialog.hidden === false;
     const tab = document.getElementById('ai-external-codex-title');
     const panel = document.getElementById('ai-external-codex-panel');
     const status = document.getElementById('external-codex-status');
@@ -473,6 +478,7 @@ app.whenReady().then(async () => {
     copyButton?.click();
     await new Promise((done) => setTimeout(done, 30));
     return {
+      opensWithoutLogin,
       tabInCustomDialog: tab?.closest('#ai-custom-api-dialog') === dialog,
       tabLabel: tab?.textContent === '外部 Codex',
       panelVisibleAfterTab: panel?.hidden === false,

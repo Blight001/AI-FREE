@@ -10,7 +10,6 @@ const {
   normalizeAiControlMcpCallLimit,
   toPublicCustomAiApiConfig,
 } = require('../../utils/ai-control-settings');
-const { createVipRequiredResult, resolveVipAccess } = require('../../utils/vip-access');
 
 function mergeAiControlSettings(store, patch) {
   const current = store && typeof store === 'object' ? store : {};
@@ -64,17 +63,11 @@ function createAiSettingsService(deps = {}) {
   }
 
   function getCustomApi() {
-    if (!resolveVipAccess(deps.licenseCache?.getSnapshot?.() || {}).isVip) {
-      return createVipRequiredResult('自定义模型');
-    }
     return { ok: true, config: toPublicCustomAiApiConfig(getCustomAiApiConfig(deps.readStore())) };
   }
 
   function setCustomApi(payload = {}) {
     const clear = payload.clear === true;
-    if (!clear && !resolveVipAccess(deps.licenseCache?.getSnapshot?.() || {}).isVip) {
-      return createVipRequiredResult('自定义模型');
-    }
     const currentStore = deps.readStore();
     const next = buildCustomApiConfig(currentStore, payload, clear);
     validateCustomApiConfig(next, clear);

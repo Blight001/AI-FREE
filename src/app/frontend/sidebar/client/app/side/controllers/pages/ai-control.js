@@ -20,7 +20,6 @@ const state = {
   browserSelectionExplicitlyDisabled: false,
   browserSelectionTouched: false,
   accountAuthenticated: false,
-  vipActive: false,
   loading: false,
   stopping: false,
   activeRequestId: '',

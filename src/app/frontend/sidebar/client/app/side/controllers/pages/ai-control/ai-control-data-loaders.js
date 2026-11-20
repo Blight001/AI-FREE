@@ -2,10 +2,8 @@
     try {
       const session = await window.aiFree?.account?.getSession?.();
       state.accountAuthenticated = session?.authenticated === true;
-      state.vipActive = window.isSidebarVipActive?.(session) === true;
     } catch (_) {
       state.accountAuthenticated = false;
-      state.vipActive = false;
     }
   }
 

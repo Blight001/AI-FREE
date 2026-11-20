@@ -29,8 +29,8 @@ test('额度边界和旧多选输入被归一化为单一控制浏览器', () =>
   assert.equal(options.mentions[0].reference, 'notes.md');
 });
 
-test('内置模型要求登录和服务可用，自定义模型同时要求 VIP 与完整配置', () => {
-  const base = { readStoreConfigSafe: () => ({}), getGlobalHttpClient: () => null, licenseCache: { getSnapshot: () => ({}) } };
+test('内置模型要求登录和服务可用，自定义模型要求完整配置', () => {
+  const base = { readStoreConfigSafe: () => ({}), getGlobalHttpClient: () => null };
   assert.match(resolveChatAccess(base, { modelId: 'builtin' }).error.message, /登录/);
   const signedIn = {
     ...base,
@@ -38,9 +38,7 @@ test('内置模型要求登录和服务可用，自定义模型同时要求 VIP 
     getGlobalHttpClient: () => ({ sendAIControlMessage() {} }),
   };
   assert.equal(resolveChatAccess(signedIn, { modelId: 'builtin' }).key, 'afs_session');
-  assert.equal(resolveChatAccess(base, { modelId: '__custom_openai_api__' }).error.code, 'VIP_REQUIRED');
-  const vip = { ...base, licenseCache: { getSnapshot: () => ({ is_vip: true, vip_active: true, vip_server_verified: true, vip_verified_at: new Date().toISOString() }) } };
-  assert.match(resolveChatAccess(vip, { modelId: '__custom_openai_api__' }).error.message, /尚未配置完整/);
+  assert.match(resolveChatAccess(base, { modelId: '__custom_openai_api__' }).error.message, /尚未配置完整/);
 });
 
 test('对话会装入全部在线浏览器，不因用户未选择或旧连接离线而失败', () => {

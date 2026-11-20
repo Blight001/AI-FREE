@@ -77,15 +77,12 @@
     const action = document.createElement('button');
     action.type = 'button';
     action.className = 'ai-select-option ai-model-custom-api-action';
-    const locked = state.vipActive !== true;
-    action.classList.toggle('is-vip-locked', locked);
-    action.textContent = locked ? '🔒 添加自定义模型（VIP）' : '添加自定义模型';
+    action.textContent = '添加自定义模型';
     action.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
       closeSelect(shell);
-      if (locked) window.openVipAccountCenter?.();
-      else void openCustomApiDialog();
+      void openCustomApiDialog();
     });
     menu.appendChild(action);
   }

@@ -236,12 +236,6 @@
     if (save) save.textContent = state.customApiSaving ? '保存中…' : '保存并使用';
   }
 
-  function customApiAccessAllowed() {
-    if (window.isSidebarVipActive?.() === true || state.vipActive === true) return true;
-    window.openVipAccountCenter?.();
-    return false;
-  }
-
   function applyCustomApiDialogConfig(config) {
     state.customApiHasKey = config.hasApiKey === true;
     el('ai-custom-api-name').value = String(config.name || '自定义 API');
@@ -257,15 +251,7 @@
     return String(error?.error || error?.message || fallback || error || '');
   }
 
-  function handleCustomApiVipRequired(result) {
-    if (!result?.vipRequired) return false;
-    closeCustomApiDialog();
-    window.openVipAccountCenter?.();
-    return true;
-  }
-
   async function openCustomApiDialog() {
-    if (!customApiAccessAllowed()) return;
     const dialog = el('ai-custom-api-dialog');
     const status = el('ai-custom-api-status');
     const getCustomApi = window.aiFree?.ai?.getCustomApi;
@@ -276,7 +262,6 @@
     updateCustomApiDialogBusy(true);
     try {
       const result = await getCustomApi();
-      if (handleCustomApiVipRequired(result)) return;
       if (!result?.ok) throw new Error(customApiErrorMessage(result, '读取自定义 API 失败'));
       applyCustomApiDialogConfig(result.config || {});
     } catch (error) {

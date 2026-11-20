@@ -4,13 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { createAiSupportService } = require('../../../src/app/backend/features/ai-chat/ai-support-service');
-const { markVipServerVerified } = require('../../../src/app/backend/utils/vip-access');
-
-function vipLicenseCache() {
-  return { getSnapshot: () => ({ result: markVipServerVerified({ is_vip: true }) }) };
-}
-
-test('远端模型服务不可用时仍向已验证 VIP 返回本地自定义模型', async () => {
+test('未登录且远端模型服务不可用时仍返回本地自定义模型', async () => {
   const service = createAiSupportService({
     readStoreConfigSafe: () => ({
       userCredentials: {},
@@ -18,7 +12,6 @@ test('远端模型服务不可用时仍向已验证 VIP 返回本地自定义模
         customApi: { enabled: true, name: '私有模型', baseUrl: 'https://ai.example/v1', model: 'model-x' },
       },
     }),
-    licenseCache: vipLicenseCache(),
     getGlobalHttpClient: () => null,
   });
 

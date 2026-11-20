@@ -5,14 +5,12 @@ const {
   getCustomAiApiConfig,
   isCustomAiApiConfigured,
 } = require('../../utils/ai-control-settings');
-const { resolveVipAccess } = require('../../utils/vip-access');
 const { normalizeAccountSession } = require('../../utils/account-session');
 const { callOptional, firstText } = require('../../../shared/safe-values');
 
-function createCustomModel(store, licenseCache) {
+function createCustomModel(store) {
   const config = getCustomAiApiConfig(store);
-  const vip = resolveVipAccess(callOptional(licenseCache, 'getSnapshot') || {}).isVip;
-  return vip && isCustomAiApiConfigured(config)
+  return isCustomAiApiConfigured(config)
     ? {
       id: CUSTOM_AI_MODEL_ID,
       name: config.name,
@@ -30,13 +28,13 @@ function remoteUnavailable(customModel, message = 'AI 服务尚未就绪') {
 }
 
 function createAiModelService(deps = {}) {
-  const { readStoreConfigSafe, licenseCache, getGlobalHttpClient } = deps;
+  const { readStoreConfigSafe } = deps;
   async function getModels() {
     const store = readStoreConfigSafe();
     const credentials = normalizeAccountSession(store?.userCredentials || {});
     const key = firstText(credentials.key).trim();
     const deviceId = firstText(credentials.deviceId).trim();
-    const customModel = createCustomModel(store, licenseCache);
+    const customModel = createCustomModel(store);
     if (!key || !deviceId) {
       return customModel
         ? { ok: true, models: [customModel], quota: null }

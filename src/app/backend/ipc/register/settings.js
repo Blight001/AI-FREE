@@ -227,7 +227,6 @@ function registerSettingsIPC(ctx) {
   const aiSettingsService = createAiSettingsService({
     readStore: readStoreConfigSafe,
     writeStore: writeStoreConfigSafe,
-    licenseCache,
   });
   registerAiSettingsIpc({ ipc, service: aiSettingsService });
   registerPluginSettingsIpc(ipc, ui, extensionManager);
