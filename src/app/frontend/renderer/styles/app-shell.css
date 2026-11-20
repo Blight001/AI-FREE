@@ -321,11 +321,6 @@ html.theme-light .shell-theme-toggle-btn .theme-icon-moon {
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
-  transition: transform 0.16s ease;
-}
-
-#new-browser-window-btn:hover:not(:disabled) .new-window-icon {
-  transform: scale(1.06);
 }
 
 html.theme-light #new-browser-window-btn {
@@ -352,14 +347,9 @@ html.theme-light #new-browser-window-btn {
 }
 
 #new-browser-window-btn:hover:not(:disabled) {
-  background-color: var(--shell-accent-hover);
-}
-
-#new-browser-window-btn:hover:not(:disabled) {
   border-color: rgba(255, 255, 255, 0.28);
   background: rgba(112, 143, 184, 0.38);
   box-shadow: 0 6px 16px rgba(3, 11, 24, 0.24);
-  transform: translateY(-1px);
 }
 
 html.theme-light #new-browser-window-btn:hover:not(:disabled) {
