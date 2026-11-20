@@ -78,6 +78,7 @@ class ChromiumWindowBridge {
     if (typeof binding.releaseChildWindowFocus !== 'function') return true;
     return binding.releaseChildWindowFocus({ childHwnd });
   }
+  browserPointerFrame(options) { return this.load().browserPointerFrame?.(options) ?? false; }
   isWindowAlive(hwnd) { return this.load().isWindowAlive({ hwnd }); }
   getWindowProcessId(hwnd) { return this.load().getWindowProcessId({ hwnd }); }
   findMainWindowByProcessId(pid) { return this.load().findMainWindowByProcessId({ pid }); }

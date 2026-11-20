@@ -26,7 +26,8 @@ class BrowserAutomationBridgeRuntime {
     });
     this.nativeAutomation = createNativeBrowserAutomation({
       browserRuntimeManager: options.browserRuntimeManager, browserDownloadService: options.browserDownloadService,
-      cardService: this.nativeCardService, getTabs: options.getTabs,
+      cardService: this.nativeCardService, getTabs: options.getTabs, appPointer: options.appPointer,
+      nativePointer: options.nativePointer,
       workspaceDir: options.workspaceDir, getBrowserRecords: options.getBrowserRecords,
       executeCardTool: (...args) => this.cardMcpRouter.execute(...args),
     });

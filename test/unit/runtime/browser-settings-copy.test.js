@@ -43,17 +43,20 @@ test('browser history reserves a blank page icon so names do not shift when a fa
   assert.match(css, /\.browser-history-icon\.has-site-icon img\s*\{/);
 });
 
-test('browser settings distinguish the device-memory fingerprint from real memory usage', () => {
-  const page = fs.readFileSync(
-    path.join(__dirname, '../../../src/app/frontend/views/app-shell.html'),
-    'utf8',
-  );
-  const memoryRow = page.match(/<div class="vb-row"><label[^>]+for="browser-memory"[\s\S]*?<\/div><\/div>/)?.[0] || '';
-  assert.match(memoryRow, />设备内存指纹<\/label>/);
-  assert.match(memoryRow, /仅影响网页可见的设备信息，不限制浏览器实际内存占用。/);
-  const tooltip = fs.readFileSync(
+test('browser tooltip labels legacy preferences and does not report a UA version as the kernel', () => {
+  const vm = require('node:vm');
+  const source = fs.readFileSync(
     path.join(__dirname, '../../../src/app/frontend/renderer/controllers/pages/app-shell/tabs-tooltip.js'),
     'utf8',
   );
-  assert.match(tooltip, /设备内存指纹：/);
+  const tooltip = vm.runInNewContext(`${source}\nbuildTabTooltip(tab);`, {
+    Intl, URL, tab: {
+      title: '测试', browserProfile: { userAgent: 'Chrome/140.0.0.0' },
+      browserSettings: { memory: 32, timezone: { mode: 'ip' }, webrtc: { mode: 'block' } },
+    },
+  });
+  assert.match(tooltip, /UA 版本标识：140/);
+  assert.doesNotMatch(tooltip, /浏览器内核：AI-FREE Chromium 140/);
+  assert.match(tooltip, /WebRTC（旧版记录，未应用）/);
+  assert.match(tooltip, /时区：语言地区预设/);
 });

@@ -8,6 +8,7 @@ const {
 const { appContext } = require('../../runtime/app-context');
 const {
   resolveConfiguredBrowserProxy,
+  resolveProxyAuthentication,
 } = require('./browser-environment');
 const { callOptional, firstText } = require('../../../shared/safe-values');
 
@@ -39,6 +40,12 @@ function proxySettingsChanged(profile, server, bypassList) {
   return firstText(profile.proxyServer) !== server || firstText(profile.proxyBypassList) !== bypassList;
 }
 
+function proxyAuthenticationChanged(current, next) {
+  if (!current || !next) return Boolean(current) !== Boolean(next);
+  return ['protocol', 'host', 'port', 'username', 'password']
+    .some((key) => current[key] !== next[key]);
+}
+
 function resolveTabProxy(tab, enabled, browserProxy) {
   if (enabled) return browserProxy || { enabled: false };
   return resolveConfiguredBrowserProxy(tab.browserSettings || {}) || { enabled: false };
@@ -53,15 +60,18 @@ async function applyProxyToTab(deps, tab, context) {
       tab.networkMagicApplied = false;
       return false;
     }
-    const nextProxyServer = tabProxy.enabled ? firstText(tabProxy.server) : '';
+    const nextProxyServer = firstText(tabProxy.server);
     const nextProxyBypassList = tabProxy.enabled ? firstText(tabProxy.bypassRules) : '';
-    const proxyChanged = proxySettingsChanged(instance.profile, nextProxyServer, nextProxyBypassList);
+    const nextProxyAuthentication = resolveProxyAuthentication(tabProxy);
+    const proxyChanged = proxySettingsChanged(instance.profile, nextProxyServer, nextProxyBypassList)
+      || proxyAuthenticationChanged(instance.profile.proxyAuthentication, nextProxyAuthentication);
     if (!proxyChanged) {
       tab.networkMagicApplied = enabled && Boolean(nextProxyServer);
       return false;
     }
     instance.profile.proxyServer = nextProxyServer;
     instance.profile.proxyBypassList = nextProxyBypassList;
+    instance.profile.proxyAuthentication = nextProxyAuthentication;
     if (appContext.isShuttingDown()) return false;
     const runtimeState = await deps.browserRuntimeManager.restart(tab.id);
     tab.runtimeStatus = firstText(runtimeState && runtimeState.status, tab.runtimeStatus);

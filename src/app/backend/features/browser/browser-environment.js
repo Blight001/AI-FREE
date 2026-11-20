@@ -80,7 +80,7 @@ function resolveChromiumExtensionPaths(browserSettings = {}, extensionManager = 
 function resolveConfiguredBrowserProxy(browserSettings = {}) {
   const proxy = asRecord(browserSettings.proxy);
   if (proxy.mode === 'default') return null;
-  if (proxy.mode === 'none') return { enabled: false };
+  if (proxy.mode === 'none') return { enabled: false, server: 'direct://' };
   const host = firstText(proxy.host).trim();
   const port = Number(proxy.port);
   if (proxy.mode !== 'custom' || !host || !Number.isInteger(port) || port < 1 || port > 65535) {
@@ -94,6 +94,18 @@ function resolveConfiguredBrowserProxy(browserSettings = {}) {
     bypassRules: '<local>;127.0.0.1;localhost;::1',
     username: firstText(proxy.username),
     password: firstText(proxy.password),
+  };
+}
+
+function resolveProxyAuthentication(proxy) {
+  if (!proxy?.username && !proxy?.password) return null;
+  const server = new URL(proxy.server);
+  return {
+    protocol: proxy.protocol || server.protocol.slice(0, -1),
+    host: proxy.host || server.hostname,
+    port: proxy.port || Number(server.port || (server.protocol === 'https:' ? 443 : 80)),
+    username: proxy.username || '',
+    password: proxy.password || '',
   };
 }
 
@@ -229,5 +241,6 @@ module.exports = {
   resolveChromiumExtensionPaths,
   resolveChromiumExtraArgs,
   resolveConfiguredBrowserProxy,
+  resolveProxyAuthentication,
   resolveConfiguredHomepage,
 };

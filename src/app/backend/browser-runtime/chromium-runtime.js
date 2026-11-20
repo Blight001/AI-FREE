@@ -6,7 +6,7 @@ const { ChromiumHealthMonitor } = require('./chromium-health');
 const { launchChromium } = require('./chromium-launcher');
 const { prepareSessionImport } = require('./session-import');
 const { assertActiveChromiumLaunch, normalizeBounds, RUNTIME_STATUS, RUNTIME_TYPES } = require('./runtime-types');
-const { stopChromiumProfile } = require('./chromium-runtime-process');
+const { restartChromiumProfile, stopChromiumProfile } = require('./chromium-runtime-process');
 const { launchChromiumProfile } = require('./chromium-runtime-launch');
 const { bindChromiumProcessFailure } = require('./chromium-process-diagnostics');
 const { snapshotAppliedChromiumProfile } = require('./chromium-profile-snapshot');
@@ -18,6 +18,11 @@ const { openChromiumTabs } = require('./chromium-tab-actions');
 const { waitForBrowserWindow } = require('./chromium-handshake-waiter');
 const { startChromiumPreflightWarmup } = require('./chromium-preflight-warmup');
 const { assertRuntimeCommandSuccess } = require('./runtime-command-result');
+const {
+  cleanupChromiumProfileEnvironment,
+  prepareChromiumProfileEnvironment,
+  refreshChromiumEnvironmentProfile,
+} = require('./chromium-runtime-environment');
 
 class ChromiumRuntime extends BrowserRuntime {
   constructor(options = {}) {
@@ -91,6 +96,7 @@ class ChromiumRuntime extends BrowserRuntime {
   }
 
   async createProfileInstance(context) {
+    const launchProfile = await prepareChromiumProfileEnvironment(context);
     const parentWindow = this.getParentWindow?.();
     if (!parentWindow || parentWindow.isDestroyed?.()) throw new Error('Electron 主窗口不可用');
     const hostHwnd = this.windowBridge.createHostWindow({
@@ -111,6 +117,7 @@ class ChromiumRuntime extends BrowserRuntime {
     this.store.transition(context.profileId, RUNTIME_STATUS.WAITING_PIPE, { hostHwnd, pipeName });
     const launched = await launchChromium({
       ...context,
+      profile: launchProfile,
       hostHwnd,
       pipeName,
       launchToken,
@@ -143,6 +150,8 @@ class ChromiumRuntime extends BrowserRuntime {
       parentFocusHandler: null,
       parentFocusRaiseTimers: new Set(),
       performanceSpan: context.performanceSpan,
+      proxyAuthBridge: context.proxyAuthBridge || null,
+      environmentExtensionDir: context.environmentExtensionDir || '',
     };
     this.instances.set(context.profileId, instance);
     this.store.patchState(context.profileId, { pid: child.pid });
@@ -204,7 +213,8 @@ class ChromiumRuntime extends BrowserRuntime {
     instance.commandClient.on('heartbeat', () => this.store.patchState(profileId, { lastHeartbeatAt: Date.now() }));
     // Keep the transport-only ASCII ID out of application-facing runtime events.
     instance.commandClient.on('event', (message) => this.emit('runtime-event', { ...message, profileId }));
-    bindChromiumProcessFailure(instance, (error) => this.markCrashed(profileId, error));
+    bindChromiumProcessFailure(instance, (error) => this.markCrashed(profileId, error),
+      () => cleanupChromiumProfileEnvironment(instance));
   }
 
   bindParentWindowFocus(profileId, instance) {
@@ -505,33 +515,12 @@ class ChromiumRuntime extends BrowserRuntime {
     return this.launchProfile(profile, bounds);
   }
 
+  async refreshEnvironmentProfile(profileId, update) {
+    return refreshChromiumEnvironmentProfile(this, profileId, update);
+  }
+
   async restartNow(profileId, options = {}) {
-    const id = String(profileId);
-    const instance = this.instances.get(id);
-    const state = this.store.getState(id);
-    if (!instance || !state) throw new Error(`Chromium Profile ${id} 不存在`);
-    const profile = { ...instance.profile };
-    if (options.compatibilityMode === true) {
-      profile.extraArgs = Array.from(new Set([...(profile.extraArgs || []), '--disable-gpu']));
-    }
-    const rememberedInitialUrl = String(profile.initialUrl || '');
-    const rememberedRestoreLastSession = profile.restoreLastSession === true;
-    // 内部重启（插件开关、指纹参数更新）必须只恢复现有会话。若再次把
-    // initialUrl 作为命令行参数传给 Chromium，Chrome 会在恢复旧标签后
-    // 额外新建同一网址，表现为“记忆页面 + 重复打开”。
-    if (options.reopenInitialUrl !== true) {
-      profile.initialUrl = '';
-      profile.restoreLastSession = true;
-    }
-    const bounds = { ...state.bounds };
-    await this.stop(id, { timeoutMs: 3000 });
-    const runtimeState = await this.launchProfile(profile, bounds);
-    const restartedInstance = this.instances.get(id);
-    if (restartedInstance?.profile) {
-      restartedInstance.profile.initialUrl = rememberedInitialUrl;
-      restartedInstance.profile.restoreLastSession = rememberedRestoreLastSession;
-    }
-    return runtimeState;
+    return restartChromiumProfile(this, profileId, options);
   }
 
   async stop(profileId, options = {}) {
@@ -547,6 +536,7 @@ class ChromiumRuntime extends BrowserRuntime {
     this.store.patchState(profileId, { status: RUNTIME_STATUS.CRASHED, browserHwnd: null, bridgeConnected: false, embedded: false, lastError: error, crashCount: Number(state.crashCount || 0) + 1 });
     this.emit('crashed', this.getState(profileId));
   }
+
 }
 
 module.exports = { ChromiumRuntime };

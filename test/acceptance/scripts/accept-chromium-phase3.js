@@ -39,6 +39,9 @@ function createTestServer() {
       query: url.search,
       profile,
       cookie: String(request.headers.cookie || ''),
+      doNotTrack: request.headers.dnt,
+      secChUa: String(request.headers['sec-ch-ua'] || ''),
+      secChUaPlatform: String(request.headers['sec-ch-ua-platform'] || ''),
     });
     response.setHeader('Content-Type', 'text/html; charset=utf-8');
     response.setHeader('Cache-Control', 'no-store');
@@ -49,6 +52,47 @@ function createTestServer() {
     }
     if (url.pathname === '/input-result' || url.pathname === '/file-click' ||
         url.pathname === '/file-result' || url.pathname === '/native-event') {
+      response.end('ok');
+      return;
+    }
+    if (url.pathname === '/location-permission') {
+      response.end(`<title>LOCATION_PENDING</title><script>
+        navigator.permissions.query({ name: 'geolocation' }).then(({ state }) => {
+          fetch('/location-result?profile=' + new URLSearchParams(location.search).get('profile') + '&state=' + state);
+        });
+      </script>`);
+      return;
+    }
+    if (url.pathname === '/environment') {
+      response.end(`<!doctype html><meta charset="utf-8"><title>ENVIRONMENT_PENDING</title>
+        <canvas id="fingerprint" width="4" height="4"></canvas><script type="module">
+          const highEntropy = await navigator.userAgentData?.getHighEntropyValues(['model']) || {};
+          const canvas = document.querySelector('#fingerprint');
+          const context = canvas.getContext('2d');
+          context.fillStyle = 'rgb(100, 100, 100)';
+          context.fillRect(0, 0, 4, 4);
+          const pixels = context.getImageData(0, 0, 4, 4).data;
+          const noiseCount = Array.from(pixels).filter((value, index) => index % 4 !== 3 && value !== 100).length;
+          const brands = navigator.userAgentData?.brands?.map(({brand, version}) => ({brand, version})) || [];
+          const values = {
+            cpu: navigator.hardwareConcurrency,
+            memory: navigator.deviceMemory,
+            model: highEntropy.model || '',
+            width: screen.width,
+            height: screen.height,
+            noiseCount,
+            brands,
+          };
+          document.title = 'ENVIRONMENT_' + JSON.stringify(values);
+          fetch('/environment-values?values=' + encodeURIComponent(JSON.stringify(values))).catch(() => {});
+          navigator.geolocation.getCurrentPosition((position) => {
+            fetch('/environment-result?latitude=' + position.coords.latitude + '&longitude=' +
+              position.coords.longitude + '&accuracy=' + position.coords.accuracy).catch(() => {});
+          }, (error) => fetch('/environment-result?geoError=' + error.code).catch(() => {}), {timeout: 3000});
+        </script>`);
+      return;
+    }
+    if (url.pathname === '/environment-result' || url.pathname === '/environment-values') {
       response.end('ok');
       return;
     }
@@ -221,6 +265,9 @@ async function launchProfile(profileId, targetUrl, options = {}) {
     initialUrl: 'about:blank',
     launchTimeoutMs: 30000,
     hideToolbar: options.hideToolbar === true,
+    doNotTrack: options.doNotTrack === true,
+    geolocationPermission: options.geolocationPermission,
+    environmentSettings: options.environmentSettings,
     extraArgs: ['--enable-logging=stderr'],
   }, { x: 0, y: 41, width: 1180, height: 719 });
   assert.equal(state.status, 'ready');
@@ -243,8 +290,10 @@ async function launchProfile(profileId, targetUrl, options = {}) {
   assert.equal(result.storageOriginsImported, 1);
   assert.equal(result.storageResults[0].localVerified, true);
   assert.equal(result.storageResults[0].sessionVerified, true);
-  assert.match(result.navigation.title,
-    new RegExp(`PROFILE_${marker};VISIBLE_YES;HTTPONLY_HIDDEN_YES;LOCAL_${marker};SESSION_session-${marker}`));
+  if (new URL(targetUrl).pathname === '/page') {
+    assert.match(result.navigation.title,
+      new RegExp(`PROFILE_${marker};VISIBLE_YES;HTTPONLY_HIDDEN_YES;LOCAL_${marker};SESSION_session-${marker}`));
+  }
   return { state, result };
 }
 
@@ -293,11 +342,61 @@ app.whenReady().then(async () => {
   const b = await launchProfile(
     'phase3_b',
     `${origin}/page?profile=b`,
-    { hideToolbar: true },
+    { hideToolbar: true, doNotTrack: true, geolocationPermission: 'block' },
   );
+
+  const environmentProfile = await launchProfile('phase3_environment', `${origin}/environment`, {
+    geolocationPermission: 'allow',
+    environmentSettings: {
+      cpu: 12,
+      memory: 16,
+      browserVersion: '150.0.0.0',
+      os: 'win11',
+      ua: { mode: 'custom', value: 'AI-FREE acceptance environment' },
+      secChUa: {
+        mode: 'custom',
+        brands: [{ brand: 'Chromium', version: '150' }, { brand: 'AI-FREE Test', version: '1' }],
+        platform: 'win11',
+        mobile: false,
+      },
+      resolution: { mode: 'custom', width: 1280, height: 720 },
+      deviceName: { mode: 'custom', value: 'Acceptance Device' },
+      canvas: { mode: 'noise', seed: 'phase3-environment' },
+      geolocation: { permission: 'allow', enabled: true, latitude: 31.23, longitude: 121.47, accuracy: 25 },
+    },
+  });
+  const environmentValuesRequest = await waitForRequest((item) => item.path === '/environment-values');
+  const environmentValues = JSON.parse(new URLSearchParams(environmentValuesRequest.query).get('values'));
+  assert.equal(environmentValues.cpu, 12);
+  assert.equal(environmentValues.memory, 16);
+  assert.equal(environmentValues.model, 'Acceptance Device');
+  assert.equal(environmentValues.width, 1280);
+  assert.equal(environmentValues.height, 720);
+  assert.equal(environmentValues.noiseCount, 1);
+  assert(environmentValues.brands.some((brand) => brand.brand === 'AI-FREE Test'));
+  const environmentRequest = requests.find((item) => item.path === '/environment');
+  assert.match(environmentRequest?.secChUa || '', /AI-FREE Test/);
+  assert.equal(environmentRequest?.secChUaPlatform, '"Windows"');
+  const syntheticLocation = await waitForRequest((item) => item.path === '/environment-result');
+  assert.equal(new URLSearchParams(syntheticLocation.query).get('latitude'), '31.23');
+  assert.equal(new URLSearchParams(syntheticLocation.query).get('longitude'), '121.47');
+  await manager.stop('phase3_environment', 'chromium', { timeoutMs: 5000 });
+  const environmentPaths = manager.store.getProfilePaths('phase3_environment');
+  assert.equal(fs.readdirSync(environmentPaths.root).some((name) => name.startsWith('runtime-environment-')), false);
+
+  await manager.navigate('phase3_a', 'chromium', `${origin}/location-permission?profile=a`);
+  const defaultLocation = await waitForRequest((item) => item.path === '/location-result' && item.profile === 'a');
+  assert.match(defaultLocation.query, /state=prompt/);
+  await manager.navigate('phase3_a', 'chromium', `${origin}/page?profile=a`);
+  await manager.navigate('phase3_b', 'chromium', `${origin}/location-permission?profile=b`);
+  const deniedLocation = await waitForRequest((item) => item.path === '/location-result' && item.profile === 'b');
+  assert.match(deniedLocation.query, /state=denied/);
+  await manager.navigate('phase3_b', 'chromium', `${origin}/page?profile=b`);
 
   const aRequest = requests.find((item) => item.path === '/page' && item.profile === 'a');
   const bRequest = requests.find((item) => item.path === '/page' && item.profile === 'b');
+  assert.equal(aRequest?.doNotTrack, undefined, '默认 Profile 不发送 DNT');
+  assert.equal(bRequest?.doNotTrack, '1', '开启 DNT 的 Profile 必须实际发送请求头');
   assert(aRequest && cookieHeaderHas(aRequest.cookie, 'visible', 'A'));
   assert(aRequest && cookieHeaderHas(aRequest.cookie, 'secret', 'http-only-A'));
   assert(bRequest && cookieHeaderHas(bRequest.cookie, 'visible', 'B'));
@@ -630,10 +729,18 @@ app.whenReady().then(async () => {
     restoreFallbackUrl: `${origin}/page?profile=b`,
     launchTimeoutMs: 30000,
     hideToolbar: true,
+    doNotTrack: false,
+    geolocationPermission: 'allow',
   }, { x: 0, y: 41, width: 1180, height: 719 });
   const restoredReload = await manager.reload('phase3_b', 'chromium');
   assert.equal(restoredReload.result.url, `${origin}/navigate?profile=b`);
   assert.equal(restoredReload.result.title, 'NAVIGATED_B');
+  assert.equal(requests.filter((item) => item.path === '/navigate' && item.profile === 'b').at(-1)?.doNotTrack, undefined);
+  const restoredPreferences = JSON.parse(fs.readFileSync(path.join(
+    manager.store.getProfilePaths('phase3_b').chromiumData, 'Default', 'Preferences',
+  ), 'utf8'));
+  const locationDefaults = restoredPreferences.profile.default_content_setting_values;
+  assert.equal(locationDefaults.geolocation, 1);
   const restoredA = await manager.launchProfile({
     profileId: 'phase3_a',
     runtimeType: 'chromium',

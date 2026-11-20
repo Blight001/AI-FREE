@@ -6,15 +6,6 @@ function validateBrowserCookies(setting) {
   if (!Array.isArray(cookies)) throw new Error('Cookie 顶层必须是数组');
 }
 
-function validateBrowserClientHints(setting) {
-  if (!setting.secChUa || setting.secChUa.mode !== 'custom') return;
-  try {
-    if (!Array.isArray(JSON.parse(value('sec-ch-ua-brands', '[]')))) throw new Error();
-  } catch (_) {
-    throw new Error('Sec-CH-UA 必须是有效的 JSON 数组');
-  }
-}
-
 function validateBrowserHomepage(setting) {
   if (!setting.homepage || setting.homepage.mode !== 'custom') return;
   try {
@@ -25,14 +16,44 @@ function validateBrowserHomepage(setting) {
   }
 }
 
+function validateBrowserClientHints(setting) {
+  const hints = setting.secChUa || {};
+  if (hints.mode !== 'custom') return;
+  if (!Array.isArray(hints.brands) || hints.brands.length === 0
+      || hints.brands.some((item) => !String(item?.brand || '').trim() || !String(item?.version || '').trim())) {
+    throw new Error('Sec-CH-UA 每项都需要填写品牌和版本');
+  }
+}
+
+function validateBrowserGeolocation(setting) {
+  const location = setting.geolocation || {};
+  if (location.mode !== 'custom') return;
+  const longitude = Number(location.longitude);
+  const latitude = Number(location.latitude);
+  const accuracy = Number(location.accuracy);
+  if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) throw new Error('经度范围必须在 -180 到 180 之间');
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) throw new Error('纬度范围必须在 -90 到 90 之间');
+  if (!Number.isFinite(accuracy) || accuracy < 1 || accuracy > 100000) throw new Error('定位精度范围必须在 1 到 100000 米之间');
+}
+
 window.validateAiFreeBrowserSettings = function validateAiFreeBrowserSettings(setting) {
   validateBrowserCookies(setting);
-  validateBrowserClientHints(setting);
   const proxy = setting.proxy || {};
   const ua = setting.ua || {};
-  const macAddress = setting.macAddress || {};
-  if (proxy.mode === 'custom' && (!proxy.host || !Number(proxy.port))) throw new Error('自定义代理需要填写主机和端口');
+  const port = Number(proxy.port);
+  if (proxy.mode === 'custom'
+      && (!String(proxy.host || '').trim() || !Number.isInteger(port) || port < 1 || port > 65535)) {
+    throw new Error('自定义代理需要有效的主机和 1 到 65535 之间的整数端口');
+  }
   if (ua.mode === 'custom' && !String(ua.value || '').trim()) throw new Error('自定义 User Agent 不能为空');
+  validateBrowserClientHints(setting);
+  validateBrowserGeolocation(setting);
   validateBrowserHomepage(setting);
-  if (macAddress.mode === 'custom' && !/^([0-9A-F]{2}[-:]){5}[0-9A-F]{2}$/i.test(macAddress.value || '')) throw new Error('MAC 地址格式不正确');
+  if (setting.timezone?.mode === 'custom') {
+    try {
+      new Intl.DateTimeFormat(undefined, { timeZone: setting.timezone.value });
+    } catch (_) {
+      throw new Error('请输入有效时区，例如 Asia/Shanghai');
+    }
+  }
 }

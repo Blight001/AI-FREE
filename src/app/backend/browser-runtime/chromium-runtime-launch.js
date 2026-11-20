@@ -28,8 +28,7 @@ function stopOwnsLaunchCleanup(runtime, profileId, error) {
 async function cleanupLaunchFailure(runtime, profileId, context, error, span) {
   if (!stopOwnsLaunchCleanup(runtime, profileId, error)) {
     await cleanupFailedChromiumLaunch(runtime, profileId, {
-      hostHwnd: context.hostHwnd,
-      commandClient: context.commandClient,
+      ...context,
       error,
     });
     span.mark('failureCleanup');

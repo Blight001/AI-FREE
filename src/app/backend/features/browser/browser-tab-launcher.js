@@ -9,8 +9,9 @@ const { resolveSidebarWidth } = require('../../../shared/sidebar-layout');
 const { createChromiumPerformanceSpan } = require('../../browser-runtime/chromium-performance');
 const {
   createChromiumLaunchRecovery,
-  getChromiumHandshakeBudget,
 } = require('../../browser-runtime/chromium-launch-recovery');
+const { resolveBrowserEnvironmentProfile } = require('./browser-environment-profile');
+const { buildBrowserTabRuntimeProfile } = require('./browser-tab-runtime-profile');
 const { resolveLowSpecMode } = require('./low-spec-mode-policy');
 const {
   getClashMiniStatus,
@@ -18,23 +19,10 @@ const {
   getClashMiniRuntimeRoot,
 } = require('../network/clash-mini-control-runtime');
 const {
-  buildAppliedBrowserEnvironment,
-  buildAppliedBrowserSettings,
   buildBrowserStatusPageUrl,
-  resolveChromiumExtensionPaths,
-  resolveChromiumExtraArgs,
   resolveConfiguredBrowserProxy,
   resolveConfiguredHomepage,
 } = require('./browser-environment');
-
-function buildLaunchPolicy(context) {
-  const lowSpecMode = context.lowSpec?.enabled === true;
-  return {
-    launchMode: lowSpecMode ? 'low-spec' : 'normal',
-    lowSpecMode,
-    launchTimeoutMs: getChromiumHandshakeBudget({ lowSpecMode, coldStart: context.coldStart }),
-  };
-}
 
 class BrowserTabLauncher {
   constructor(deps = {}) {
@@ -333,7 +321,7 @@ class BrowserTabLauncher {
 
   async launchRuntimeWithRecovery(context, profile) {
     const recovery = createChromiumLaunchRecovery();
-    const runtimeProfile = this.buildRuntimeProfile(context, profile);
+    const runtimeProfile = buildBrowserTabRuntimeProfile(context, profile, this.deps.extensionManager);
     try {
       return await this.deps.browserRuntimeManager.launchProfile(runtimeProfile, context.bounds);
     } catch (error) {
@@ -387,39 +375,13 @@ class BrowserTabLauncher {
   }
 
   async resolveBrowserProfile(context) {
-    if (typeof this.deps.resolveTabBrowserProfile !== 'function') return null;
-    return this.deps.resolveTabBrowserProfile({
-      browserSettings: context.browserSettings,
+    return resolveBrowserEnvironmentProfile({
+      settings: context.browserSettings,
+      effectiveProxy: context.proxy.value,
+      resolveTabBrowserProfile: this.deps.resolveTabBrowserProfile,
+      lookupByIp: this.deps.lookupByIp,
       logger: this.logger,
     });
-  }
-
-  buildRuntimeProfile(context, profile) {
-    const { id, identity, urls, restoreLastSession, browserSettings, proxy, url } = context;
-    return {
-      profileId: id,
-      runtimeType: 'chromium',
-      ...buildLaunchPolicy(context),
-      displayName: identity.fixedTitle,
-      initialUrl: urls.initial,
-      restoreLastSession,
-      hideToolbar: context.options.hideBrowserToolbar === true,
-      restoreFallbackUrl: String(url || '').trim(),
-      locale: profile?.locale,
-      acceptLanguage: profile?.acceptLanguage,
-      timezoneId: profile?.timezoneId,
-      userAgent: profile?.userAgent,
-      browserEnvironment: buildAppliedBrowserEnvironment(profile),
-      browserSettingsSnapshot: buildAppliedBrowserSettings(browserSettings),
-      proxyServer: proxy.value?.enabled ? proxy.value.server : '',
-      proxyBypassList: proxy.value?.bypassRules || '',
-      extraArgs: resolveChromiumExtraArgs(browserSettings),
-      executablePath: browserSettings.chromiumExecutablePath,
-      extensionPaths: resolveChromiumExtensionPaths(browserSettings, this.deps.extensionManager),
-      allowPrototypeWindowDiscovery: browserSettings.allowPrototypeWindowDiscovery === true,
-      remoteDebuggingPipe: browserSettings.remoteDebuggingPipe === true,
-      autoGrantPermissionOrigins: browserSettings.automation?.permissionOrigins || [],
-    };
   }
 
   async stopCancelledRuntime(context) {

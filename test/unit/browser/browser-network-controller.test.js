@@ -24,8 +24,22 @@ require.cache[environmentPath] = { exports: {
     if (proxy.mode !== 'custom') return { enabled: false };
     return {
       enabled: true,
+      protocol: proxy.protocol || 'http',
       server: `${proxy.protocol || 'http'}://${proxy.host}:${proxy.port}`,
       bypassRules: '<local>',
+      username: proxy.username || '',
+      password: proxy.password || '',
+    };
+  },
+  resolveProxyAuthentication: (proxy) => {
+    if (!proxy?.username && !proxy?.password) return null;
+    const server = new URL(proxy.server);
+    return {
+      protocol: proxy.protocol || server.protocol.slice(0, -1),
+      host: proxy.host || server.hostname,
+      port: proxy.port || Number(server.port || (server.protocol === 'https:' ? 443 : 80)),
+      username: proxy.username || '',
+      password: proxy.password || '',
     };
   },
 } };
@@ -175,4 +189,38 @@ test('disabling global magic restores each browser configured proxy', async () =
   assert.equal(fixture.instances.get(tab.id).profile.proxyServer, 'http://10.0.0.2:8888');
   assert.equal(tab.networkMagicApplied, false);
   assert.deepEqual(fixture.restarts, ['one']);
+});
+
+test('global magic clears authentication for a configured proxy and restores it afterward', async () => {
+  const fixture = createFixture();
+  const tab = {
+    id: 'authenticated',
+    browserSettings: { proxy: {
+      mode: 'custom', protocol: 'http', host: '10.0.0.2', port: 8888,
+      username: 'proxy-user', password: 'proxy-password',
+    } },
+  };
+  const instance = { profile: {
+    proxyServer: 'http://10.0.0.2:8888',
+    proxyBypassList: '<local>',
+    proxyAuthentication: {
+      protocol: 'http', host: '10.0.0.2', port: 8888,
+      username: 'proxy-user', password: 'proxy-password',
+    },
+  } };
+  fixture.tabs.set(tab.id, tab);
+  fixture.instances.set(tab.id, instance);
+
+  const enabled = await fixture.controller.applyClashMiniBrowserProxy(true);
+  assert.equal(enabled.updated, 1);
+  assert.equal(instance.profile.proxyServer, 'http://127.0.0.2:17890');
+  assert.equal(instance.profile.proxyAuthentication, null);
+
+  const disabled = await fixture.controller.applyClashMiniBrowserProxy(false);
+  assert.equal(disabled.updated, 1);
+  assert.equal(instance.profile.proxyServer, 'http://10.0.0.2:8888');
+  assert.deepEqual(instance.profile.proxyAuthentication, {
+    protocol: 'http', host: '10.0.0.2', port: 8888,
+    username: 'proxy-user', password: 'proxy-password',
+  });
 });

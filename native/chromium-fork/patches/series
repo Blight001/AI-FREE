@@ -55,3 +55,5 @@
 0057-ai-free-locator-scope-nth.patch
 0058-ai-free-set-checked-force-event.patch
 0059-ai-free-ambiguous-candidates.patch
+0060-ai-free-embedded-toolbar-keyboard-focus.patch
+0061-ai-free-user-agent-metadata.patch

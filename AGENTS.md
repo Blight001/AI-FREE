@@ -1,10 +1,10 @@
 # AI-FREE Agent 维护契约
 
-本文件适用于 `app2.1/` 下的全部文件。任何 AI、自动化代理或协作者在修改本项目时都必须遵守。目标是持续小步维护，防止架构、复杂度、兼容性和临时产物再次积累到需要全项目重构。
+本文件适用于当前仓库根目录及其全部子目录。仓库根目录是本文件与 `package.json` 所在的 `AI-FREE-app/`，应用源码位于 `src/app/`；除非另有说明，路径和命令均以仓库根目录为起点。任何 AI、自动化代理或协作者在修改本项目时都必须遵守。目标是持续小步维护，防止架构、复杂度、兼容性和临时产物再次积累到需要全项目重构。
 
 ## 1. 开始工作前
 
-1. 阅读 `docs/control-domain-separation/software/CONTRACT.md`、`docs/control-domain-separation/browser/CONTRACT.md`、`docs/control-domain-separation/PROGRESS.md`；阶段 0 基线见同目录的 `stage0/`，涉及故障时再查对应模块的诊断文档。
+1. 先阅读 [目录与进程边界](docs/architecture/directory-map.md)；涉及浏览器控制时，再查 [浏览器运行模式](docs/browser-workflow-modes.md) 和 [浏览器工具对齐说明](docs/codex-browser-alignment.md)。涉及 IPC 时，以 `src/app/contracts/` 和 `src/app/backend/ipc/registry.js` 为准。
 2. 先检查 `git status --short`，区分已有改动和本次改动。已有改动默认属于用户，不得覆盖、回退或顺手整理。
 3. 找到行为入口、全部调用方、契约和现有测试后再修改。修复故障必须先说明根因，不能只隐藏错误信息或增加无条件回退。
 4. 选择能完整解决问题的最小改动范围。没有用户明确授权，不做全目录改名、批量格式化、框架替换、依赖升级或无关重构。

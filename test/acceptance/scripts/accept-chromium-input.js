@@ -8,11 +8,14 @@ const { spawn } = require('child_process');
 const { once } = require('events');
 const { app, BrowserWindow } = require('electron');
 const { createBrowserRuntimeManager } = require('../../../src/app/backend/browser-runtime');
+const { createBrowserNativePointer } = require('../../../src/app/backend/features/browser/browser-native-pointer');
 
 delete process.env.AI_FREE_CHROMIUM_HANDSHAKE;
 delete process.env.AI_FREE_CHROMIUM_PATH;
 
 const profileRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-input-'));
+app.setPath('userData', profileRoot);
+app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
 let window;
 let switchWindow;
 let manager;
@@ -39,7 +42,6 @@ using System.Windows.Automation;
 public static class AiFreeInputAcceptance {
   delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr parameter);
   const uint GA_ROOT = 2;
-  const int SW_SHOW = 5;
   const byte VK_K = 0x4b;
   const byte VK_E = 0x45;
   const byte VK_Y = 0x59;
@@ -47,14 +49,9 @@ public static class AiFreeInputAcceptance {
   const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
   const uint MOUSEEVENTF_LEFTUP = 0x0004;
   const uint MOUSEEVENTF_WHEEL = 0x0800;
-  const uint WM_KEYDOWN = 0x0100;
-  const uint WM_KEYUP = 0x0101;
-  const uint WM_CHAR = 0x0102;
 
   [StructLayout(LayoutKind.Sequential)]
   struct RECT { public int Left, Top, Right, Bottom; }
-  [StructLayout(LayoutKind.Sequential)]
-  struct POINT { public int X, Y; }
   [StructLayout(LayoutKind.Sequential)]
   struct GUITHREADINFO {
     public int cbSize;
@@ -86,25 +83,19 @@ public static class AiFreeInputAcceptance {
   [StructLayout(LayoutKind.Sequential)]
   struct INPUT { public uint type; public INPUTUNION data; }
 
+  [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
   [DllImport("user32.dll")] static extern bool IsWindow(IntPtr hwnd);
+  [DllImport("user32.dll")] static extern bool IsChild(IntPtr parent, IntPtr child);
   [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hwnd);
   [DllImport("user32.dll")] static extern bool IsWindowEnabled(IntPtr hwnd);
   [DllImport("user32.dll")] static extern IntPtr GetParent(IntPtr hwnd);
   [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
-  [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(POINT point);
   [DllImport("user32.dll")] static extern bool EnumChildWindows(IntPtr hwnd, EnumWindowsProc callback, IntPtr parameter);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr hwnd, StringBuilder text, int maxCount);
   [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
-  [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr hwnd, int command);
-  [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hwnd);
-  [DllImport("user32.dll")] static extern IntPtr SetFocus(IntPtr hwnd);
   [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hwnd, IntPtr processId);
   [DllImport("user32.dll")] static extern bool GetGUIThreadInfo(uint threadId, ref GUITHREADINFO info);
-  [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
-  [DllImport("user32.dll")] static extern bool AttachThreadInput(uint from, uint to, bool attach);
-  [DllImport("user32.dll")] static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra);
   [DllImport("user32.dll", SetLastError = true)] static extern uint SendInput(uint count, INPUT[] inputs, int size);
-  [DllImport("user32.dll", SetLastError = true)] static extern bool PostMessage(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);
   [DllImport("user32.dll")] static extern void mouse_event(uint flags, uint dx, uint dy, int data, UIntPtr extra);
   [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
   [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
@@ -125,7 +116,60 @@ public static class AiFreeInputAcceptance {
     return sent;
   }
 
-  static IntPtr currentBrowser = IntPtr.Zero;
+  static bool Shortcut(ushort key) {
+    INPUT[] inputs = new INPUT[4];
+    for (int i = 0; i < inputs.Length; ++i) {
+      inputs[i].type = 1;
+      inputs[i].data.keyboard.wVk = (i == 0 || i == 3) ? (ushort)0x11 : key;
+      inputs[i].data.keyboard.dwFlags = i >= 2 ? KEYEVENTF_KEYUP : 0;
+    }
+    return SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT))) == (uint)inputs.Length;
+  }
+
+  static void Click(int x, int y) {
+    if (!SetCursorPos(x, y)) throw new InvalidOperationException("Could not move test cursor");
+    mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, UIntPtr.Zero);
+    mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, UIntPtr.Zero);
+    Thread.Sleep(150);
+  }
+
+  static AutomationElement FindAddressBar(IntPtr hwnd) {
+    AutomationElement browser = AutomationElement.FromHandle(hwnd);
+    foreach (AutomationElement edit in browser.FindAll(TreeScope.Descendants,
+        new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit))) {
+      object pattern;
+      if (edit.TryGetCurrentPattern(ValuePattern.Pattern, out pattern) &&
+          ((ValuePattern)pattern).Current.Value.Contains("127.0.0.1:")) return edit;
+    }
+    throw new InvalidOperationException("Could not locate the test URL in the address bar");
+  }
+
+  static IntPtr FocusedWindow() {
+    GUITHREADINFO info = new GUITHREADINFO();
+    info.cbSize = Marshal.SizeOf(typeof(GUITHREADINFO));
+    if (!GetGUIThreadInfo(0, ref info)) return IntPtr.Zero;
+    return info.hwndFocus;
+  }
+
+  static void CheckAddressBar(IntPtr hwnd) {
+    AutomationElement edit = FindAddressBar(hwnd);
+    ValuePattern value = (ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern);
+    System.Windows.Rect bounds = edit.Current.BoundingRectangle;
+    Click((int)(bounds.Left + bounds.Width / 2), (int)(bounds.Top + bounds.Height / 2));
+    if (FocusedWindow() != hwnd)
+      throw new InvalidOperationException("Address-bar click left keyboard focus on " + ClassName(FocusedWindow()));
+    if (!Shortcut(0x41) || !Key(VK_K) || !Key(VK_E) || !Key(VK_Y) || value.Current.Value != "key")
+      throw new InvalidOperationException("Address bar did not accept typed text after click");
+    if (!Shortcut(0x41) || !Shortcut(0x43))
+      throw new InvalidOperationException("Could not send address-bar copy shortcut");
+    Thread.Sleep(150);
+    if (!Key(0x08) || value.Current.Value != "" || !Shortcut(0x56))
+      throw new InvalidOperationException("Could not clear and paste into the address bar");
+    Thread.Sleep(150);
+    if (value.Current.Value != "key")
+      throw new InvalidOperationException("Address-bar copy/paste round trip failed");
+    Key(0x1b);
+  }
 
   static string ClassName(IntPtr hwnd) {
     StringBuilder className = new StringBuilder(256);
@@ -163,56 +207,32 @@ public static class AiFreeInputAcceptance {
   }
 
   public static string Drive(long rawHwnd) {
+    SetProcessDPIAware();
     IntPtr hwnd = new IntPtr(rawHwnd);
     if (!IsWindow(hwnd)) return "ALIVE=false;TITLE=";
-    currentBrowser = hwnd;
     IntPtr root = GetAncestor(hwnd, GA_ROOT);
-    ShowWindow(root, SW_SHOW);
-    ShowWindow(hwnd, SW_SHOW);
-    Thread.Sleep(250);
-    RECT rect;
-    IntPtr pointWindow = IntPtr.Zero;
-    if (GetWindowRect(hwnd, out rect)) {
-      int centerX = (rect.Left + rect.Right) / 2;
-      int centerY = (rect.Top + rect.Bottom) / 2;
-      SetCursorPos(centerX, centerY);
-      POINT point = new POINT();
-      point.X = centerX;
-      point.Y = centerY;
-      pointWindow = WindowFromPoint(point);
-      if (pointWindow != IntPtr.Zero) currentBrowser = pointWindow;
-      mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, UIntPtr.Zero);
-      mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, UIntPtr.Zero);
-      Thread.Sleep(150);
-    }
-    uint targetThread = GetWindowThreadProcessId(hwnd, IntPtr.Zero);
-    uint currentThread = GetCurrentThreadId();
-    IntPtr foregroundBeforeFocus = GetForegroundWindow();
-    uint foregroundThread = foregroundBeforeFocus != IntPtr.Zero
-      ? GetWindowThreadProcessId(foregroundBeforeFocus, IntPtr.Zero)
-      : 0;
-    bool attachedTarget = targetThread != 0 && targetThread != currentThread &&
-      AttachThreadInput(currentThread, targetThread, true);
-    bool attachedForeground = foregroundThread != 0 && foregroundThread != currentThread &&
-      foregroundThread != targetThread &&
-      AttachThreadInput(currentThread, foregroundThread, true);
-    SetForegroundWindow(root);
-    SetFocus(hwnd);
-    bool automationFocused = false;
+    RECT shellRect, browserRect;
+    if (!GetWindowRect(root, out shellRect) || !GetWindowRect(hwnd, out browserRect))
+      throw new InvalidOperationException("Missing test window bounds");
+    Click(shellRect.Left + 70, browserRect.Top - 12);
+    IntPtr focus = FocusedWindow();
+    if (GetForegroundWindow() != root || focus == IntPtr.Zero || focus == hwnd || IsChild(hwnd, focus))
+      throw new InvalidOperationException("Expected keyboard focus in the Electron host before clicking; foreground=" +
+        ClassName(GetForegroundWindow()) + ", focus=" + ClassName(focus));
+    IDataObject previousClipboard = Clipboard.GetDataObject();
     try {
-      AutomationElement browserElement = AutomationElement.FromHandle(hwnd);
-      AutomationElement edit = browserElement.FindFirst(
-        TreeScope.Descendants,
-        new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit));
-      if (edit != null) {
-        edit.SetFocus();
-        automationFocused = true;
-        Thread.Sleep(150);
-      }
-    } catch {}
+      CheckAddressBar(hwnd);
+      // The address bar must work both before and after a click in web content.
+      Click((browserRect.Left + browserRect.Right) / 2, (browserRect.Top + browserRect.Bottom) / 2);
+      CheckAddressBar(hwnd);
+    } finally {
+      if (previousClipboard != null) Clipboard.SetDataObject(previousClipboard, true, 5, 50);
+      else Clipboard.Clear();
+    }
+    RECT rect;
+    if (!GetWindowRect(hwnd, out rect)) throw new InvalidOperationException("Missing test browser bounds");
+    Click((rect.Left + rect.Right) / 2, (rect.Top + rect.Bottom) / 2);
     bool keysSent = Key(VK_K) && Key(VK_E) && Key(VK_Y);
-    if (attachedForeground) AttachThreadInput(currentThread, foregroundThread, false);
-    if (attachedTarget) AttachThreadInput(currentThread, targetThread, false);
     Thread.Sleep(1500);
     if (GetWindowRect(hwnd, out rect)) {
       SetCursorPos((rect.Left + rect.Right) / 2, (rect.Top + rect.Bottom) / 2);
@@ -228,20 +248,18 @@ public static class AiFreeInputAcceptance {
     return "ALIVE=" + IsWindow(hwnd).ToString().ToLowerInvariant() +
       ";TITLE=" + title.ToString() +
       ";KEYS_SENT=" + keysSent.ToString().ToLowerInvariant() +
-      ";UIA_FOCUSED=" + automationFocused.ToString().ToLowerInvariant() +
-      ";POINT_CLASS=" + ClassName(pointWindow) +
       ";FOREGROUND_CLASS=" + ClassName(GetForegroundWindow()) +
       ";FOCUS_CLASS=" + ClassName(threadInfo.hwndFocus) +
       ";ACTIVE_CLASS=" + ClassName(threadInfo.hwndActive) +
       ";RWHV=" + DescribeRenderWidgets(hwnd);
   }
 }`;
-  const script = `Add-Type -ReferencedAssemblies System.Windows.Forms,UIAutomationClient,UIAutomationTypes -TypeDefinition @'\n${source}\n'@\n` +
+  const script = `$ErrorActionPreference = 'Stop'\nAdd-Type -ReferencedAssemblies System.Windows.Forms,UIAutomationClient,UIAutomationTypes,WindowsBase -TypeDefinition @'\n${source}\n'@\n` +
     `[AiFreeInputAcceptance]::Drive([long]'${browserHwnd}')`;
   const encoded = Buffer.from(script, 'utf16le').toString('base64');
   return new Promise((resolve, reject) => {
     const child = spawn('powershell.exe', [
-      '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-EncodedCommand', encoded,
+      '-NoProfile', '-NonInteractive', '-Sta', '-WindowStyle', 'Hidden', '-EncodedCommand', encoded,
     ], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
@@ -263,11 +281,54 @@ public static class AiFreeInputAcceptance {
   });
 }
 
+async function observeNativeTabButton(pointer, profileId) {
+  const deadline = Date.now() + 3000;
+  let observation;
+  do {
+    observation = pointer.observe(profileId, 'chromium');
+    const button = observation.items?.find(({ role, label }) => role === 'button' && /new tab|新(?:建)?标签页|新增分頁|新分頁/i.test(label));
+    if (button && observation.items.some(({ role }) => role === 'tab')) {
+      console.log(`[phase2-input] Native pointer observed ${observation.items.length} controls including a tab`);
+      return { observation, button };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 120));
+  } while (Date.now() < deadline);
+  const controls = observation.items?.map(({ role, label }) => ({ role, label }));
+  throw new Error(`Native tab observation unavailable: ${JSON.stringify(controls ?? observation.errorCode)}`);
+}
+
+async function verifyNativeNewTab(owner, runtime, state) {
+  const profileId = state.profileId;
+  const pointer = createBrowserNativePointer({ getMainWindow: () => owner, getActiveProfileId: () => profileId, runtime });
+  const list = async () => (await runtime.dispatchAutomationByProcessId(state.pid, 'list-tabs', {})).result.tabs;
+  const before = await list();
+  const { observation, button } = await observeNativeTabButton(pointer, profileId);
+  const result = await pointer.action(profileId, {
+    surface: 'chromium', action: 'click', ref: button.ref, observation_id: observation.observationId,
+  }, {}, new AbortController().signal);
+  if (!result.dispatched) throw new Error(`Native New Tab click was not dispatched: ${JSON.stringify(result)}`);
+  const deadline = Date.now() + 3000;
+  do {
+    const after = await list();
+    if (after.length === before.length + 1) {
+      const created = after.find(({ active }) => active);
+      await runtime.dispatchAutomationByProcessId(state.pid, 'close-tab', { tabId: created.id });
+      console.log('[phase2-input] Native pointer opened a new Chromium tab');
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  } while (Date.now() < deadline);
+  throw new Error('Native New Tab click did not increase the Chromium tab count');
+}
+
 async function shutdown(code) {
   acceptanceFinished = true;
   try { await manager?.stopAll({ timeoutMs: 5000 }); } catch (_) {}
   try { switchWindow?.destroy(); } catch (_) {}
-  try { await new Promise((resolve) => server?.close(resolve)); } catch (_) {}
+  try { window?.destroy(); } catch (_) {}
+  if (server) {
+    try { await new Promise((resolve) => server.close(resolve)); } catch (_) {}
+  }
   try { fs.rmSync(profileRoot, { recursive: true, force: true }); } catch (_) {}
   app.exit(code);
 }
@@ -292,8 +353,8 @@ app.whenReady().then(async () => {
   });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
-  window = new BrowserWindow({ width: 1280, height: 850, show: true, title: 'AI-FREE Input Acceptance' });
-  await window.loadURL('data:text/html,<body style="background:%23101827;color:white"><h2>AI-FREE input acceptance</h2></body>');
+  window = new BrowserWindow({ width: 1280, height: 850, frame: false, show: true, title: 'AI-FREE Input Acceptance' });
+  await window.loadURL('data:text/html,<input aria-label="Host input" style="position:absolute;left:10px;top:8px">');
   manager = createBrowserRuntimeManager({
     userDataDir: profileRoot,
     resourcesPath: path.resolve(__dirname, '..', '..', '..', 'resources'),
@@ -321,6 +382,11 @@ app.whenReady().then(async () => {
   window.moveTop();
   window.focus();
   await new Promise((resolve) => setTimeout(resolve, 300));
+  await verifyNativeNewTab(window, manager, state);
+  if (process.env.AI_FREE_NATIVE_POINTER_ONLY === '1') {
+    await shutdown(0);
+    return;
+  }
   const focusResult = await manager.focus('phase2_input', 'chromium');
   console.log('[phase2-input] native focus result:', focusResult);
   switchWindow = new BrowserWindow({ width: 320, height: 180, show: true, title: 'Focus switch probe' });
@@ -343,7 +409,7 @@ app.whenReady().then(async () => {
   assertReady(after);
   if (after.lastHeartbeatAt <= heartbeatBefore ||
       !/ALIVE=true/.test(inputResult) ||
-      !/AI_FREE_CLICK_OK_KEY_(?!EMPTY)/.test(inputResult)) {
+      !/;TITLE=AI_FREE_CLICK_OK_KEY_key(?:;| - )/.test(inputResult)) {
     throw new Error(`Input/heartbeat acceptance failed: ${inputResult}; ${JSON.stringify(after)}`);
   }
   console.log('[phase2-input] Web input typing, wheel, resize and focus passed');

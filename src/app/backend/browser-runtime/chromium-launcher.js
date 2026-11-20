@@ -3,7 +3,11 @@ const { spawn } = require('child_process');
 const { prepareChromiumPreflight } = require('./chromium-launch-preflight');
 const { ensureChromiumSandboxAccess } = require('./chromium-sandbox-access');
 const { enforceLocalModelDisabled } = require('./chromium-local-model-policy');
-const { buildChromiumProfileArgs } = require('./chromium-profile-args');
+const {
+  buildChromiumProfileArgs,
+  buildChromiumUserAgentMetadataArgument,
+} = require('./chromium-profile-args');
+const { applyChromiumSessionStartupPolicy } = require('./chromium-startup-preferences');
 const { attachChromiumLaunchLogging } = require('./chromium-launch-log');
 const { createChromiumPerformanceSpan } = require('./chromium-performance');
 const { waitForChromiumPreflightWarmup } = require('./chromium-preflight-warmup');
@@ -106,67 +110,6 @@ function assertSafeChromiumArgs(args = []) {
       throw error;
     }
   }
-}
-
-function readChromiumPreferences(preferencesPath, logger) {
-  try {
-    if (!fs.existsSync(preferencesPath)) return {};
-    const value = JSON.parse(fs.readFileSync(preferencesPath, 'utf8') || '{}');
-    return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-  } catch (error) {
-    callOptional(logger, 'warn', '[ChromiumRuntime] Preferences 无法解析，保留原文件并跳过会话启动策略:', text(error && error.message, error));
-    return null;
-  }
-}
-
-function ensurePreferenceSection(preferences, key) {
-  const current = preferences[key];
-  const section = current && typeof current === 'object' && !Array.isArray(current) ? current : {};
-  preferences[key] = section;
-  return section;
-}
-
-function acceptedProfileLanguages(profile) {
-  return text(profile.acceptLanguage, profile.locale)
-    .split(',')
-    .map((item) => item.split(';')[0].trim())
-    .filter(Boolean)
-    .join(',');
-}
-
-function writeChromiumPreferences(preferencesPath, preferences, logger) {
-  try {
-    fs.mkdirSync(path.dirname(preferencesPath), { recursive: true });
-    fs.writeFileSync(preferencesPath, JSON.stringify(preferences), 'utf8');
-    return true;
-  } catch (error) {
-    callOptional(logger, 'warn', '[ChromiumRuntime] 写入单页启动策略失败:', text(error && error.message, error));
-    return false;
-  }
-}
-
-/** @param {Record<string, any>} [profile] */
-function applyChromiumSessionStartupPolicy(paths = {}, logger = console, profile = {}) {
-  const userDataDir = text(paths.chromiumData);
-  if (!userDataDir) return false;
-  const preferencesPath = path.join(userDataDir, 'Default', 'Preferences');
-  const preferences = readChromiumPreferences(preferencesPath, logger);
-  if (!preferences) return false;
-  const session = ensurePreferenceSection(preferences, 'session');
-  // 与本次启动意图保持一致。旧逻辑无条件写 5（新标签页），同时又传
-  // --restore-last-session，两套策略相互冲突，可能最终得到空白页。
-  session.restore_on_startup = profile.restoreLastSession === true ? 1 : 5;
-  session.startup_urls = [];
-  const profileSection = ensurePreferenceSection(preferences, 'profile');
-  profileSection.exit_type = 'Normal';
-  profileSection.exited_cleanly = true;
-  const acceptedLanguages = acceptedProfileLanguages(profile);
-  if (acceptedLanguages) {
-    const intl = ensurePreferenceSection(preferences, 'intl');
-    intl.accept_languages = acceptedLanguages;
-    intl.selected_languages = acceptedLanguages;
-  }
-  return writeChromiumPreferences(preferencesPath, preferences, logger);
 }
 
 function getChromiumSessionsDir(paths = {}) {
@@ -434,6 +377,8 @@ function buildChromiumArgs(options = {}) {
   if (profile.lowSpecMode !== true) args.push('--disable-backgrounding-occluded-windows');
   args.push(...buildChromiumProfileArgs(options, profile, bounds));
   args.push(...(Array.isArray(profile.extraArgs) ? profile.extraArgs : []));
+  const userAgentMetadataArgument = buildChromiumUserAgentMetadataArgument(profile.environmentSettings);
+  if (userAgentMetadataArgument) args.push(userAgentMetadataArgument);
   const modelSafeArgs = enforceLocalModelDisabled(args);
   modelSafeArgs.push('--enable-logging=stderr');
   // Chromium 在握手完成前还是独立顶层窗口。强制放到虚拟屏幕外，且放在

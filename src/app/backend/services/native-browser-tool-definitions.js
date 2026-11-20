@@ -78,6 +78,7 @@ const NATIVE_BROWSER_TOOL_DEFINITIONS = Object.freeze([
     name: 'browser_observe',
     description: '通过 Chromium 隔离世界观察当前页面，并在浏览器原生 UI 层绘制标记。优先用 kinds、tags、roles、control_types 分维度筛选；兼容 filter 仅接受 schema 中列出的值，无效值会返回 INVALID_FILTER，不能把 HTML 标签误当成 filter。结果包含 observationId、语义、状态、容器关系、定位唯一性和截断诊断；后续操作可携带 observation_id 校验快照。',
     input_schema: objectSchema({
+      surface: { type: 'string', enum: ['page', 'shell', 'sidebar', 'chromium', 'chromium_popup', 'dialog'], description: '默认 page。shell/sidebar 返回支持的控件；chromium、chromium_popup、dialog 返回可见控件及其 ref、窗口尺寸和 observationId。' },
       mode: { type: 'string', enum: ['overview', 'elements'], description: 'overview 只返回页面级语义区域；elements 返回元素' },
       include_regions: { type: 'boolean' }, max_depth: { type: 'number' },
       include_accessibility_tree: { type: 'boolean', description: '同时返回 Chromium 完整 AX 树（role/name/state/父子关系/bounds）；旧内核明确报更新要求。' },
@@ -111,6 +112,7 @@ const NATIVE_BROWSER_TOOL_DEFINITIONS = Object.freeze([
     name: 'browser_action', destructive: true,
     description: '通过 Chromium 原生输入执行点击、拖拽选文、整段输入、光标/选区定位、局部插入、滚动或组合按键。必须先调用 browser_control action=acquire 接管当前活动页面；接管期间页面显示紫色发光边框，任何来源触发的文件选择器或阻塞式浏览器模态弹窗都会被阻止。ref 只属于最近一次 browser_observe，连续 observe 后必须使用最后一次返回的 ref；accessibilityFallback 元素会自动使用 clickX/clickY，无需 selector。切换或新开标签页后需要重新接管；完成后 AI 可以调用 browser_control action=release 停止接管。文件上传改用 browser_file action=upload 并附带 path/paths 与 selector/ref。',
     input_schema: objectSchema({
+      surface: { type: 'string', enum: ['page', 'shell', 'sidebar', 'chromium', 'chromium_popup', 'dialog'], description: '默认 page。shell/sidebar 使用同界面的 ref。chromium、chromium_popup、dialog 仅限内置 AI，必须使用同界面最新的 observation_id，x/y 是窗口左上角起算的物理像素。' },
       action: { type: 'string', enum: ['click', 'double_click', 'right_click', 'drag', 'scroll', 'type', 'insert_text', 'set_selection', 'press_key', 'select_option', 'set_checked'] },
       ...checkedActionProperties,
       scope: { type: 'string' }, nth: { type: 'integer', minimum: 0 }, exact: { type: 'boolean' }, has_text: { type: 'string' },
@@ -123,6 +125,7 @@ const NATIVE_BROWSER_TOOL_DEFINITIONS = Object.freeze([
       observation_id: { type: 'string', description: 'browser_observe 返回的 observationId；与 ref 一起使用可拒绝过期快照' },
       x: { type: 'number', description: '视口起点 X；可覆盖 ref 的默认点击中心' },
       y: { type: 'number', description: '视口起点 Y；可覆盖 ref 的默认点击中心' },
+      to_ref: { type: 'string', description: '原生界面拖拽的终点控件，使用同一次观察返回的 ref。' },
       to_x: { type: 'number', description: 'drag 的视口终点 X' },
       to_y: { type: 'number', description: 'drag 的视口终点 Y' },
       start: { type: 'number', description: 'set_selection 的 UTF-16 起始字符位置；start=end 表示光标' },

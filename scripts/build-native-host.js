@@ -80,6 +80,8 @@ function runManualMsvcBuild() {
   const sources = [
     'src/addon.cc',
     'src/browser_host_window.cc',
+    'src/browser_pointer.cc',
+    'src/browser_pointer_observe.cc',
     'src/child_window_manager.cc',
     'src/dpi_manager.cc',
     'src/focus_manager.cc',
@@ -110,7 +112,7 @@ function runManualMsvcBuild() {
     `/I${sdk.includeDir}`,
     ...sources,
     '/link', `/OUT:${outputFile}`, '/DELAYLOAD:node.exe', sdk.nodeLib,
-    'delayimp.lib', 'user32.lib', 'gdi32.lib', 'dwmapi.lib',
+    'delayimp.lib', 'user32.lib', 'gdi32.lib', 'dwmapi.lib', 'ole32.lib', 'oleaut32.lib',
   ];
   const testResult = spawnSync('cl.exe', [
     '/nologo', '/O2', '/EHsc', '/std:c++17', '/MT', '/utf-8',

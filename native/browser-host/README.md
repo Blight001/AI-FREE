@@ -4,7 +4,7 @@ Windows x64 的 Chromium 子窗口宿主，使用 N-API，API 与
 `docs/architecture/Chromium-Fork-Win32嵌入实施方案.md` 第 6 节一致。
 
 构建前安装 Visual Studio 2022 Build Tools，并勾选“使用 C++ 的桌面开发”和
-Windows 10/11 SDK，然后在 `app2.1` 执行：
+Windows 10/11 SDK，然后在仓库根目录（`package.json` 所在目录）执行：
 
 ```powershell
 npm run build:native-host

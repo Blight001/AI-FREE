@@ -1,0 +1,66 @@
+diff --git a/ui/views/win/hwnd_message_handler.cc b/ui/views/win/hwnd_message_handler.cc
+--- a/ui/views/win/hwnd_message_handler.cc
++++ b/ui/views/win/hwnd_message_handler.cc
+@@ -2235,7 +2235,18 @@
+ void HWNDMessageHandler::OnKillFocus(HWND focused_window) {
+   // Headless windows are believed to always have focus, so avoid
+   // reporting native focus changes.
+   if (!IsHeadless()) {
++    // Moving focus to an HWND inside the browser does not deactivate it.
++    if ((::GetWindowLongPtr(hwnd(), GWL_STYLE) & WS_CHILD) &&
++        base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
++            "hs-embed-mode") == "child-window" &&
++        !::IsChild(hwnd(), focused_window) && delegate_->CanActivate()) {
++      auto ref = msg_handler_weak_factory_.GetWeakPtr();
++      delegate_->HandleActivationChanged(false);
++      if (!ref) {
++        return;
++      }
++    }
+     delegate_->HandleNativeBlur(focused_window);
+   }
+   SetMsgHandled(FALSE);
+@@ -2280,5 +2291,20 @@
+ LRESULT HWNDMessageHandler::OnMouseRange(UINT message,
+                                          WPARAM w_param,
+                                          LPARAM l_param) {
++  // Views controls (including the omnibox) receive clicks directly on this
++  // HWND. The Electron root can already be active, so WM_MOUSEACTIVATE is
++  // not a reliable place to transfer native keyboard focus.
++  if (message == WM_LBUTTONDOWN &&
++      (::GetWindowLongPtr(hwnd(), GWL_STYLE) & WS_CHILD) &&
++      base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
++          "hs-embed-mode") == "child-window" &&
++      ::GetForegroundWindow() == ::GetAncestor(hwnd(), GA_ROOT) &&
++      ::GetFocus() != hwnd()) {
++    auto ref = msg_handler_weak_factory_.GetWeakPtr();
++    ::SetFocus(hwnd());
++    if (!ref) {
++      return 0;
++    }
++  }
+   return HandleMouseEventInternal(message, w_param, l_param, true);
+ }
+@@ -2853,7 +2868,22 @@
+ void HWNDMessageHandler::OnSetFocus(HWND last_focused_window) {
+   // Headless windows are believed to always have focus, so avoid
+   // reporting native focus changes.
+   if (!IsHeadless()) {
++    // The embedded browser is a WS_CHILD: Win32 activates the Electron root
++    // instead of sending this HWND WM_ACTIVATE. Synchronize Views/Aura when
++    // native keyboard focus actually enters the browser, before the widget
++    // tries to set a focused View or route text input through the IME.
++    if ((::GetWindowLongPtr(hwnd(), GWL_STYLE) & WS_CHILD) &&
++        base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
++            "hs-embed-mode") == "child-window" &&
++        ::GetForegroundWindow() == ::GetAncestor(hwnd(), GA_ROOT) &&
++        !::IsChild(hwnd(), last_focused_window) && delegate_->CanActivate()) {
++      auto ref = msg_handler_weak_factory_.GetWeakPtr();
++      delegate_->HandleActivationChanged(true);
++      if (!ref) {
++        return;
++      }
++    }
+     delegate_->HandleNativeFocus(last_focused_window);
+   }
+   SetMsgHandled(FALSE);

@@ -48,7 +48,7 @@ function startMainApp() {
   // ---- 核心服务 ----
   let tabManager;
   const services = createCoreServices({
-    app, fs, path, BrowserWindow, dialog, shell, powerSaveBlocker, safeStorage,
+    app, fs, path, BrowserWindow, dialog, shell, screen, powerSaveBlocker, safeStorage,
     safeModePolicy: crashLoopDecision.safeModePolicy,
     getTabManager: () => tabManager,
   });
@@ -138,6 +138,7 @@ function startMainApp() {
   tabManager = createTabManager({
     browserLaunchGuard: services.browserLaunchGuard,
     browserRuntimeManager: services.browserRuntimeManager,
+    lookupByIp: services.lookupByIp,
     fs,
     logger: console,
     extensionManager: services.extensionManager,

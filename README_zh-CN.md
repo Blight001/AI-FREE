@@ -56,7 +56,7 @@ Electron 不再承载业务网页；它只负责控制面和 Chromium 窗口编�
 
 ## 快速开始
 
-在 `app2.1` 目录执行：
+在仓库根目录（`package.json` 所在目录）执行：
 
 ```powershell
 npm ci
@@ -194,8 +194,8 @@ npm run check:chromium-embedded-policy
 ## 项目结构
 
 ```text
-app2.1/
-├─ docs/                         # HTTP/TCP、自动更新与代理资源说明
+./                               # 仓库根目录（AI-FREE-app）
+├─ docs/                         # 架构、浏览器模式与 MCP 说明
 ├─ native/
 │  ├─ browser-host/              # N-API Win32 Chromium 窗口宿主
 │  └─ chromium-fork/             # Chromium 版本锁、补丁与构建脚本
@@ -205,11 +205,10 @@ app2.1/
 ├─ scripts/                      # 启动、构建、冒烟和验收脚本
 ├─ src/
 │  ├─ app/
-│  │  ├─ main/                   # Electron 主进程、IPC、服务与浏览器运行时
-│  │  ├─ renderer/               # 顶部标签栏与应用外壳渲染逻辑
-│  │  ├─ sidebar/                # AI 控制、账号、代理和浏览器配置 UI
-│  │  ├─ shared/                 # 主进程与渲染层共享工具
-│  │  └─ views/                  # 应用外壳页面
+│  │  ├─ backend/                # Electron 主进程、IPC、服务与浏览器运行时
+│  │  ├─ contracts/              # 跨进程 IPC 契约
+│  │  ├─ frontend/               # 主窗口页面、渲染逻辑与侧栏
+│  │  └─ shared/                 # 主进程与渲染层共享工具
 │  └─ assets/extensions/         # 随应用打包并注入 Chromium 的扩展
 ├─ test/                         # Node 回归测试
 ├─ package.json                  # npm 脚本与 Electron Builder 配置
@@ -229,9 +228,8 @@ app2.1/
 
 ## 相关文档
 
-- [HTTP 请求说明](docs/api/HTTP请求说明.md)
-- [自动更新消息说明](docs/api/自动更新消息说明.md)
-- [Clash Mini Geo 本地化规格](docs/clash-mini-geo-localization-spec.md)
+- [目录与进程边界](docs/architecture/directory-map.md)
+- [浏览器运行模式](docs/browser-workflow-modes.md)
 - [Chromium Fork 构建说明](native/chromium-fork/README.md)
 - [原生浏览器宿主说明](native/browser-host/README.md)
 - [AI 自动化与 MCP 工具](docs/mcp.md)

@@ -11,7 +11,12 @@ const { browserFile, observedRef } = require('./native-browser-file');
 const { browserMedia } = require('./native-browser-media');
 const { executeBrowserTab } = require('./native-browser-tabs');
 const { BrowserWorkflow } = require('./browser-workflow');
+const { createBrowserPointerScheduler } = require('../features/browser/browser-pointer-scheduler');
+const { NATIVE_SURFACES } = require('../features/browser/browser-native-pointer');
 const { requestsAccessibility, accessibilityUnavailable, attachScreenshot, actionObservation } = require('./native-browser-feedback');
+
+const PRIMARY_POINTER = 'primary';
+const APP_INPUT_RESOURCE = 'app-window';
 
 const CONNECTION_PREFIX = 'native:';
 const READY_STATUSES = new Set(['ready', 'hidden']);
@@ -90,6 +95,14 @@ function fileUploadRequired(input) {
     selector: text(input.selector),
     ref: text(input.ref),
   };
+}
+
+function appSurfaceDisallowed(input, options) {
+  return input.surface && input.surface !== 'page' && options.allowAppSurface !== true;
+}
+
+function appPointerUnavailable() {
+  return { success: false, errorCode: 'APP_SURFACE_UNAVAILABLE', error: '目标应用界面当前不可操作。', actionExecuted: false };
 }
 
 function isReadOnlyTool(tool, args) {
@@ -176,6 +189,8 @@ class NativeBrowserAutomation {
   constructor(options = {}) {
     this.runtime = options.browserRuntimeManager;
     this.getTabs = options.getTabs;
+    this.appPointer = options.appPointer;
+    this.nativePointer = options.nativePointer;
     this.executeCardTool = options.executeCardTool;
     this.downloadService = options.browserDownloadService;
     this.cardService = options.cardService || null;
@@ -184,6 +199,7 @@ class NativeBrowserAutomation {
     this.observeTargets = new Map();
     this.observationHistory = new Map();
     this.takeoverConnections = new Set();
+    this.pointerScheduler = createBrowserPointerScheduler();
     this.workflow = new BrowserWorkflow(this);
   }
 
@@ -193,6 +209,10 @@ class NativeBrowserAutomation {
       state?.bridgeConnected === true && READY_STATUSES.has(text(state.status)) && text(state.profileId)
     )).map((state) => publicConnection(state, findTab(this.getTabs, state.profileId)));
     this.workflow.prune(connections);
+    const onlineIds = new Set(connections.map(({ id }) => id));
+    for (const id of this.takeoverConnections) {
+      if (!onlineIds.has(id)) void this.releasePointerSession(id);
+    }
     return connections;
   }
 
@@ -215,17 +235,21 @@ class NativeBrowserAutomation {
   async runtimeCommand(connection, command, input = {}) {
     const response = await this.runtime.dispatchAutomationByProcessId(connection.browserProcessId, command, input);
     const result = response?.result || response || {};
-    if (result?.errorCode === 'BROWSER_TAKEOVER_REQUIRED') {
-      this.takeoverConnections.delete(connection.id);
-    }
+    if (result?.errorCode === 'BROWSER_TAKEOVER_REQUIRED') void this.releasePointerSession(connection.id);
     return result;
+  }
+
+  releasePointerSession(connectionId) {
+    this.takeoverConnections.delete(connectionId);
+    return this.pointerScheduler.release(connectionId);
   }
 
   browserTab(connection, args) {
     return executeBrowserTab(this, connection, args, normalizeUrl);
   }
 
-  async browserAction(connection, args) {
+  async browserAction(connection, args, signal = undefined) {
+    if (args.surface && args.surface !== 'page') return this.clickAppSurface(connection, args, signal);
     if (text(args.action) === 'upload_file') throw new Error('文件上传请使用 browser_file action=upload');
     const blocked = fileUploadRequired(this.resolveObservedTarget(connection, args));
     if (blocked) return blocked;
@@ -233,22 +257,15 @@ class NativeBrowserAutomation {
   }
 
   async browserActionRaw(connection, args) {
+    if (args.surface && args.surface !== 'page') return appPointerUnavailable();
     if (args.after && !['none', 'observe'].includes(args.after)) {
       return { success: false, errorCode: 'INVALID_ACTION_FEEDBACK', error: 'after 只支持 none 或 observe' };
     }
     let input = this.resolveObservedTarget(connection, args);
     if (input.observedRefRecoveryCandidate) input = await this.recoverObservedTarget(connection, input);
-    if (!text(input.selector) && text(input.observedRole) && text(input.observedLabel)) {
-      const resolved = await this.runtimeCommand(connection, 'inspect-page-state', {
-        target: { role: input.observedRole, name: input.observedLabel, exact: true },
-      });
-      if (resolved?.target?.found && resolved.target.count === 1) {
-        input = { ...input, selector: resolved.target.selector || input.selector,
-          x: resolved.target.clickX ?? input.x, y: resolved.target.clickY ?? input.y };
-      } else if (resolved?.target?.count > 1) {
-        return { success: false, errorCode: 'TARGET_AMBIGUOUS', error: '观察到的目标在当前页面有多个匹配项，请使用 scope、nth 或 test_id', candidates: resolved.target.candidates || [], actionExecuted: false };
-      }
-    }
+    const resolved = await this.resolveAccessibleAction(connection, input);
+    if (resolved.failure) return resolved.failure;
+    input = resolved.input;
     const mismatch = mismatchedObservationResult(input);
     if (mismatch) return mismatch;
     const expired = expiredObservedRefResult(input);
@@ -256,16 +273,43 @@ class NativeBrowserAutomation {
     if (text(input.action) === 'upload_file') throw new Error('文件上传请使用 browser_file action=upload');
     const blocked = fileUploadRequired(input);
     if (blocked) return blocked;
-    const result = await this.runtimeCommand(connection, 'perform-action', runtimeTarget(input));
+    const result = await this.dispatchPointerAction(connection, input);
     const actionResult = input.observedRefRecovered === true
       ? { ...result, refRecovered: true, recoveryStrategy: 'unique-observed-selector' }
       : result;
     return actionObservation(this, connection, actionResult, args);
   }
 
+  async dispatchPointerAction(connection, input) {
+    try {
+      return await this.pointerScheduler.run(connection.id, PRIMARY_POINTER, connection.id, () => {
+        if (!this.takeoverConnections.has(connection.id)) return takeoverRequired('browser_action', input);
+        return this.runtimeCommand(connection, 'perform-action', runtimeTarget(input));
+      });
+    } catch (error) {
+      if (error.code !== 'BROWSER_POINTER_RELEASED') throw error;
+      return { ...takeoverRequired('browser_action', input), actionExecuted: false };
+    }
+  }
+
+  async resolveAccessibleAction(connection, input) {
+    if (text(input.selector) || !text(input.observedRole) || !text(input.observedLabel)) return { input };
+    const resolved = await this.runtimeCommand(connection, 'inspect-page-state', {
+      target: { role: input.observedRole, name: input.observedLabel, exact: true },
+    });
+    const target = resolved?.target;
+    if (target?.count > 1) return { failure: {
+      success: false, errorCode: 'TARGET_AMBIGUOUS', error: '观察到的目标在当前页面有多个匹配项，请使用 scope、nth 或 test_id', candidates: target.candidates || [], actionExecuted: false,
+    } };
+    if (!target?.found || target.count !== 1) return { input };
+    return { input: { ...input, selector: target.selector || input.selector,
+      x: target.clickX ?? input.x, y: target.clickY ?? input.y } };
+  }
+
   async browserControl(connection, args) {
     const action = text(args.action || 'status').toLowerCase();
     if (action === 'overview') return this.browserOverview(args);
+    if (action === 'release') await this.releasePointerSession(connection.id);
     let result;
     try {
       result = await this.runtimeCommand(connection, 'automation-takeover', { action });
@@ -293,10 +337,27 @@ class NativeBrowserAutomation {
     }, args);
   }
 
-  dispatchBasicTool(connection, tool, input) {
+  async clickAppSurface(connection, input, callerSignal) {
+    const native = NATIVE_SURFACES.has(input.surface);
+    if (native ? !this.nativePointer : !this.appPointer) return appPointerUnavailable();
+    try {
+      return await this.pointerScheduler.run(connection.id, PRIMARY_POINTER, APP_INPUT_RESOURCE, (pointer, signal) => {
+        if (!this.takeoverConnections.has(connection.id)) return takeoverRequired('browser_action', input);
+        const activeSignal = callerSignal ? AbortSignal.any([callerSignal, signal]) : signal;
+        if (activeSignal.aborted) return { ...takeoverRequired('browser_action', input), actionExecuted: false };
+        if (native) return this.nativePointer.action(connection.profileId, input, pointer, activeSignal);
+        return this.appPointer.click(connection.profileId, input.surface, input.ref, pointer, activeSignal, input);
+      });
+    } catch (error) {
+      if (error.code !== 'BROWSER_POINTER_RELEASED') throw error;
+      return { ...takeoverRequired('browser_action', input), actionExecuted: false };
+    }
+  }
+
+  dispatchBasicTool(connection, tool, input, signal = undefined) {
     if (tool === 'browser_observe') return this.browserObserve(connection, input);
     if (tool === 'browser_screenshot') return this.runtimeCommand(connection, 'capture-screenshot', input);
-    if (tool === 'browser_action') return this.browserAction(connection, input);
+    if (tool === 'browser_action') return this.browserAction(connection, input, signal);
     if (tool === 'browser_wait') return this.browserWait(connection, input);
     if (tool === 'browser_tab') return this.browserTab(connection, input);
     if (tool === 'browser_file') return this.browserFile(connection, input);
@@ -398,6 +459,12 @@ class NativeBrowserAutomation {
   }
 
   async browserObserve(connection, input) {
+    if (NATIVE_SURFACES.has(input.surface)) {
+      return this.nativePointer?.observe(connection.profileId, input.surface) || appPointerUnavailable();
+    }
+    if (input.surface && input.surface !== 'page') {
+      return this.appPointer?.observe(connection.profileId, input.surface) || appPointerUnavailable();
+    }
     const result = await this.runtimeCommand(connection, 'observe-page', input);
     if (result?.success === false || result?.ok === false) return result;
     if (requestsAccessibility(input) && !result.accessibilityTree) return accessibilityUnavailable(result);
@@ -438,12 +505,13 @@ class NativeBrowserAutomation {
     const connection = this.requireConnection(connectionId);
     const input = args && typeof args === 'object' ? args : {};
     const toolName = normalizeToolName(tool);
+    if (appSurfaceDisallowed(input, options)) return appPointerUnavailable();
     const blocked = this.workflow.blocked(connection, toolName, input);
     if (blocked) return blocked;
     if (!isReadOnlyTool(toolName, input) && !this.takeoverConnections.has(connection.id)) {
       return takeoverRequired(toolName, input);
     }
-    const basicResult = this.dispatchBasicTool(connection, toolName, input);
+    const basicResult = this.dispatchBasicTool(connection, toolName, input, options.signal);
     if (basicResult) return basicResult;
     if (toolName === 'manage_card' && this.cardService?.execute) {
       return this.cardService.execute(input, {

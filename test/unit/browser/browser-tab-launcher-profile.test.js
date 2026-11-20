@@ -199,3 +199,46 @@ test('an existing account tab is reused without profile resolution', async () =>
   assert.equal(switchedTo, existing.id);
   assert.equal(profileLookups, 0);
 });
+
+test('launch resolves allowed IP geolocation through the effective route and passes environment settings', async () => {
+  let requestedProxy;
+  let launchedProfile;
+  const { launcher } = launchFixture({
+    lookupByIp: async ({ effectiveProxy }) => {
+      requestedProxy = effectiveProxy;
+      return { ip: '203.0.113.10', longitude: -122.4, latitude: 37.7, accuracy: 1000 };
+    },
+    browserRuntimeManager: { async launchProfile(profile) { launchedProfile = profile; return { status: 'ready' }; } },
+  });
+
+  await launcher.addTab('https://example.test/', {
+    tabId: 'geo-ip', browserSettings: { geolocation: { permission: 'allow', mode: 'ip' } },
+  });
+
+  assert.equal(requestedProxy.server, 'http://127.0.0.1:17890');
+  assert.equal(launchedProfile.environmentSettings.geolocation.enabled, true);
+  assert.equal(launchedProfile.environmentSettings.geolocation.longitude, -122.4);
+  assert.equal(launchedProfile.geolocationResolution.sourceIp, '203.0.113.10');
+  assert.equal(launchedProfile.geolocationWarning, '');
+});
+
+test('launch skips IP resolution for ask/block and preserves explicit lookup failures', async (t) => {
+  for (const permission of ['ask', 'block', 'allow']) {
+    await t.test(permission, async () => {
+      let lookups = 0;
+      let launchedProfile;
+      const { launcher, tabs } = launchFixture({
+        lookupByIp: async () => { lookups += 1; throw new Error('proxy-user:proxy-secret@proxy.test'); },
+        browserRuntimeManager: { async launchProfile(profile) { launchedProfile = profile; return { status: 'ready' }; } },
+      });
+      await launcher.addTab('https://example.test/', {
+        tabId: `geo-${permission}`, browserSettings: { geolocation: { permission, mode: 'ip' } },
+      });
+      assert.equal(lookups, permission === 'allow' ? 1 : 0);
+      assert.equal(launchedProfile.environmentSettings.geolocation.enabled, false);
+      assert.equal(launchedProfile.geolocationResolution, null);
+      assert.equal(launchedProfile.geolocationWarning, permission === 'allow' ? 'BROWSER_GEOLOCATION_LOOKUP_FAILED' : '');
+      assert.doesNotMatch(JSON.stringify(tabs.get(`geo-${permission}`).browserProfile), /proxy-secret/);
+    });
+  }
+});

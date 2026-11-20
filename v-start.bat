@@ -10,7 +10,7 @@ if errorlevel 1 (
   exit /b 1
 )
 
-rem Keep the account backend in its existing production mode. HeySure has an
+rem Keep the account backend in its exi，sting production mode. HeySure has an
 rem independent forced profile so saved or inherited addresses cannot win.
 set "AI_FREE_SERVER_MODE=remote"
 set "HEYSURE_LOCAL_TEST=false"

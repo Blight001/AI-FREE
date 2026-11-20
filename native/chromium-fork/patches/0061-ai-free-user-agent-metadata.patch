@@ -1,0 +1,135 @@
+From 1c0d248f28a7bd5a74df9e00dbab7dfd5e1f0061 Mon Sep 17 00:00:00 2001
+From: AI-FREE Build <build@ai-free.local>
+Date: Fri, 20 Nov 2026 18:00:00 +0800
+Subject: [PATCH] Apply per-profile AI-FREE user-agent metadata
+
+---
+ chrome/browser/chrome_content_browser_client.cc | 78 +++++++++++++++++++++++++++-
+ chrome/common/chrome_switches.cc                |  3 ++
+ chrome/common/chrome_switches.h                 |  1 +
+ 3 files changed, 82 insertions(+), 1 deletion(-)
+
+diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/chrome_content_browser_client.cc
+--- a/chrome/browser/chrome_content_browser_client.cc
++++ b/chrome/browser/chrome_content_browser_client.cc
+@@ -15,5 +15,6 @@
+ #include <vector>
+ 
++#include "base/base64.h"
+ #include "base/base_switches.h"
+ #include "base/byte_count.h"
+ #include "base/check_deref.h"
+@@ -33,5 +34,6 @@
+ #include "base/functional/callback_helpers.h"
+ #include "base/i18n/base_i18n_switches.h"
+ #include "base/i18n/character_encoding.h"
++#include "base/json/json_reader.h"
+ #include "base/memory/raw_ptr.h"
+ #include "base/memory/scoped_refptr.h"
+@@ -7718,6 +7720,81 @@ std::string ChromeContentBrowserClient::GetUserAgent() {
+ blink::UserAgentMetadata ChromeContentBrowserClient::GetUserAgentMetadata() {
+   DCHECK_CURRENTLY_ON(BrowserThread::UI);
+-  return embedder_support::GetUserAgentMetadata();
++  blink::UserAgentMetadata metadata = embedder_support::GetUserAgentMetadata();
++  const base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
++  if (!command_line->HasSwitch(switches::kHsUserAgentMetadata)) {
++    return metadata;
++  }
++
++  std::string decoded;
++  if (!base::Base64Decode(
++          command_line->GetSwitchValueASCII(switches::kHsUserAgentMetadata),
++          &decoded) ||
++      decoded.size() > 16384) {
++    return metadata;
++  }
++  std::optional<base::Value> parsed = base::JSONReader::Read(decoded);
++  if (!parsed || !parsed->is_dict()) {
++    return metadata;
++  }
++
++  const base::Value::Dict& overrides = parsed->GetDict();
++  auto parse_brand_list = [](const base::Value::List* entries) {
++    blink::UserAgentBrandList brands;
++    if (!entries) {
++      return brands;
++    }
++    for (const base::Value& entry : *entries) {
++      if (brands.size() >= 8) {
++        break;
++      }
++      if (!entry.is_dict()) {
++        continue;
++      }
++      const base::Value::Dict& item = entry.GetDict();
++      const std::string* brand = item.FindString("brand");
++      const std::string* version = item.FindString("version");
++      if (brand && !brand->empty() && version && !version->empty()) {
++        brands.emplace_back(*brand, *version);
++      }
++    }
++    return brands;
++  };
++
++  blink::UserAgentBrandList brands =
++      parse_brand_list(overrides.FindList("brands"));
++  if (!brands.empty()) {
++    metadata.brand_version_list = std::move(brands);
++  }
++  blink::UserAgentBrandList full_version_list =
++      parse_brand_list(overrides.FindList("fullVersionList"));
++  if (!full_version_list.empty()) {
++    metadata.brand_full_version_list = std::move(full_version_list);
++  }
++  if (const std::string* value = overrides.FindString("fullVersion")) {
++    metadata.full_version = *value;
++  }
++  if (const std::string* value = overrides.FindString("platform")) {
++    metadata.platform = *value;
++  }
++  if (const std::string* value = overrides.FindString("platformVersion")) {
++    metadata.platform_version = *value;
++  }
++  if (const std::string* value = overrides.FindString("architecture")) {
++    metadata.architecture = *value;
++  }
++  if (const std::string* value = overrides.FindString("model")) {
++    metadata.model = *value;
++  }
++  if (const std::string* value = overrides.FindString("bitness")) {
++    metadata.bitness = *value;
++  }
++  if (std::optional<bool> value = overrides.FindBool("mobile")) {
++    metadata.mobile = *value;
++  }
++  if (std::optional<bool> value = overrides.FindBool("wow64")) {
++    metadata.wow64 = *value;
++  }
++  return metadata;
+ }
+ 
+ std::optional<gfx::ImageSkia> ChromeContentBrowserClient::GetProductLogo() {
+diff --git a/chrome/common/chrome_switches.cc b/chrome/common/chrome_switches.cc
+--- a/chrome/common/chrome_switches.cc
++++ b/chrome/common/chrome_switches.cc
+@@ -377,6 +377,9 @@ const char kHsRuntimePipe[] = "hs-runtime-pipe";
+ // One-time launch challenge invalidated after hello is accepted.
+ const char kHsRuntimeToken[] = "hs-runtime-token";
+ 
++// Base64-encoded per-profile user-agent metadata used for UA client hints.
++const char kHsUserAgentMetadata[] = "hs-user-agent-metadata";
++
+ // Silently approves an allowlisted subset of permission requests in the
+ // authenticated AI-FREE embedded runtime. This switch has no effect without
+ // kHsEmbedMode=child-window and a non-empty origin allowlist.
+diff --git a/chrome/common/chrome_switches.h b/chrome/common/chrome_switches.h
+--- a/chrome/common/chrome_switches.h
++++ b/chrome/common/chrome_switches.h
+@@ -133,4 +133,5 @@ extern const char kHsProfileId[];
+ extern const char kHsRuntimePipe[];
+ extern const char kHsRuntimeToken[];
++extern const char kHsUserAgentMetadata[];
+ extern const char kAutoGrantPermissions[];
+ extern const char kAutoGrantPermissionsOrigins[];
+-- 
+2.54.0.windows.1

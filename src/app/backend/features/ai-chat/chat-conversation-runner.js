@@ -298,6 +298,7 @@ async function executeToolRound(state, result, toolCalls, round) {
     toolEvents: state.toolEvents,
     toolDefinitions: state.toolContext.tools,
     traceEvents: state.traceEvents,
+    signal: state.run?.controller.signal,
     waitForAbort: (promise) => waitForChatAbort(state.run, promise),
     windowTools: state.windowTools,
   });

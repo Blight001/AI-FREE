@@ -1,7 +1,7 @@
 # AI-FREE Chromium Fork
 
 此目录只保存版本锁、GN 参数、补丁队列和可重复构建脚本。Chromium 完整源码及
-`out` 目录固定在 `E:\chromium-ai-free\src`，不得复制进 app2.1 Git 仓库。
+`out` 目录固定在 `E:\chromium-ai-free\src`，不得复制进当前 AI-FREE-app 仓库。
 
 锁定基线为 Chromium `150.0.7871.114`，commit
 `f405107495a07cb1bfcf687d4af8d91117098db6`。补丁必须按 `patches/series`

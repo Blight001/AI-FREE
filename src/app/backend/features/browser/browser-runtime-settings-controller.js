@@ -5,13 +5,14 @@ const {
   parseCookieJson,
 } = require('../../utils/ai-free-browser-settings');
 const {
-  buildAppliedBrowserEnvironment,
-  buildAppliedBrowserSettings,
   resolveChromiumExtensionPaths,
-  resolveChromiumExtraArgs,
   resolveConfiguredBrowserProxy,
 } = require('./browser-environment');
+const { resolveBrowserEnvironmentProfile } = require('./browser-environment-profile');
+const { buildBrowserRuntimeEnvironment } = require('./browser-tab-runtime-profile');
 const { getClashMiniStatus } = require('../network/clash-mini-control-runtime');
+const { resolveLowSpecMode } = require('./low-spec-mode-policy');
+const { getChromiumHandshakeBudget } = require('../../browser-runtime/chromium-launch-recovery');
 const { callOptional, firstText } = require('../../../shared/safe-values');
 
 function getChromiumInstance(browserRuntimeManager, tabId) {
@@ -29,30 +30,34 @@ function resolveEffectiveBrowserProxy(deps, normalized) {
   return { effectiveProxy: effectiveProxy || { enabled: false }, globalMagicEnabled };
 }
 
-function applyProfileToRuntime(instance, tab, browserProfile, normalized, proxyState) {
+function applyProfileToRuntime(instance, browserProfile, normalized, effectiveProxy) {
   if (!instance || !instance.profile) return;
-  const { effectiveProxy, globalMagicEnabled } = proxyState;
-  instance.profile.locale = firstText(browserProfile && browserProfile.locale);
-  instance.profile.acceptLanguage = firstText(browserProfile && browserProfile.acceptLanguage);
-  instance.profile.timezoneId = firstText(browserProfile && browserProfile.timezoneId);
-  instance.profile.userAgent = firstText(browserProfile && browserProfile.userAgent);
-  instance.profile.browserEnvironment = buildAppliedBrowserEnvironment(browserProfile);
-  instance.profile.browserSettingsSnapshot = buildAppliedBrowserSettings(normalized);
-  instance.profile.proxyServer = effectiveProxy.enabled ? firstText(effectiveProxy.server) : '';
-  instance.profile.proxyBypassList = effectiveProxy.enabled ? firstText(effectiveProxy.bypassRules) : '';
-  instance.profile.extraArgs = resolveChromiumExtraArgs(normalized);
-  tab.networkMagicApplied = globalMagicEnabled && effectiveProxy.enabled === true;
+  Object.assign(instance.profile, buildBrowserRuntimeEnvironment(normalized, browserProfile, effectiveProxy));
+  const lowSpecMode = resolveLowSpecMode({ settings: normalized.lowSpecMode, system: instance.profile.lowSpecSystem }).enabled;
+  instance.profile.lowSpecMode = lowSpecMode;
+  instance.profile.launchMode = lowSpecMode ? 'low-spec' : 'normal';
+  instance.profile.launchTimeoutMs = getChromiumHandshakeBudget({ lowSpecMode });
+}
+
+function saveResolvedTabSettings(tab, tabs, normalized, browserProfile) {
+  const current = tab.browserSettings && typeof tab.browserSettings === 'object'
+    ? tab.browserSettings
+    : {};
+  tab.browserSettings = { ...current, ...normalized };
+  tab.browserProfile = browserProfile;
+  tabs.set(tab.id, tab);
 }
 
 async function applyConfiguredCookies(deps, tabId, normalized) {
   const configuredCookies = parseCookieJson(normalized);
-  const runtime = deps.browserRuntimeManager;
-  if (!configuredCookies.length || !runtime || typeof runtime.setCookies !== 'function') return;
+  if (!configuredCookies.length) return {};
   try {
-    await runtime.setCookies(tabId, configuredCookies);
-  } catch (error) {
-    callOptional(deps.logger || console, 'warn', '[ChromiumRuntime] AI-FREE Cookie 更新失败:', firstText(error && error.message, error));
+    const result = await deps.browserRuntimeManager?.setCookies?.(tabId, configuredCookies);
+    if (result?.imported === configuredCookies.length) return {};
+  } catch (_) {
+    callOptional(deps.logger || console, 'warn', '[ChromiumRuntime] AI-FREE Cookie 更新失败');
   }
+  return { cookieWarning: '部分或全部 Cookie 未能写入 Chromium。' };
 }
 
 async function setTabBrowserSettings(deps, tabId, settings, options = {}) {
@@ -64,23 +69,31 @@ async function setTabBrowserSettings(deps, tabId, settings, options = {}) {
       if (!tab) return { ok: false, message: '当前没有可配置的浏览器标签页' };
       const normalized = normalizeAiFreeBrowserSettings(settings);
       const proxyState = resolveEffectiveBrowserProxy(deps, normalized);
-      const browserProfile = await resolveTabBrowserProfile({
-        browserSettings: normalized,
+      const browserProfile = await resolveBrowserEnvironmentProfile({
+        settings: normalized,
+        effectiveProxy: proxyState.effectiveProxy,
+        resolveTabBrowserProfile,
+        lookupByIp: deps.lookupByIp,
         logger,
       });
-      tab.browserSettings = { ...((tab.browserSettings && typeof tab.browserSettings === 'object') ? tab.browserSettings : {}), ...normalized };
-      tab.browserProfile = browserProfile;
-      tabs.set(tab.id, tab);
-      applyProfileToRuntime(getChromiumInstance(browserRuntimeManager, tab.id), tab, browserProfile, normalized, proxyState);
-      await applyConfiguredCookies(deps, tab.id, normalized);
+      saveResolvedTabSettings(tab, tabs, normalized, browserProfile);
+      applyProfileToRuntime(getChromiumInstance(browserRuntimeManager, tab.id), browserProfile, normalized, proxyState.effectiveProxy);
+      const cookieResult = await applyConfiguredCookies(deps, tab.id, normalized);
+      const locationResult = browserProfile.geolocationWarning
+        ? { geolocationWarning: browserProfile.geolocationWarning } : {};
       if (options.restartChromium === true && browserRuntimeManager) {
-        const state = await browserRuntimeManager.restart(tab.id);
+        const environmentUpdate = buildBrowserRuntimeEnvironment(normalized, browserProfile, proxyState.effectiveProxy);
+        const state = typeof browserRuntimeManager.refreshEnvironmentProfile === 'function'
+          ? await browserRuntimeManager.refreshEnvironmentProfile(tab.id, environmentUpdate)
+          : await browserRuntimeManager.restart(tab.id);
         tab.runtimeStatus = firstText(state && state.status, tab.runtimeStatus);
+        tab.networkMagicApplied = proxyState.globalMagicEnabled && proxyState.effectiveProxy.enabled === true;
         updateTabs(true);
-        return { ok: true, applied: true, restarted: true, runtimeType: 'chromium' };
+        return { ok: true, applied: !cookieResult.cookieWarning && !browserProfile.geolocationWarning,
+          restarted: true, runtimeType: 'chromium', ...cookieResult, ...locationResult };
       }
       updateTabs(true);
-      return { ok: true, applied: false, restartRequired: true, runtimeType: 'chromium' };
+      return { ok: true, applied: false, restartRequired: true, runtimeType: 'chromium', ...cookieResult, ...locationResult };
     } catch (error) {
       callOptional(logger, 'warn', '[BrowserSettings] 应用标签参数失败:', firstText(error && error.message, error));
       return { ok: false, message: firstText(error && error.message, error) };

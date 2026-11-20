@@ -131,8 +131,6 @@ function formatBrowserRegion(profile = {}) {
 }
 
 function resolveChromiumDisplayVersion(profile = {}) {
-  const explicit = String(profile.majorVersion || profile.browserVersion || '').trim().split('.')[0];
-  if (/^\d+$/.test(explicit)) return explicit;
   const match = String(profile.userAgent || '').match(/(?:Chromium|Chrome)\/(\d+)/i);
   return match ? match[1] : '';
 }
@@ -210,11 +208,11 @@ function buildBasicSettingsTooltip(settings = {}, profile = {}, networkMagicEnab
     : '默认主页';
   return [
     '【基础设置】',
-    `操作系统：${os}`,
-    `浏览器版本：${browserVersion}`,
-    `内核版本：${kernelVersion}`,
+    `默认 UA 系统选项：${os}`,
+    `默认 UA 版本选项：${browserVersion}`,
+    `旧版内核版本字段（仅影响默认 UA）：${kernelVersion}`,
     `代理设置：${formatProxySetting(settings.proxy, networkMagicEnabled)}`,
-    `Cookie：${Math.max(0, Number(settings.cookieCount) || 0)} 条`,
+    `配置的 Cookie：${Math.max(0, Number(settings.cookieCount) || 0)} 条`,
     `启动主页：${homepage}`,
   ];
 }
@@ -240,11 +238,11 @@ function buildAdvancedIdentityTooltip(settings, profile) {
   ];
   if (userAgent) lines.push(`用户代理（UA）：${userAgent}`);
   lines.push(
-    `Sec-CH-UA：${settingLabel(secChUa.mode, { default: '默认生成', custom: '自定义' })}${brands ? `（${brands}）` : ''}`,
+    `Sec-CH-UA（旧版记录，未应用）：${settingLabel(secChUa.mode, { default: '默认生成', custom: '自定义' })}${brands ? `（${brands}）` : ''}`,
     `语言：${language.value ? '自定义' : '跟随系统'}${locale ? `（当前 ${formatBrowserLocale(locale)}）` : ''}`,
     `网页请求语言：${acceptLanguage ? formatRequestLanguages(acceptLanguage) : '自动'}`,
-    `时区：${timezoneSetting.mode === 'custom' ? '自定义' : '基于 IP 自动匹配'}${timezone ? `（当前 ${formatBrowserTimezone(timezone)}）` : ''}`,
-    `WebRTC：${settingLabel(webrtc.mode, { replace: '替换', allow: '允许', block: '禁止' })}`,
+    `时区：${timezoneSetting.mode === 'custom' ? '自定义' : '语言地区预设'}${timezone ? `（启动配置 ${formatBrowserTimezone(timezone)}）` : ''}`,
+    `WebRTC（旧版记录，未应用）：${settingLabel(webrtc.mode, { replace: '替换', allow: '允许', block: '禁止' })}`,
   );
   return lines;
 }
@@ -266,11 +264,10 @@ function formatResolutionSetting(settings, runtimeEnvironment) {
 }
 
 function buildAdvancedFingerprintTooltip(settings, runtimeEnvironment) {
-  const { geo, mode: geoMode } = formatGeolocationSetting(settings);
+  const { mode: geoMode } = formatGeolocationSetting(settings);
   const group = (name) => tooltipObject(settings, name);
   const webgl = group('webglMetadata');
   return [
-    `地理位置权限：${settingLabel(geo.permission, { ask: '询问', allow: '允许', block: '禁止' })}`,
     `地理位置：${geoMode}`,
     `分辨率：${formatResolutionSetting(settings, runtimeEnvironment)}`,
     `字体：${settingLabel(group('fonts').mode, { system: '系统默认', random: '随机匹配' })}`,
@@ -302,10 +299,12 @@ function buildAdvancedSystemTooltip(settings, runtimeEnvironment) {
     `设备内存指纹：${Math.max(1, Number(settings.memory) || 1)} GB`,
     `设备名称：${formatCustomSetting(deviceName)}`,
     `MAC 地址：${formatCustomSetting(macAddress)}`,
-    `禁止跟踪（DNT）：${enabledLabel(settings.doNotTrack)}`,
     `SSL：${enabledLabel(settings.sslEnabled)}`,
     `端口扫描保护：${enabledLabel(portProtection.enabled)}`,
     `端口扫描白名单：${allowList}`,
+    '【启动选项】',
+    `默认定位权限：${settingLabel(settings.geolocation?.permission, { ask: '询问', allow: '允许', block: '禁止' }, '询问')}`,
+    `禁止跟踪（DNT）启动配置：${enabledLabel(settings.doNotTrack)}`,
     `硬件加速：${enabledLabel(runtimeEnvironment.hardwareAcceleration !== false)}`,
     `启动参数：${formatCustomSetting(launchArgs, safeDisplayLaunchArgs)}`,
   ];
@@ -313,8 +312,9 @@ function buildAdvancedSystemTooltip(settings, runtimeEnvironment) {
 
 function buildAdvancedSettingsTooltip(settings = {}, profile = {}, runtimeEnvironment = null) {
   const environment = runtimeEnvironment || { hardwareAcceleration: settings.hardwareAcceleration };
-  return ['【高级设置】',
+  return ['【启动配置记录】',
     ...buildAdvancedIdentityTooltip(settings, profile),
+    '【保留的旧版参数（当前内核不应用）】',
     ...buildAdvancedFingerprintTooltip(settings, environment),
     ...buildAdvancedSystemTooltip(settings, environment)];
 }
@@ -360,7 +360,8 @@ function buildTabTooltip(tab) {
   const lines = [
     `浏览器名称：${title}`,
     `运行状态：${formatRuntimeStatus(tab?.runtimeStatus)}`,
-    `浏览器内核：AI-FREE Chromium${version ? ` ${version}` : ''}`,
+    '浏览器内核：AI-FREE Chromium',
+    ...(version && profile.userAgent ? [`UA 版本标识：${version}`] : []),
   ];
   lines.push(...tooltipProfileLines(profile, runtimeEnvironment));
   if (tab?.networkMagicEnabled === true) lines.push('网络魔法：已开启（当前浏览器已应用）');

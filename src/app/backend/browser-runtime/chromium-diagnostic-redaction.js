@@ -15,6 +15,7 @@ function replaceKnownPath(value, target, replacement) {
 function redactSensitiveText(value, options = {}) {
   let redacted = String(value || '')
     .replace(/(--hs-runtime-token=)(?:"[^"]*"|'[^']*'|\S+)/gi, '$1<redacted>')
+    .replace(/(--hs-user-agent-metadata=)(?:"[^"]*"|'[^']*'|\S+)/gi, '$1<redacted>')
     .replace(/((?:authorization|proxy-authorization)\s*:\s*bearer\s+)\S+/gi, '$1<redacted>')
     .replace(/((?:cookie|set-cookie)\s*:\s*)[^\r\n]+/gi, '$1<redacted>')
     .replace(/([a-z][a-z0-9+.-]*:\/\/)[^/@\s]+@/gi, '$1<redacted>@')

@@ -23,6 +23,9 @@ const { createTabHelpers } = require('../services/tab-helpers');
 const { createRuntimeHelpers } = require('../services/runtime-helpers');
 const { createSystemResourceMonitor } = require('../platform/system-resource-monitor');
 const { createBrowserLaunchGuard } = require('../features/browser/browser-launch-guard');
+const { createBrowserIpGeolocationLookup } = require('../features/browser/browser-ip-geolocation-provider');
+const { createBrowserAppPointer } = require('../features/browser/browser-app-pointer');
+const { createBrowserNativePointer } = require('../features/browser/browser-native-pointer');
 const { createRemoteBrowserPeerController } = require('../features/browser/remote-browser-peer-controller');
 const { createRemoteBrowserControl } = require('../features/browser/remote-browser-control');
 const { createDeviceHallUpdateChecker } = require('../features/updates/device-hall-update-checker');
@@ -73,10 +76,11 @@ function prepareAiSandboxDirectory(app, fileSystem) {
   return workspaceDir;
 }
 
-function createCoreServices({ app, fs, path, BrowserWindow, dialog, shell, powerSaveBlocker, safeStorage, safeModePolicy, getTabManager }) {
+function createCoreServices({ app, fs, path, BrowserWindow, dialog, shell, screen, powerSaveBlocker, safeStorage, safeModePolicy, getTabManager }) {
   // ---- 全局状态 ----
   const appRuntime = createAppState();
   const tabs = appRuntime.tabs;
+  const lookupByIp = createBrowserIpGeolocationLookup();
 
   const aiSandboxDir = prepareAiSandboxDirectory(app, fs);
   const browserRuntimeManager = createBrowserRuntimeManager({
@@ -164,12 +168,29 @@ function createCoreServices({ app, fs, path, BrowserWindow, dialog, shell, power
   // 日志封装（侧栏转发通过 sideView.webContents）
   const logger = createLogger({ getSideWebContents: () => (appRuntime.getSideView() && appRuntime.getSideView().webContents) || null });
 
+  const nativePointer = createBrowserNativePointer({
+    getMainWindow: appRuntime.getMainWindow,
+    getActiveProfileId: appRuntime.getActiveTabId,
+    runtime: browserRuntimeManager,
+  });
   const browserAutomationBridge = createBrowserAutomationBridge({
     backgroundExecutionLeases,
     logger: console,
     cardCacheDir: resolveAutomationCardCacheDir(app),
     browserDownloadService: createBrowserDownloadService({ sandboxDir: aiSandboxDir }),
     browserRuntimeManager,
+    nativePointer,
+    appPointer: createBrowserAppPointer({
+      overlayFor: nativePointer.overlayFor,
+      toScreenPoint: (point, offset) => {
+        const bounds = appRuntime.getMainWindow().getContentBounds();
+        return screen.dipToScreenPoint({ x: bounds.x + offset.x + point.x, y: bounds.y + offset.y + point.y });
+      },
+      getMainWindow: appRuntime.getMainWindow,
+      getSideView: appRuntime.getSideView,
+      getIsSidebarVisible: appRuntime.getIsSidebarVisible,
+      getActiveProfileId: appRuntime.getActiveTabId,
+    }),
     workspaceDir: aiSandboxDir,
     getBrowserRecords: () => serializeBrowserHistory(readBrowserHistorySafe(), {
       getTabs: () => tabs, getActiveTabId: appRuntime.getActiveTabId,
@@ -350,6 +371,7 @@ function createCoreServices({ app, fs, path, BrowserWindow, dialog, shell, power
     appRuntime,
     tabs,
     browserRuntimeManager,
+    lookupByIp,
     systemResourceMonitor,
     browserLaunchGuard,
     backgroundExecutionLeases,

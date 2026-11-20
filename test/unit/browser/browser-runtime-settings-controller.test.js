@@ -21,6 +21,7 @@ require.cache[environmentPath] = { exports: {
   resolveConfiguredBrowserProxy: (settings) => settings.proxy?.server
     ? { enabled: true, server: settings.proxy.server, bypassRules: settings.proxy.bypassRules }
     : null,
+  resolveProxyAuthentication: () => null,
 } };
 require.cache[runtimePath] = { exports: { getClashMiniStatus: () => clashStatus } };
 delete require.cache[targetPath];
@@ -38,7 +39,10 @@ function createFixture(overrides = {}) {
     browserRuntimeManager: {
       chromium: { instances },
       restart: async (id) => { restarts.push(id); return { status: 'running' }; },
-      setCookies: async (id, values) => cookies.push({ id, values }),
+      setCookies: async (id, values) => {
+        cookies.push({ id, values });
+        return { imported: values.length };
+      },
     },
     extensionManager: {},
     getBrowserProxyEndpoint: () => ({ enabled: true, server: 'http://127.0.0.1:7890', bypassRules: '<local>' }),
@@ -63,11 +67,14 @@ test('settings application updates Chromium profile, cookies and restart state',
   fixture.instances.set(tab.id, { profile: {} });
   const result = await fixture.controller.setTabBrowserSettings(tab.id, {
     proxy: { mode: 'default' }, cookies: [{ name: 'sid', value: 'fixture' }], extraArgs: ['--fixture'],
+    doNotTrack: true,
   }, { restartChromium: true });
   assert.deepEqual(result, { ok: true, applied: true, restarted: true, runtimeType: 'chromium' });
   assert.equal(tab.networkMagicApplied, true);
   assert.equal(tab.runtimeStatus, 'running');
   assert.equal(fixture.instances.get(tab.id).profile.proxyServer, 'http://127.0.0.1:7890');
+  assert.equal(fixture.instances.get(tab.id).profile.lowSpecMode, true);
+  assert.equal(fixture.instances.get(tab.id).profile.doNotTrack, true);
   assert.deepEqual(fixture.cookies, [{ id: 'one', values: [{ name: 'sid', value: 'fixture' }] }]);
   assert.deepEqual(fixture.restarts, ['one']);
 });
@@ -85,8 +92,20 @@ test('settings application handles configured proxy, missing tabs and cookie fai
   const result = await fixture.controller.setTabBrowserSettings(tab.id, {
     proxy: { mode: 'default', server: 'http://proxy.test:8080' }, cookies: [{ name: 'a' }],
   });
-  assert.deepEqual(result, { ok: true, applied: false, restartRequired: true, runtimeType: 'chromium' });
+  assert.deepEqual(result, { ok: true, applied: false, restartRequired: true, runtimeType: 'chromium', cookieWarning: '部分或全部 Cookie 未能写入 Chromium。' });
   assert.match(fixture.warnings[0], /Cookie/);
+});
+
+test('saving settings without restarting preserves the current network status', async () => {
+  const fixture = createFixture();
+  const tab = { id: 'one', networkMagicApplied: false };
+  fixture.tabs.set(tab.id, tab);
+  fixture.instances.set(tab.id, { profile: { lowSpecMode: true } });
+  const result = await fixture.controller.setTabBrowserSettings(tab.id, { lowSpecMode: 'off' });
+  assert.equal(result.restartRequired, true);
+  assert.equal(fixture.instances.get(tab.id).profile.lowSpecMode, false);
+  assert.equal(tab.networkMagicApplied, false);
+  assert.deepEqual(fixture.restarts, []);
 });
 
 test('settings resolver errors return stable user-facing failure', async () => {
@@ -124,4 +143,42 @@ test('extension refresh restarts active profiles and reports individual failures
   assert.equal(result.chromiumRestarted, 1);
   assert.equal(result.failures[0].tabId, 'bad');
   assert.equal(fixture.messages[0][0], 'extension-browsers-refreshed');
+});
+
+test('settings updates propagate custom coordinates without IP lookup and clear them when permission is blocked', async () => {
+  let lookups = 0;
+  const fixture = createFixture({ lookupByIp: async () => { lookups += 1; } });
+  fixture.tabs.set('geo', { id: 'geo' });
+  fixture.instances.set('geo', { profile: {} });
+  await fixture.controller.setTabBrowserSettings('geo', {
+    geolocation: { permission: 'allow', mode: 'custom', longitude: 121.47, latitude: 31.23, accuracy: 25 },
+  });
+  const profile = fixture.instances.get('geo').profile;
+  assert.equal(lookups, 0);
+  assert.equal(profile.environmentSettings.geolocation.longitude, 121.47);
+  assert.equal(profile.environmentSettings.geolocation.enabled, true);
+
+  await fixture.controller.setTabBrowserSettings('geo', { geolocation: { permission: 'block', mode: 'ip' } });
+  assert.equal(lookups, 0);
+  assert.equal(profile.environmentSettings.geolocation.enabled, false);
+  assert.equal(profile.geolocationResolution, null);
+});
+
+test('settings IP lookup uses the effective proxy and reports an unapplied coordinate warning', async () => {
+  let requestedProxy;
+  const fixture = createFixture({ lookupByIp: async ({ effectiveProxy }) => {
+    requestedProxy = effectiveProxy;
+    throw new Error('credential-value');
+  } });
+  fixture.tabs.set('geo', { id: 'geo' });
+  fixture.instances.set('geo', { profile: {} });
+  const result = await fixture.controller.setTabBrowserSettings('geo', {
+    geolocation: { permission: 'allow', mode: 'ip' },
+  }, { restartChromium: true });
+
+  assert.equal(requestedProxy.server, 'http://127.0.0.1:7890');
+  assert.equal(result.applied, false);
+  assert.equal(result.geolocationWarning, 'BROWSER_GEOLOCATION_LOOKUP_FAILED');
+  assert.equal(fixture.instances.get('geo').profile.environmentSettings.geolocation.enabled, false);
+  assert.doesNotMatch(JSON.stringify(result), /credential-value/);
 });

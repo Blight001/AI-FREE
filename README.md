@@ -54,7 +54,7 @@ Rebuilding the native host also requires Visual Studio 2022 Build Tools with Des
 
 ## Quick Start
 
-From the `app2.1` directory:
+From the repository root (the directory containing `package.json`):
 
 ```powershell
 npm ci
@@ -192,8 +192,8 @@ Electron acceptance scripts that exercise real windows, input, or sessions may l
 ## Repository Layout
 
 ```text
-app2.1/
-├─ docs/                         # HTTP/TCP, updater, and proxy-resource notes
+./                               # Repository root (AI-FREE-app)
+├─ docs/                         # Architecture, browser modes, and MCP notes
 ├─ native/
 │  ├─ browser-host/              # N-API Win32 Chromium window host
 │  └─ chromium-fork/             # Chromium version lock, patches, and build scripts
@@ -203,11 +203,10 @@ app2.1/
 ├─ scripts/                      # Launch, build, smoke-test, and acceptance helpers
 ├─ src/
 │  ├─ app/
-│  │  ├─ main/                   # Electron main process, IPC, services, and browser runtime
-│  │  ├─ renderer/               # Top tab bar and application-shell renderer
-│  │  ├─ sidebar/                # AI control, account, proxy, and browser-settings UI
-│  │  ├─ shared/                 # Utilities shared across processes
-│  │  └─ views/                  # Application-shell HTML
+│  │  ├─ backend/                # Electron main process, IPC, services, and browser runtime
+│  │  ├─ contracts/              # Cross-process IPC contracts
+│  │  ├─ frontend/               # Application-shell views, renderer, and sidebar
+│  │  └─ shared/                 # Utilities shared across processes
 │  └─ assets/extensions/         # Extensions packaged and injected into Chromium
 ├─ test/                         # Node regression tests
 ├─ package.json                  # npm scripts and Electron Builder configuration
@@ -227,9 +226,8 @@ app2.1/
 
 ## Related Documentation
 
-- [HTTP request protocol](docs/api/HTTP请求说明.md)
-- [Automatic update messages](docs/api/自动更新消息说明.md)
-- [Clash Mini Geo localization specification](docs/clash-mini-geo-localization-spec.md)
+- [Source layout and process boundaries](docs/architecture/directory-map.md)
+- [Browser workflow modes](docs/browser-workflow-modes.md)
 - [Chromium Fork build guide](native/chromium-fork/README.md)
 - [Native browser host](native/browser-host/README.md)
 - [AI automation and MCP tools](docs/mcp.md)

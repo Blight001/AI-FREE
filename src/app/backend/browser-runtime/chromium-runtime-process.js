@@ -11,6 +11,7 @@ const {
 } = require('./chromium-launcher');
 const { RUNTIME_STATUS } = require('./runtime-types');
 const { createChromiumPerformanceSpan } = require('./chromium-performance');
+const { cleanupChromiumProfileEnvironment } = require('./chromium-runtime-environment');
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -102,14 +103,15 @@ async function stopChromiumProfile(runtime, profileId, options = {}) {
     performanceSpan.fail(error);
     throw error;
   }
-  finalizeStoppedProfile(runtime, id, instance, state);
+  await finalizeStoppedProfile(runtime, id, instance, state);
   performanceSpan.mark('finalize');
   performanceSpan.finish();
   runtime.emit('state-changed', runtime.getState(id));
   return runtime.getState(id);
 }
 
-function finalizeStoppedProfile(runtime, id, instance, state) {
+async function finalizeStoppedProfile(runtime, id, instance, state) {
+  await cleanupChromiumProfileEnvironment(instance);
   destroyEmbeddedWindow(runtime, state);
   if (!instance || runtime.instances.get(id) === instance) runtime.instances.delete(id);
   runtime.store.releaseLock(id);
@@ -141,9 +143,14 @@ async function markChromiumStopFailed(runtime, id, instance, state, error) {
 }
 
 function scheduleLateExitCleanup(runtime, id, instance) {
-  if (!instance?.child || instance.child.exitCode !== null) return;
+  if (!instance?.child) return;
+  if (instance.child.exitCode !== null) {
+    void cleanupChromiumProfileEnvironment(instance);
+    return;
+  }
   instance.child.once('exit', () => {
     if (runtime.instances.get(id) !== instance) return;
+    void cleanupChromiumProfileEnvironment(instance);
     runtime.instances.delete(id);
     runtime.store.releaseLock(id);
     const current = runtime.store.getState(id);
@@ -159,6 +166,13 @@ async function cleanupFailedChromiumLaunch(runtime, profileId, context) {
   runtime.unbindParentWindowFocus(instance);
   const processExited = await terminateFailedLaunch(instance);
   try { await context.commandClient?.close(); } catch (_) {}
+  if (processExited) {
+    await cleanupChromiumProfileEnvironment({
+      paths: context.paths,
+      proxyAuthBridge: context.proxyAuthBridge,
+      environmentExtensionDir: context.environmentExtensionDir,
+    });
+  }
   try { if (context.hostHwnd) runtime.windowBridge.destroyHostWindow(context.hostHwnd); } catch (_) {}
   if (processExited) {
     runtime.instances.delete(id);
@@ -243,6 +257,33 @@ function throwChromiumExitTimeout(id) {
   throw error;
 }
 
+async function restartChromiumProfile(runtime, profileId, options = {}) {
+  const id = String(profileId);
+  const instance = runtime.instances.get(id);
+  const state = runtime.store.getState(id);
+  if (!instance || !state) throw new Error(`Chromium Profile ${id} 不存在`);
+  const profile = { ...instance.profile };
+  if (options.compatibilityMode === true) {
+    profile.extraArgs = Array.from(new Set([...(profile.extraArgs || []), '--disable-gpu']));
+  }
+  const rememberedInitialUrl = String(profile.initialUrl || '');
+  const rememberedRestoreLastSession = profile.restoreLastSession === true;
+  // Internal restarts should restore existing tabs without reopening initialUrl.
+  if (options.reopenInitialUrl !== true) {
+    profile.initialUrl = '';
+    profile.restoreLastSession = true;
+  }
+  const bounds = { ...state.bounds };
+  await runtime.stop(id, { timeoutMs: 3000 });
+  const runtimeState = await runtime.launchProfile(profile, bounds);
+  const restartedInstance = runtime.instances.get(id);
+  if (restartedInstance?.profile) {
+    restartedInstance.profile.initialUrl = rememberedInitialUrl;
+    restartedInstance.profile.restoreLastSession = rememberedRestoreLastSession;
+  }
+  return runtimeState;
+}
+
 async function preserveChromiumSession(runtime, id, instance, preCloseSnapshot, stableSnapshot) {
   const postCloseSnapshot = await waitForSettledChromiumSession(instance.paths, 3000);
   if (snapshotHasRestorableSession(postCloseSnapshot)) {
@@ -267,6 +308,7 @@ function destroyEmbeddedWindow(runtime, state) {
 
 module.exports = {
   cleanupFailedChromiumLaunch,
+  restartChromiumProfile,
   stopChromiumProfile,
   terminateProcessTree,
   waitForChildExit,

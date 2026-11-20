@@ -98,12 +98,13 @@ function createChromiumProcessFailure(diagnostics, details = {}) {
   return error;
 }
 
-function bindChromiumProcessFailure(instance, onFailure) {
+function bindChromiumProcessFailure(instance, onFailure, onExit = () => {}) {
   instance.child.once('error', (spawnError) => {
     instance.launchFailure = createChromiumProcessFailure(instance.diagnostics, { spawnError });
     onFailure(instance.launchFailure);
   });
   instance.child.once('exit', (exitCode, signal) => {
+    onExit();
     if (instance.expectedExit) return;
     instance.launchFailure ||= createChromiumProcessFailure(instance.diagnostics, { exitCode, signal });
     onFailure(instance.launchFailure);

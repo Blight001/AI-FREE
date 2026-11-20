@@ -5,6 +5,8 @@
       "sources": [
         "src/addon.cc",
         "src/browser_host_window.cc",
+        "src/browser_pointer.cc",
+        "src/browser_pointer_observe.cc",
         "src/child_window_manager.cc",
         "src/dpi_manager.cc",
         "src/focus_manager.cc",
@@ -14,7 +16,7 @@
       "defines": ["NAPI_VERSION=9", "UNICODE", "_UNICODE", "WIN32_LEAN_AND_MEAN", "NOMINMAX"],
       "conditions": [
         ["OS=='win'", {
-          "libraries": ["delayimp.lib", "user32.lib", "gdi32.lib", "dwmapi.lib"],
+          "libraries": ["delayimp.lib", "user32.lib", "gdi32.lib", "dwmapi.lib", "ole32.lib", "oleaut32.lib"],
           "msvs_settings": {
             "VCLinkerTool": {
               "DelayLoadDLLs": ["node.exe"]

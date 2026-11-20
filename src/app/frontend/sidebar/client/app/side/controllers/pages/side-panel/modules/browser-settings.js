@@ -266,8 +266,24 @@
     }, settings, runtimeInfo);
   }
 
+  function collectSecChUaBrands(currentBrands, brandsText, custom) {
+    if (!custom) return currentBrands;
+    let brands;
+    try { brands = JSON.parse(brandsText); } catch (_) { throw new Error('Sec-CH-UA 必须是有效的 JSON 数组'); }
+    if (!Array.isArray(brands)) throw new Error('Sec-CH-UA 必须是有效的 JSON 数组');
+    return brands;
+  }
+
   function collectForm() {
-    let brands = []; try { brands = JSON.parse(value('sec-ch-ua-brands', '[]')); } catch (_) { brands = []; }
+    const brands = collectSecChUaBrands(
+      current.secChUa?.brands || [],
+      value('sec-ch-ua-brands', '[]'),
+      getSegment('secChUa.mode', 'default') === 'custom',
+    );
+    const customLocation = !checked('geolocation-by-ip');
+    if (customLocation && (!value('geo-longitude').trim() || !value('geo-latitude').trim())) {
+      throw new Error('自定义定位需要填写经度和纬度');
+    }
     const setting = {
       ...current, os: getSegment('os', 'win11'), browserVersion: value('browser-version'), kernelVersion: value('kernel-version', 'auto'),
       proxy: { mode: getSegment('proxy.mode','default'), protocol: value('proxy-protocol','http'), host: value('proxy-host'), port: value('proxy-port'), username: value('proxy-username'), password: value('proxy-password'), apiUrl: value('proxy-api-url') },
@@ -294,8 +310,8 @@
     setValue('sec-ch-ua-brands', JSON.stringify([{brand:'Chromium',version:String(version)},{brand:'Google Chrome',version:String(version)},{brand:'Not_A Brand',version:'24'}], null, 2));
     const gpu = randomItem([['Google Inc. (Intel)','ANGLE (Intel, Intel(R) UHD Graphics 620 Direct3D11 vs_5_0 ps_5_0, D3D11)'],['Google Inc. (NVIDIA)','ANGLE (NVIDIA, NVIDIA GeForce GTX 1660 Direct3D11 vs_5_0 ps_5_0, D3D11)'],['Google Inc. (AMD)','ANGLE (AMD, AMD Radeon(TM) Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)']]);
     setValue('browser-webgl-vendor',gpu[0]); setValue('browser-webgl-renderer',gpu[1]); setValue('browser-cpu',randomItem([4,6,8,12,16])); setValue('browser-memory',randomItem([4,8,16,32]));
-    ['fonts','canvas','webglImage','audioContext','clientRects','speechVoices'].forEach((key) => { current[key] ||= {}; current[key].seed = randomSeed(); });
-    setValue('device-name', `DESKTOP-${Math.random().toString(36).slice(2,9).toUpperCase()}`); setValue('mac-address', Array.from({length:6},()=>Math.floor(Math.random()*256).toString(16).padStart(2,'0')).join('-').toUpperCase());
+    ['canvas','webglImage','audioContext','clientRects','speechVoices'].forEach((key) => { current[key] ||= {}; current[key].seed = randomSeed(); });
+    setValue('device-name', `DESKTOP-${Math.random().toString(36).slice(2,9).toUpperCase()}`);
     setStatus('已生成一组匹配的系统、UA、硬件与噪声种子。');
   }
 
@@ -344,13 +360,18 @@
 
   function settingsSavedMessage(target, response, renamed) {
     const result = response && response.activeResult || {};
-    if (renamed) {
-      return result.restarted ? '已保存名称和参数，并重启 Chromium 环境。' : '已保存浏览器名称和参数。';
-    }
-    if (result.restarted) return '已保存并重启 Chromium 环境。';
-    if (result.restartRequired) return '已保存独立参数；部分内核项需重启后生效。';
-    if (result.applied) return '已保存并应用到该浏览器。';
-    return target.historyId ? '已保存该浏览器的独立参数。' : '已保存为默认环境配置。';
+    const saved = renamed ? '已保存浏览器名称和参数。'
+      : target.historyId ? '已保存该浏览器的独立参数。' : '已保存为默认环境配置。';
+    if (result.ok === false) return `${saved} 当前浏览器应用失败：${result.message || '未知错误'}`;
+    const runtime = result.restarted ? ' Chromium 已重启，启动主页设置用于新建浏览器。'
+      : result.restartRequired ? ' 当前浏览器的启动参数将在重启后使用。' : '';
+    return `${saved}${runtime}${result.cookieWarning ? ` ${result.cookieWarning}` : ''}`;
+  }
+
+  function showSettingsSavedStatus(target, response, renamed) {
+    const activeResult = response.activeResult;
+    const partialFailure = activeResult?.ok === false || Boolean(activeResult?.cookieWarning);
+    setStatus(settingsSavedMessage(target, response, renamed), partialFailure ? 'error' : 'success');
   }
 
   async function saveSettings(event) {
@@ -367,7 +388,7 @@
       settingsSaved = true;
       const renamed = await renameSavedBrowser(target);
       await refreshBrowserHistory({ keepSelection: true, keepEmptySelection: !target.historyId, silent: true });
-      setStatus(settingsSavedMessage(target, response, renamed), 'success');
+      showSettingsSavedStatus(target, response, renamed);
     } catch (error) {
       const message = errorText(error);
       setStatus(settingsSaved ? `参数已保存，但名称修改失败：${message}` : message, 'error');
@@ -376,8 +397,22 @@
     }
   }
 
-  async function resetSettings(){try{const targetHistoryId=editingDefaultSettings?'':selectedHistoryId;const response=await window.aiFree.browser.resetSettings({historyId:targetHistoryId,applyToActive:checked('apply-settings-to-active'),restartChromium:checked('restart-chromium-settings')});if(response?.ok){fillForm(response.settings,response.runtimeInfo);await refreshBrowserHistory({keepSelection:true,keepEmptySelection:!targetHistoryId,silent:true});setStatus(targetHistoryId?'该浏览器已恢复默认配置。':'已恢复默认配置。','success');}else throw new Error(response?.error||'恢复默认失败');}catch(error){setStatus(error?.message||String(error),'error');}}
-  async function testProxy(){setStatus('正在检测代理…');const response=await window.aiFree.browser.testProxy({proxy:collectForm().proxy});setStatus(response?.ok?`代理可用：${response.ip||'连接成功'}（${response.elapsedMs||0}ms）`:response?.error||'代理不可用',response?.ok?'success':'error');}
+  async function resetSettings() {
+    const historyId = editingDefaultSettings ? '' : selectedHistoryId;
+    try {
+      const response = await window.aiFree.browser.resetSettings({
+        historyId, applyToActive: checked('apply-settings-to-active'),
+        restartChromium: checked('restart-chromium-settings'),
+      });
+      requireOk(response, '恢复默认失败');
+      fillForm(response.settings, response.runtimeInfo);
+      await refreshBrowserHistory({ keepSelection: true, keepEmptySelection: !historyId, silent: true });
+      showSettingsSavedStatus({ historyId }, response, false);
+    } catch (error) {
+      setStatus(errorText(error), 'error');
+    }
+  }
+  async function testProxy(){setStatus('正在检测代理…');const response=await window.aiFree.browser.testProxy({proxy:collectForm().proxy});setStatus(response?.ok?`检测请求成功：${response.ip||'连接成功'}（${response.elapsedMs||0}ms）。实际浏览器连接需单独确认。`:response?.error||'代理不可用',response?.ok?'success':'error');}
   async function extractProxy(){const response=await window.aiFree.browser.extractProxy({apiUrl:value('proxy-api-url')});if(response?.ok){setValue('proxy-protocol',response.proxy.protocol);setValue('proxy-host',response.proxy.host);setValue('proxy-port',response.proxy.port);setValue('proxy-username',response.proxy.username);setValue('proxy-password',response.proxy.password);setStatus('已从 API 提取代理。','success');}else setStatus(response?.error||'提取代理失败','error');}
 
   document.addEventListener('DOMContentLoaded',()=>{

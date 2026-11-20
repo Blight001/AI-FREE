@@ -32,16 +32,14 @@ function printInstallGuide() {
   console.error('[原因] node_modules/electron 目录下没有 dist/ 和 path.txt');
   console.error('       通常是 npm install 时 Electron 二进制下载失败导致。');
   console.error('');
-  console.error('[推荐修复步骤]（Windows）：');
+  console.error('[推荐修复步骤]（Windows）：请在仓库根目录（package.json 所在目录）执行。');
   console.error('');
   console.error('PowerShell（推荐）：');
-  console.error('  cd app2.1');
   console.error('  Remove-Item -Recurse -Force node_modules\\electron -ErrorAction SilentlyContinue');
   console.error('  $env:ELECTRON_MIRROR = "https://npmmirror.com/mirrors/electron/"');
   console.error('  npm install');
   console.error('');
   console.error('CMD：');
-  console.error('  cd app2.1');
   console.error('  rd /s /q node_modules\\electron');
   console.error('  set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/');
   console.error('  npm install');

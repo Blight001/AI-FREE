@@ -4,6 +4,46 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { createNativeBrowserAutomation } = require('../../../src/app/backend/services/native-browser-automation');
 
+test('releasing takeover waits for a sent click and drops the next queued click', async () => {
+  const { service, calls, setAutomationHandler } = fixture();
+  const id = 'native:profile-a';
+  let markStarted;
+  const started = new Promise((resolve) => { markStarted = resolve; });
+  let finish;
+  setAutomationHandler(async (_pid, command) => {
+    if (command !== 'perform-action') return { result: { success: true, takeoverActive: false } };
+    markStarted();
+    return new Promise((resolve) => { finish = () => resolve({ result: { success: true } }); });
+  });
+  const click = { action: 'click', x: 10, y: 12 };
+  const first = service.dispatch(id, 'browser_action', click);
+  await started;
+  const next = service.dispatch(id, 'browser_action', click);
+  const release = service.dispatch(id, 'browser_control', { action: 'release' });
+  finish();
+  assert.equal((await first).success, true);
+  assert.equal((await next).errorCode, 'BROWSER_TAKEOVER_REQUIRED');
+  assert.equal((await release).takeoverActive, false);
+  assert.deepEqual(calls.map(([, , command]) => command), ['perform-action', 'automation-takeover']);
+});
+
+test('only the locally authorized chat can route input to an app surface', async () => {
+  const events = [];
+  const { service, calls } = fixture();
+  service.browserAction = Object.getPrototypeOf(service).browserAction.bind(service);
+  service.appPointer = {
+    observe: (profileId, surface) => ({ success: true, profileId, surface }),
+    click: (profileId, surface, ref) => { events.push([profileId, surface, ref]); return { success: true }; },
+  };
+  const id = 'native:profile-a';
+  const action = { surface: 'sidebar', action: 'click', ref: 'ai-chat-browser-trigger' };
+  assert.equal((await service.dispatch(id, 'browser_action', action)).errorCode, 'APP_SURFACE_UNAVAILABLE');
+  assert.equal((await service.dispatch(id, 'browser_observe', { surface: 'sidebar' }, { allowAppSurface: true })).surface, 'sidebar');
+  assert.equal((await service.dispatch(id, 'browser_action', action, { allowAppSurface: true })).success, true);
+  assert.deepEqual(events, [['profile-a', 'sidebar', 'ai-chat-browser-trigger']]);
+  assert.deepEqual(calls, []);
+});
+
 function fixture() {
   const calls = [];
   const downloads = [];

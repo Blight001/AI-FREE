@@ -7,7 +7,7 @@ if (-not (Test-Path $sourceExe)) { throw "Built Chromium executable not found: $
 $repoFullPath = [IO.Path]::GetFullPath($script:RepoRoot).TrimEnd('\') + '\'
 $destinationFullPath = [IO.Path]::GetFullPath($destination).TrimEnd('\') + '\'
 if (-not $destinationFullPath.StartsWith($repoFullPath, [StringComparison]::OrdinalIgnoreCase)) {
-  throw "Refusing to stage outside the app2.1 repository: $destinationFullPath"
+  throw "Refusing to stage outside the repository root ($repoFullPath): $destinationFullPath"
 }
 
 $runtimeFiles = @(

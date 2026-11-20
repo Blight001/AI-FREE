@@ -53,7 +53,9 @@ async function dispatchPluginTool(context, toolName, args) {
     context.emit?.({ type: 'browser_control_changed', connectionId: target.connection.id, name: target.connection.name || '' });
   }
   const timeoutMs = resolveDispatchTimeout(toolName, args);
-  return context.waitForAbort(context.bridge.dispatch(target.connection.id, toolName, dispatchArgs, { timeoutMs }));
+  return context.waitForAbort(context.bridge.dispatch(target.connection.id, toolName, dispatchArgs, {
+    timeoutMs, allowAppSurface: true, signal: context.signal,
+  }));
 }
 
 function normalizeToolFailure(error, toolName) {

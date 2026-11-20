@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const projectDir = path.resolve(__dirname, '..');
@@ -54,7 +55,7 @@ function compileFile(filePath, outputRoot) {
   return { copied: 0, compiled: 1, pendingTypeScript: 0, relativePath };
 }
 
-function compileTypeScriptProjects(pendingCount) {
+function compileTypeScriptProjects(pendingCount, outputRoot = buildRoot) {
   if (!pendingCount) return;
   const compiler = path.join(projectDir, 'node_modules', 'typescript', 'bin', 'tsc');
   const projects = [
@@ -68,7 +69,7 @@ function compileTypeScriptProjects(pendingCount) {
         && listFiles(sourceDirectory).some((filePath) => /\.tsx?$/i.test(filePath));
     });
     if (!hasInput) continue;
-    const result = spawnSync(process.execPath, [compiler, '-p', config], {
+    const result = spawnSync(process.execPath, [compiler, '-p', config, '--outDir', path.join(outputRoot, 'src')], {
       cwd: projectDir,
       encoding: 'utf8',
       windowsHide: true,
@@ -92,6 +93,17 @@ function writeRuntimeFiles(outputRoot) {
   }
 }
 
+function customizeBundledWorker(extensionName, workerSource) {
+  if (extensionName !== 'aixdownloader-9.0.58') return workerSource;
+  // Keep the vendor bundle intact and remove only its automatic update-log tab in the build.
+  const openUpdateLog = 'chrome.tabs.create({url:"https://aixdownloader.com/update-history"}),';
+  const position = workerSource.indexOf(openUpdateLog);
+  if (position < 0 || position !== workerSource.lastIndexOf(openUpdateLog)) {
+    throw new Error(`内置扩展 ${extensionName} 的更新页调用已变化，请检查构建补丁`);
+  }
+  return workerSource.replace(openUpdateLog, '');
+}
+
 function stampExtensionServiceWorkers(outputRoot) {
   const extensionsRoot = path.join(sourceRoot, 'assets', 'extensions');
   if (!fs.existsSync(extensionsRoot)) return [];
@@ -113,8 +125,10 @@ function stampExtensionServiceWorkers(outputRoot) {
     for (const filePath of listFiles(extensionRoot).sort()) {
       extensionHash.update(path.relative(extensionRoot, filePath)).update(fs.readFileSync(filePath));
     }
+    const originalWorker = fs.readFileSync(sourceWorkerPath, 'utf8');
+    const workerSource = customizeBundledWorker(entry.name, originalWorker);
+    if (workerSource !== originalWorker) extensionHash.update(workerSource);
     const digest = extensionHash.digest('hex');
-    const workerSource = fs.readFileSync(outputWorkerPath, 'utf8');
     const cacheBustedSource = workerSource.replace(
       /(['"])([^'"\r\n]+\.js)\1/g,
       (_match, quote, scriptPath) => `${quote}${scriptPath}?v=${digest}${quote}`,
@@ -150,22 +164,20 @@ function stampExtensionServiceWorkers(outputRoot) {
   return stamps;
 }
 
-function buildSource() {
-  assertBuildRoot(buildRoot);
-  fs.rmSync(buildRoot, { recursive: true, force: true });
-  fs.mkdirSync(buildRoot, { recursive: true });
+function generateSource(outputRoot) {
+  fs.mkdirSync(outputRoot, { recursive: true });
   const totals = { compiled: 0, copied: 0, pendingTypeScript: 0 };
   const hash = crypto.createHash('sha256');
   for (const filePath of listFiles(sourceRoot)) {
-    const result = compileFile(filePath, buildRoot);
+    const result = compileFile(filePath, outputRoot);
     totals.compiled += result.compiled;
     totals.copied += result.copied;
     totals.pendingTypeScript += result.pendingTypeScript;
     hash.update(result.relativePath).update(fs.readFileSync(filePath));
   }
-  compileTypeScriptProjects(totals.pendingTypeScript);
-  const extensionServiceWorkers = stampExtensionServiceWorkers(buildRoot);
-  writeRuntimeFiles(buildRoot);
+  compileTypeScriptProjects(totals.pendingTypeScript, outputRoot);
+  const extensionServiceWorkers = stampExtensionServiceWorkers(outputRoot);
+  writeRuntimeFiles(outputRoot);
   const manifest = {
     version: 1,
     sourceHash: hash.digest('hex'),
@@ -175,11 +187,27 @@ function buildSource() {
     rendererFormat: 'esmodule',
     extensionServiceWorkers,
   };
-  fs.writeFileSync(path.join(buildRoot, 'build-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
-  if (!fs.existsSync(path.join(buildRoot, 'src', 'app', 'backend', 'main.js'))) {
+  fs.writeFileSync(path.join(outputRoot, 'build-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  if (!fs.existsSync(path.join(outputRoot, 'src', 'app', 'backend', 'main.js'))) {
     throw new Error('源码构建缺少主进程入口 src/app/backend/main.js');
   }
   return manifest;
+}
+
+function buildSource() {
+  assertBuildRoot(buildRoot);
+  fs.rmSync(buildRoot, { recursive: true, force: true });
+  return generateSource(buildRoot);
+}
+
+async function withPackagedSource(pack) {
+  const outputRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-package-source-'));
+  try {
+    generateSource(outputRoot);
+    return await pack(outputRoot);
+  } finally {
+    fs.rmSync(outputRoot, { recursive: true, force: true });
+  }
 }
 
 if (require.main === module) {
@@ -193,4 +221,5 @@ module.exports = {
   compileTypeScriptProjects,
   moduleKindFor,
   stampExtensionServiceWorkers,
+  withPackagedSource,
 };

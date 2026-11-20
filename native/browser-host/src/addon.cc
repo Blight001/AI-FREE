@@ -6,9 +6,11 @@
 napi_value SetPerMonitorDpiAwareness(napi_env env, napi_callback_info info);
 napi_value IsWindowAlive(napi_env env, napi_callback_info info);
 napi_value GetWindowProcessId(napi_env env, napi_callback_info info);
+napi_value BrowserPointerFrame(napi_env env, napi_callback_info info);
 
 NAPI_MODULE_INIT() {
   napi_property_descriptor properties[] = {
+    {"browserPointerFrame", nullptr, BrowserPointerFrame, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"createHostWindow", nullptr, CreateHostWindow, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"destroyHostWindow", nullptr, DestroyHostWindow, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"attachChildWindow", nullptr, AttachChildWindow, nullptr, nullptr, nullptr, napi_default, nullptr},

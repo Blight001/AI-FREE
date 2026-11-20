@@ -4,7 +4,7 @@ const { build, Platform } = require('electron-builder');
 const { verifyPackagedRuntime } = require('./verify-packaged-runtime');
 const { writeChromiumRuntimeManifest } = require('./chromium-runtime-manifest');
 const { buildNativeHost } = require('./build-native-host');
-const { buildSource } = require('./build-source');
+const { buildRoot, withPackagedSource } = require('./build-source');
 
 const projectDir = path.resolve(__dirname, '..');
 const extensionsDir = path.join(projectDir, 'src', 'assets', 'extensions');
@@ -192,7 +192,6 @@ function resolvePackagedExtensions() {
 
 async function main() {
   writeChromiumRuntimeManifest(path.join(projectDir, 'resources', 'chromium'));
-  buildSource();
   const packageJson = readJson(packagePath);
   const builderConfig = packageJson.build || {};
   const { selected, excluded } = resolvePackagedExtensions();
@@ -236,30 +235,7 @@ async function main() {
   // Chromium 和 Clash Core 都包含会触发签名/实时扫描的可执行文件。若交给
   // electron-builder 与其它资源并行复制，Windows 偶发返回 EBUSY/EPERM。
   // 先生成主程序，再串行同步这两项资源，最后由预打包目录生成 NSIS。
-  const stageConfig = {
-    ...builderConfig,
-    extraResources: extraResources.filter((entry) => !isDeferredExtraResource(entry)),
-  };
-  // electron-builder 会把 API 对象中的数组与 package.json 数组追加合并，直接把
-  // stageConfig 作为 options.config 传入无法真正删除原 extraResources。显式配置
-  // 文件会替代 package.json 的 build 字段，确保延后资源只在串行阶段复制一次。
-  cleanAppOutput(appOutDir);
-  const stageConfigPath = writeStageConfigFile(appOutDir, stageConfig);
-  const stageOptions = {
-    projectDir,
-    targets: Platform.WINDOWS.createTarget('dir'),
-    config: stageConfigPath,
-  };
-
-  try {
-    await buildWithRetry(stageOptions, '应用预打包阶段', {
-      // 首次失败会留下半成品。重试前清掉它，避免刚生成的 exe 被扫描器
-      // 短暂占用后，下一轮继续复制到同一个目标文件而再次触发 EBUSY。
-      beforeRetry: () => cleanAppOutputForRetry(appOutDir),
-    });
-  } finally {
-    fs.rmSync(stageConfigPath, { force: true });
-  }
+  await withPackagedSource((sourceRoot) => prepackageApp(appOutDir, builderConfig, extraResources, sourceRoot));
   await syncDeferredExtraResource(appOutDir, clashCoreResource, {
     label: 'Clash Mini Core',
     requiredFile: 'verge-mihomo.exe',
@@ -279,11 +255,38 @@ async function main() {
   await buildWithRetry(installerOptions, 'NSIS 安装包阶段');
 }
 
+async function prepackageApp(appOutDir, builderConfig, extraResources, sourceRoot) {
+  const stageConfig = {
+    ...builderConfig,
+    files: builderConfig.files.map((entry) => isGeneratedSourceMapping(entry)
+      ? { ...entry, from: path.join(sourceRoot, 'src') }
+      : entry),
+    extraResources: extraResources.filter((entry) => !isDeferredExtraResource(entry)),
+  };
+  // 显式配置文件替代 package.json 的 build 字段，避免数组合并重新引入延后资源。
+  cleanAppOutput(appOutDir);
+  const stageConfigPath = writeStageConfigFile(appOutDir, stageConfig);
+  const stageOptions = {
+    projectDir,
+    targets: Platform.WINDOWS.createTarget('dir'),
+    config: stageConfigPath,
+  };
+  try {
+    await buildWithRetry(stageOptions, '应用预打包阶段', {
+      beforeRetry: () => cleanAppOutputForRetry(appOutDir),
+    });
+  } finally {
+    fs.rmSync(stageConfigPath, { force: true });
+  }
+}
+
+function isGeneratedSourceMapping(entry) {
+  return entry && typeof entry === 'object' && typeof entry.from === 'string'
+    && path.resolve(projectDir, entry.from) === path.join(buildRoot, 'src');
+}
+
 function appendGeneratedExtensionExclusions(entry, excluded) {
-  const source = entry && typeof entry === 'object'
-    ? String(entry.from || '').replace(/\\/g, '/')
-    : '';
-  if (source !== '.generated/app/src') return entry;
+  if (!isGeneratedSourceMapping(entry)) return entry;
   const filter = Array.isArray(entry.filter) ? entry.filter : ['**/*'];
   return {
     ...entry,

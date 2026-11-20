@@ -3,6 +3,9 @@
 const fs = require('fs');
 const path = require('path');
 const { normalizePermissionOrigins } = require('./chromium-permission-origins');
+const {
+  normalizeBrowserEnvironmentScriptSettings,
+} = require('./browser-environment-script');
 
 function pushArg(args, condition, value) {
   if (condition) args.push(value);
@@ -11,6 +14,24 @@ function pushArg(args, condition, value) {
 function configuredExtensionPaths(profile) {
   const source = Array.isArray(profile.extensionPaths) ? profile.extensionPaths : [];
   return source.map((item) => path.resolve(String(item || ''))).filter((item) => fs.existsSync(item));
+}
+
+function buildChromiumUserAgentMetadataArgument(settings) {
+  if (!settings || typeof settings !== 'object') return '';
+  const normalized = normalizeBrowserEnvironmentScriptSettings(settings);
+  const metadata = {
+    architecture: normalized.highEntropy.architecture,
+    bitness: normalized.highEntropy.bitness,
+    brands: normalized.secChUaBrands,
+    fullVersion: normalized.highEntropy.uaFullVersion,
+    fullVersionList: normalized.highEntropy.fullVersionList,
+    mobile: normalized.mobile,
+    model: normalized.highEntropy.model,
+    platform: normalized.uaDataPlatform,
+    platformVersion: normalized.highEntropy.platformVersion,
+    wow64: normalized.highEntropy.wow64,
+  };
+  return `--hs-user-agent-metadata=${Buffer.from(JSON.stringify(metadata), 'utf8').toString('base64')}`;
 }
 
 function buildChromiumProfileArgs(options, profile, bounds) {
@@ -35,4 +56,4 @@ function buildChromiumProfileArgs(options, profile, bounds) {
   return args;
 }
 
-module.exports = { buildChromiumProfileArgs };
+module.exports = { buildChromiumProfileArgs, buildChromiumUserAgentMetadataArgument };
