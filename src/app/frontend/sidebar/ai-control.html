@@ -24,8 +24,7 @@
   <link rel="stylesheet" href="./client/app/side/styles/side.css" />
   <link rel="stylesheet" href="./client/app/side/styles/modules/ai-control-files.css" />
   <link rel="stylesheet" href="./client/app/side/styles/modules/website-console-theme.css" />
-  <link rel="stylesheet" href="./client/app/side/styles/modules/sidebar-navigation.css" />
-  <script defer src="./client/scripts/sidebar-navigation.js"></script>
+  <script defer src="./client/scripts/dev-mode-navigation.js"></script>
 </head>
 <body>
   <div class="control-shell">
@@ -139,7 +138,7 @@
               <div class="ai-custom-api-title-tabs" role="tablist" aria-label="添加模型方式">
                 <button id="ai-custom-api-title" class="is-active" type="button" role="tab" aria-selected="true" data-ai-config-page="custom">自定义 API</button>
                 <button id="ai-server-device-title" type="button" role="tab" aria-selected="false" data-ai-config-page="server">AI 服务器</button>
-                <button id="ai-external-codex-title" type="button" role="tab" aria-selected="false" data-ai-config-page="codex">外部 Codex</button>
+                <button id="ai-external-mcp-title" type="button" role="tab" aria-selected="false" data-ai-config-page="mcp">MCP 配置</button>
               </div>
               <p id="ai-config-page-subtitle">支持 OpenAI Chat Completions 兼容接口</p>
             </div>
@@ -177,24 +176,19 @@
               <button id="ai-server-device-login" class="ai-custom-api-save" type="submit">登录并连接</button>
             </footer>
           </form>
-          <section id="ai-external-codex-panel" data-ai-config-content="codex" hidden>
+          <section id="ai-external-mcp-panel" data-ai-config-content="mcp" hidden>
             <div class="ai-custom-api-body">
-              <div class="ai-external-codex-status-row">
-                <strong>桥接状态</strong>
-                <span id="external-codex-status" class="ai-custom-api-status" role="status" aria-live="polite">检查中…</span>
+              <div class="ai-external-mcp-status-row">
+                <strong>本机 MCP 服务</strong>
+                <span id="external-mcp-status" class="ai-custom-api-status" role="status" aria-live="polite">检查中…</span>
               </div>
-              <ol class="ai-external-codex-steps">
-                <li>先安装 Codex CLI，或在 VS Code / Cursor 中安装 Codex 插件。</li>
-                <li>保持 AI-FREE 运行，并登录已授权账号。</li>
-                <li>复制这段说明，粘贴给 Codex，让它按自己的 MCP 配置方式接到 AI-FREE。</li>
-                <li>Codex 完成后，新开任务即可调用 AI-FREE 已授权的 MCP 工具。</li>
-              </ol>
+              <p class="ai-external-mcp-warning">配置包含密钥，请勿发到聊天或分享给他人。</p>
             </div>
             <footer class="ai-custom-api-footer">
               <span></span>
               <span></span>
               <button type="button" data-ai-custom-api-close>关闭</button>
-              <button id="copy-external-codex-config" class="ai-custom-api-save" type="button">复制给 Codex</button>
+              <button id="copy-external-mcp-config" class="ai-custom-api-save" type="button" disabled>复制 MCP 配置</button>
             </footer>
           </section>
         </section>
@@ -248,12 +242,11 @@
   <script src="./client/scripts/control-panel.js"></script>
   <script src="./client/app/side/controllers/shared/sidebar-resizer.js"></script>
 
-  <script src="./client/app/side/controllers/pages/side-panel/tabs.js"></script>
   <script src="../../shared/quota-display.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-selection.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-server-device.js"></script>
-  <script src="./client/app/side/controllers/pages/side-panel/modules/external-codex-preference.js"></script>
+  <script src="./client/app/side/controllers/pages/ai-control/ai-control-mcp-config.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-prompt-diagnostics.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-selectors.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-card-selector.js"></script>
@@ -280,34 +273,6 @@
   <script src="./client/app/side/controllers/shared/message-modal-server.js"></script>
   <script src="./client/app/side/controllers/shared/message-modal-dialogs.js"></script>
 
-  <script src="./client/app/side/controllers/pages/side-panel/modules/shared.js"></script>
-  <script src="./client/app/side/controllers/pages/side-panel/modules/connection-sync.js"></script>
-  <script src="./client/app/side/controllers/pages/side-panel/modules/account-auth.js"></script>
-  <script src="./client/app/side/controllers/pages/side-panel/modules/account-auth-vip-plans.js"></script>
-  <script src="./client/app/side/controllers/pages/side-panel/modules/account-auth-usage.js"></script>
-  <script src="./client/app/side/controllers/pages/side-panel/modules/account-auth-actions.js"></script>
-  <script src="./client/app/side/controllers/pages/side-panel/modules/account-auth-bindings.js"></script>
-  <script src="./client/app/side/controllers/pages/side-panel/modules/window-close-preference.js"></script>
-  <script src="./client/app/side/controllers/pages/side-panel/modules/entry-links.js"></script>
-  <script src="./client/app/side/controllers/pages/side-panel/modules/region.js"></script>
-  <script src="./client/app/side/controllers/pages/side-panel/modules/vpn.js"></script>
-  <script src="./client/app/side/controllers/pages/side-panel/modules/vpn-config.js"></script>
-  <script src="./client/app/side/controllers/pages/side-panel/modules/vpn-selector.js"></script>
-  <script src="./client/app/side/controllers/pages/side-panel/modules/vpn-lifecycle.js"></script>
-  <script src="./client/app/side/controllers/pages/side-panel/modules/license.js"></script>
-  <script src="./client/app/side/controllers/pages/side-panel/modules/license-controls.js"></script>
-  <script src="./client/app/side/controllers/pages/side-panel/modules/announcements.js"></script>
   <script src="./client/app/side/controllers/pages/side-panel/modules/sidebar-input-routing.js"></script>
-  <script src="./client/app/side/controllers/pages/side-panel/modules/browser-settings-history-view.js"></script>
-  <script src="./client/app/side/controllers/pages/side-panel/modules/browser-settings-validation.js"></script>
-  <script src="./client/app/side/controllers/pages/side-panel/modules/browser-settings-form.js"></script>
-  <script src="./client/app/side/controllers/pages/side-panel/modules/browser-settings-bindings.js"></script>
-  <script src="./client/app/side/controllers/pages/side-panel/modules/browser-settings.js"></script>
-  <script src="./client/app/side/controllers/pages/side-panel/modules/init-core.js"></script>
-  <script src="./client/app/side/controllers/pages/side-panel/modules/init-bindings.js"></script>
-  <script src="./client/app/side/controllers/pages/side-panel/modules/init-runtime.js"></script>
-  <script src="./client/app/side/controllers/pages/side-panel/modules/bootstrap.js"></script>
-  <script src="./client/app/side/controllers/pages/side-panel/index.js"></script>
-  <script src="./client/app/side/controllers/pages/side-panel/dream-opener.js"></script>
 </body>
 </html>

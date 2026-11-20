@@ -44,7 +44,7 @@ test('AI 控制页装配上传、工作文件和 @ 引用资源', () => {
 test('AI 控制与个人中心装配网站控制台统一主题', () => {
   const themeAsset = 'client/app/side/styles/modules/website-console-theme.css';
   assert.equal(fs.existsSync(path.join(sidebarRoot, themeAsset)), true);
-  for (const page of ['ai-control.html', 'account-center.html']) {
+  for (const page of ['ai-control.html']) {
     const html = fs.readFileSync(path.join(sidebarRoot, page), 'utf8');
     assert.match(html, new RegExp(themeAsset.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }

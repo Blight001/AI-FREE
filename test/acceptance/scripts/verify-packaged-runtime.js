@@ -157,7 +157,7 @@ function verifyPackagedLogoResolution(extractDir, resourcesDir) {
   const shared = fs.readFileSync(path.join(extractDir, 'src/app/shared/app-assets.js'), 'utf8');
   const client = fs.readFileSync(path.join(extractDir, 'src/app/frontend/sidebar/client/scripts/logo-assets.js'), 'utf8');
   const appRoot = path.join(resourcesDir, 'app.asar');
-  for (const page of ['frontend/sidebar/ai-control.html', 'frontend/sidebar/account-center.html', 'frontend/views/app-shell.html']) {
+  for (const page of ['frontend/sidebar/ai-control.html', 'frontend/views/app-shell.html']) {
     let logoUrl;
     const context = vm.createContext({
       URL,
@@ -204,7 +204,7 @@ function verifyAsarIntegrity(projectDir, appOutDir) {
     verifyPackagedLogoResolution(extractDir, resourcesDir);
     const sidebarRoot = path.join(extractDir, 'src', 'app', 'frontend', 'sidebar');
     const sidebarPath = path.join(sidebarRoot, 'ai-control.html');
-    const accountPath = path.join(sidebarRoot, 'account-center.html');
+    if (fs.existsSync(path.join(sidebarRoot, 'account-center.html'))) throw new Error('打包中仍有旧个人中心页面');
     const appShellPath = path.join(extractDir, 'src', 'app', 'frontend', 'views', 'app-shell.html');
     const logoResolverPath = path.join(
       extractDir,
@@ -217,30 +217,29 @@ function verifyAsarIntegrity(projectDir, appOutDir) {
       'logo-assets.js',
     );
     assertFile(sidebarPath, 128);
-    assertFile(accountPath, 128);
     assertFile(appShellPath, 128);
     assertFile(logoResolverPath, 128);
     const sidebar = fs.readFileSync(sidebarPath, 'utf8');
-    const account = fs.readFileSync(accountPath, 'utf8');
     const appShell = fs.readFileSync(appShellPath, 'utf8');
     const logoResolver = fs.readFileSync(logoResolverPath, 'utf8');
     if ((sidebar.match(/<img[^>]*data-app-logo/g) || []).length !== 1
-      || (account.match(/<img[^>]*data-app-logo/g) || []).length !== 1
       || !sidebar.includes('<script src="./client/scripts/logo-assets.js"></script>')
       || !logoResolver.includes('AiFreeAppAssets.resolveLogoUrl')) {
       throw new Error('侧边栏 Logo 未通过运行时解析器指向打包后的外置资源');
     }
     if (appShell.includes('id="account-center-btn"')
       || !appShell.includes('../sidebar/client/scripts/logo-assets.js')
-      || (appShell.match(/<img[^>]*data-app-logo/g) || []).length !== 1
+      || (appShell.match(/<img[^>]*data-app-logo/g) || []).length !== 2
       || !appShell.includes('id="ai-free-settings-panel"')
       || appShell.includes('id="automation-workbench"')
-      || !appShell.includes('id="add-tab-btn"')
+      || appShell.includes('id="add-tab-btn"')
       || !appShell.includes('个人中心')
       || !appShell.includes('id="shell-ai-control-btn"')
       || !appShell.includes('AI 控制')
-      || !account.includes('id="account-center-panel"')) {
-      throw new Error('独立个人中心页面缺失，或主窗口个人中心入口异常');
+      || !appShell.includes('id="home-personal"')
+      || !appShell.includes('id="sidebar-account-auth"')
+      || !appShell.includes('id="vip-benefits-dialog"')) {
+      throw new Error('首页个人中心资源缺失，或仍含旧任务栏入口');
     }
   } finally {
     fs.rmSync(extractDir, { recursive: true, force: true });

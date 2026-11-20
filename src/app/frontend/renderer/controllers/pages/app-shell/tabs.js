@@ -112,80 +112,30 @@ function bindHomeTabBtnOnce() {
   homeTabBtn.dataset.bound = '1';
 }
 
-// 同步/连接：bindAddTabBtnOnce的具体业务逻辑。
-function bindAddTabBtnOnce() {
-  addTabBtn = document.getElementById('add-tab-btn');
-  if (!addTabBtn) return;
-  if (addTabBtn.dataset.bound === '1') return;
-  addTabBtn.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (toggleSidebarClickLock) return;
-    toggleSidebarClickLock = true;
-    rememberSidebarToggleSource('account-center');
-    UiApi.openAccountCenterSidebar?.();
-    setTimeout(() => { toggleSidebarClickLock = false; }, 300);
-  });
-  addTabBtn.dataset.bound = '1';
-}
-
 onReady(() => {
   tabsContainer = document.getElementById('tabs-container');
   window.AppShellHome?.bind();
   bindHomeTabBtnOnce();
-  bindAddTabBtnOnce();
   bindThemeToggleBtnOnce();
   bindNewBrowserWindowBtnOnce();
   void syncBrowserEmptyStateSidebarWidth();
   void syncAppShellVersion();
 
-  // 初始化设置按钮动画监听器
-  initSettingsBtnAnimation();
+  bindAiSidebarToggle();
 });
 
-let lastSidebarToggleSource = 'account-center';
-
-function rememberSidebarToggleSource(source) {
-  lastSidebarToggleSource = source === 'ai-control' ? 'ai-control' : 'account-center';
-}
-
-function resolveSidebarToggleButton() {
-  if (lastSidebarToggleSource === 'ai-control') {
-    return document.getElementById('shell-ai-control-btn') || document.getElementById('add-tab-btn');
-  }
-  return document.getElementById('add-tab-btn');
-}
-
-function playSidebarToggleAnimation(kind) {
-  const collapsing = kind === 'collapsing';
-  const button = resolveSidebarToggleButton();
-  document.querySelectorAll('#add-tab-btn, #shell-ai-control-btn').forEach((element) => {
-    element.classList.remove('collapsing', 'expanding');
-  });
-  if (!button) return;
-  button.classList.add(collapsing ? 'collapsing' : 'expanding');
-  setTimeout(() => {
-    button.classList.remove(collapsing ? 'collapsing' : 'expanding');
-  }, collapsing ? 400 : 150);
-}
-
-function initSettingsBtnAnimation() {
-  const addTabBtn = document.getElementById('add-tab-btn');
-  const aiControlBtn = document.getElementById('shell-ai-control-btn');
-  if (!addTabBtn && !aiControlBtn) return;
-
-  aiControlBtn?.addEventListener('click', () => rememberSidebarToggleSource('ai-control'), true);
-
-  UiApi.onSidebarCollapse(() => {
-    setBrowserEmptyStateSidebarVisible(false);
-    playSidebarToggleAnimation('collapsing');
-  });
-
-  UiApi.onSidebarExpand(() => {
-    setBrowserEmptyStateSidebarVisible(true);
-    playSidebarToggleAnimation('expanding');
-  });
-
+function bindAiSidebarToggle() {
+  const button = document.getElementById('shell-ai-control-btn');
+  button.addEventListener('click', () => ShellApi.toggleSidebar());
+  const syncVisibility = (visible) => {
+    setBrowserEmptyStateSidebarVisible(visible);
+    button.setAttribute('aria-expanded', String(visible));
+    button.classList.remove('collapsing', 'expanding');
+    button.classList.add(visible ? 'expanding' : 'collapsing');
+  };
+  button.addEventListener('animationend', () => button.classList.remove('collapsing', 'expanding'));
+  UiApi.onSidebarCollapse(() => syncVisibility(false));
+  UiApi.onSidebarExpand(() => syncVisibility(true));
   UiApi.onSidebarWidthChanged?.(setBrowserEmptyStateSidebarWidth);
 }
 function removeStaleTabElements(nextTabIdSet) {

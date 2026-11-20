@@ -6,6 +6,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { EventEmitter } = require('node:events');
+const { createAppState } = require('../../../src/app/backend/runtime/app-state');
 const {
   createAppShellWindowStateController,
 } = require('../../../src/app/backend/services/app-shell-window-state');
@@ -15,7 +16,7 @@ function createFixture(t, storedState) {
   t.after(() => fs.rmSync(userDataDir, { recursive: true, force: true }));
   const statePath = path.join(userDataDir, 'app-window-state.json');
   if (storedState !== undefined) fs.writeFileSync(statePath, JSON.stringify(storedState), 'utf8');
-  const controller = createAppShellWindowStateController({
+  const reopen = () => createAppShellWindowStateController({
     app: { getPath: () => userDataDir },
     fs,
     path,
@@ -26,13 +27,14 @@ function createFixture(t, storedState) {
     },
     logger: { warn() {} },
   });
-  return { controller, statePath };
+  return { controller: reopen(), reopen, statePath };
 }
 
 test('首次启动使用大窗口并默认最大化', (t) => {
   const { controller } = createFixture(t);
   assert.deepEqual(controller.getWindowOptions(), { width: 1440, height: 900 });
   assert.equal(controller.shouldMaximize(), true);
+  assert.equal(createAppState(controller).getIsSidebarVisible(), true);
 });
 
 test('恢复上次普通窗口样式并把越界位置校正到当前屏幕', (t) => {
@@ -59,6 +61,31 @@ test('恢复上次手动调整的侧边栏宽度', (t) => {
   });
 
   assert.equal(controller.getSidebarWidth(), 516);
+  assert.equal(createAppState(controller).getIsSidebarVisible(), true);
+});
+
+test('重启恢复 AI 侧边栏的上次显隐状态，并保留原宽度', (t) => {
+  const { controller, reopen, statePath } = createFixture(t, {
+    version: 1,
+    maximized: true,
+    bounds: { width: 1440, height: 900 },
+    sidebarWidth: 516,
+    sidebarVisible: 'false',
+  });
+  const runtime = createAppState(controller);
+  assert.equal(runtime.getIsSidebarVisible(), true);
+
+  runtime.setIsSidebarVisible(false);
+  const afterCollapse = reopen();
+  const collapsedRuntime = createAppState(afterCollapse);
+  assert.equal(collapsedRuntime.getIsSidebarVisible(), false);
+  assert.equal(afterCollapse.getSidebarWidth(), 516);
+
+  collapsedRuntime.setIsSidebarVisible(true);
+  const afterExpand = reopen();
+  assert.equal(createAppState(afterExpand).getIsSidebarVisible(), true);
+  assert.equal(afterExpand.getSidebarWidth(), 516);
+  assert.deepEqual(fs.readdirSync(path.dirname(statePath)), [path.basename(statePath)]);
 });
 
 test('窗口尺寸和最大化样式在关闭前原子保存并可再次读取', (t) => {
@@ -79,6 +106,7 @@ test('窗口尺寸和最大化样式在关闭前原子保存并可再次读取',
     maximized: true,
     bounds: { x: 120, y: 80, width: 1320, height: 820 },
     sidebarWidth: 488,
+    sidebarVisible: true,
   });
   maximized = false;
   bounds = { x: 40, y: 30, width: 1180, height: 740 };
@@ -88,6 +116,7 @@ test('窗口尺寸和最大化样式在关闭前原子保存并可再次读取',
     maximized: false,
     bounds: { x: 40, y: 30, width: 1180, height: 740 },
     sidebarWidth: 488,
+    sidebarVisible: true,
   });
   assert.equal(fs.readdirSync(path.dirname(statePath)).some((name) => name.endsWith('.tmp')), false);
 });

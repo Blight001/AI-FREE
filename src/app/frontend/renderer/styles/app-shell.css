@@ -92,12 +92,14 @@ body, html {
 }
 
 #tab-bar {
+  --shell-taskbar-block-padding: calc(5px * var(--ui-scale, 1));
   order: 2;
   display: flex;
   align-items: center;
   gap: var(--shell-tab-gap);
   background: color-mix(in srgb, var(--shell-panel) 94%, transparent);
-  padding: calc(5px * var(--ui-scale, 1)) calc(8px * var(--ui-scale, 1));
+  padding-block: var(--shell-taskbar-block-padding);
+  padding-inline-end: calc(8px * var(--ui-scale, 1));
   border-top: 1px solid var(--shell-border);
   flex-shrink: 0;
   box-shadow: 0 -8px 24px rgba(0, 0, 0, .08);
@@ -359,28 +361,33 @@ html.theme-light #new-browser-window-btn:hover:not(:disabled) {
 }
 
 #home-tab-btn {
+  --shell-home-size: calc(var(--shell-tab-height) + 2 * var(--shell-taskbar-block-padding));
   appearance: none;
-  flex: 0 0 var(--shell-tab-height);
+  flex: 0 0 auto;
+  align-self: flex-end;
+  width: var(--shell-home-size);
+  height: var(--shell-home-size);
+  margin-block: calc(-1 * var(--shell-taskbar-block-padding));
   display: grid;
   place-items: center;
   padding: 0;
   border: 1px solid var(--shell-border);
+  border-radius: 0;
   color: var(--shell-tab-text);
   background: var(--shell-tab-bg);
   box-shadow: none;
-  transition: transform .16s ease, color .16s ease, background .16s ease, border-color .16s ease;
+  transition: color .16s ease, background .16s ease, border-color .16s ease;
 }
 
 #home-tab-btn:hover {
   color: #fff;
   border-color: var(--shell-tab-active-border);
   background: var(--shell-accent-hover);
-  transform: translateY(-1px);
 }
 
 #home-tab-btn:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(79, 151, 255, .22);
+  box-shadow: inset 0 0 0 2px var(--shell-accent);
 }
 
 #home-tab-btn .home-tab-icon {
@@ -732,12 +739,10 @@ html.theme-gold #new-browser-window-btn.gesture-active {
   100% { opacity: 1; transform: scale(1); }
 }
 
-#add-tab-btn.collapsing,
 #shell-ai-control-btn.collapsing {
   animation: btnCollapse 0.4s ease-in-out forwards;
 }
 
-#add-tab-btn.expanding,
 #shell-ai-control-btn.expanding {
   animation: btnExpand 0.15s ease-in-out forwards;
 }

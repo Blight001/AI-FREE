@@ -28,7 +28,7 @@ test('网络魔法标签效果仍保持独立', () => {
   assert.match(css, /@keyframes networkMagicFlow\s*\{/);
 });
 
-test('浏览器窗口切换栏作为底部任务栏并提供个人中心与 AI 控制入口', () => {
+test('浏览器窗口切换栏作为底部任务栏并提供 AI 控制入口', () => {
   const html = fs.readFileSync(path.join(appRoot, 'frontend/views/app-shell.html'), 'utf8');
   const css = fs.readFileSync(path.join(appShellRoot, 'styles/app-shell.css'), 'utf8');
   const sidebarLayout = fs.readFileSync(path.join(
@@ -39,10 +39,7 @@ test('浏览器窗口切换栏作为底部任务栏并提供个人中心与 AI �
   ), 'utf8');
 
   assert.match(html, /id="shell-network-magic-toggle"[^>]*class="shell-action-btn[^"]*"[\s\S]*?内置代理/);
-  assert.match(html, /id="theme-toggle-btn"[\s\S]*?id="shell-network-magic"[\s\S]*?id="add-tab-btn"/);
-  assert.match(html, /id="add-tab-btn"[^>]*class="shell-action-btn[^"]*"[\s\S]*?个人中心/);
   assert.match(html, /id="shell-ai-control-btn"[^>]*class="shell-action-btn[^"]*"[\s\S]*?AI 控制/);
-  assert.match(html, /id="add-tab-btn"[\s\S]*?class="shell-action-icon"[\s\S]*?id="shell-ai-control-btn"[\s\S]*?class="shell-action-icon"/);
   assert.match(css, /\.shell-action-icon\s*\{[\s\S]*?border:\s*0/);
   assert.match(css, /\.shell-action-btn\s*\{[\s\S]*?background:\s*rgba\(77, 163, 255, 0\.16\)/);
   assert.match(css, /\.shell-theme-toggle-btn\s*\{[\s\S]*?background:\s*rgba\(77, 163, 255, 0\.16\)/);
@@ -56,8 +53,6 @@ test('浏览器窗口切换栏作为底部任务栏并提供个人中心与 AI �
   assert.match(sidebarLayout, /transform-origin:\s*bottom right/g);
   assert.match(tabsController, /按住向上拖动可选择浏览器历史/);
   assert.match(tabsController, /void createIndependentBrowserFromShell\(\)/);
-  assert.match(tabsController, /UiApi\.openAccountCenterSidebar\?\.\(\)/);
-  assert.doesNotMatch(tabsController, /ShellApi\.openAccountCenterSidebar/);
 });
 
 test('底部任务栏提供独立首页入口并在主题按钮左侧显示版本号', () => {
@@ -69,7 +64,7 @@ test('底部任务栏提供独立首页入口并在主题按钮左侧显示版�
     appShellRoot, 'controllers/pages/app-shell/tabs.js',
   ), 'utf8');
 
-  assert.match(html, /id="tabs-container">[\s\S]*?id="home-tab-btn"[\s\S]*?id="new-browser-window-btn"/);
+  assert.match(html, /id="tab-bar">\s*<button id="home-tab-btn"[\s\S]*?<\/button>\s*<div class="tabs" id="tabs-container">[\s\S]*?id="new-browser-window-btn"/);
   assert.match(html, /id="home-tab-btn"[\s\S]*?class="home-tab-icon"/);
   assert.match(html, /id="shell-app-version"[\s\S]*?id="theme-toggle-btn"/);
   assert.match(tabsController, /homeTabBtn[\s\S]*?ShellApi\.switchTab\(null\)/);
@@ -112,28 +107,16 @@ test('内置代理收进底部任务栏魔法棒，首页空白页不再展示�
   assert.match(popupController, /setAlwaysOnTop\(true, 'pop-up-menu'\)/);
 });
 
-test('个人中心不再显示教程、版本号或资料外层背景盒子', () => {
-  const accountHtml = fs.readFileSync(path.join(appRoot, 'frontend/sidebar/account-center.html'), 'utf8');
-  const themeCss = fs.readFileSync(path.join(
-    appRoot, 'frontend/sidebar/client/app/side/styles/modules/website-console-theme.css',
-  ), 'utf8');
-
-  assert.doesNotMatch(accountHtml, /id="tutorial-link"/);
-  assert.doesNotMatch(accountHtml, /id="app-version"/);
-  assert.doesNotMatch(accountHtml, /class="footer personal-footer"/);
-  assert.match(themeCss, /\.account-center-page \.account-profile-shell,[\s\S]*?background:\s*transparent;[\s\S]*?box-shadow:\s*none;/);
-});
-
 test('个人中心常规设置默认折叠在公告下方且内容宽度自适应', () => {
-  const accountHtml = fs.readFileSync(path.join(appRoot, 'frontend/sidebar/account-center.html'), 'utf8');
+  const accountHtml = fs.readFileSync(path.join(appRoot, 'frontend/views/app-shell.html'), 'utf8');
   const accountCss = fs.readFileSync(path.join(
-    appRoot, 'frontend/sidebar/client/app/side/styles/modules/account-auth.css',
+    appRoot, 'frontend/renderer/styles/app-shell-account-auth.css',
   ), 'utf8');
   const layoutCss = fs.readFileSync(path.join(
     appRoot, 'frontend/sidebar/client/app/side/styles/modules/layout.css',
   ), 'utf8');
   const sidebarNavigationCss = fs.readFileSync(path.join(
-    appRoot, 'frontend/sidebar/client/app/side/styles/modules/sidebar-navigation.css',
+    appRoot, 'frontend/sidebar/client/app/side/styles/modules/ai-control.css',
   ), 'utf8');
   const uiScaleJs = fs.readFileSync(path.join(
     appRoot, 'frontend/sidebar/client/scripts/ui-scale.js',
@@ -142,7 +125,7 @@ test('个人中心常规设置默认折叠在公告下方且内容宽度自适�
   const settingsIndex = accountHtml.indexOf('class="account-general-settings"');
 
   assert.ok(announcementIndex >= 0 && settingsIndex > announcementIndex);
-  assert.match(accountCss, /\.account-center-panel \.container\s*\{[\s\S]*?width:\s*100%;[\s\S]*?max-width:\s*none;/);
+
   assert.match(accountCss, /\.account-profile-shell,[\s\S]*?\.account-profile-card\s*\{[\s\S]*?width:\s*100%;/);
   assert.match(accountCss, /\.account-vip-card\s*\{[\s\S]*?max-width:\s*430px;/);
   assert.match(accountCss, /\.sidebar-auth-submit\s*\{[\s\S]*?max-width:\s*430px;/);
@@ -168,26 +151,14 @@ test('个人中心常规设置默认折叠在公告下方且内容宽度自适�
   assert.match(layoutCss, /\.sidebar-quota-redeem-row button\s*\{[\s\S]*?flex:\s*0 0 auto;/);
 });
 
-test('外部 Codex 放在添加自定义模型弹窗栏目而不是常规设置', () => {
-  const aiHtml = fs.readFileSync(path.join(appRoot, 'frontend/sidebar/ai-control.html'), 'utf8');
-  const accountHtml = fs.readFileSync(path.join(appRoot, 'frontend/sidebar/account-center.html'), 'utf8');
-  const css = fs.readFileSync(path.join(
-    appRoot, 'frontend/sidebar/client/app/side/styles/modules/ai-control.css',
-  ), 'utf8');
-  const preference = fs.readFileSync(path.join(
-    appRoot, 'frontend/sidebar/client/app/side/controllers/pages/side-panel/modules/external-codex-preference.js',
-  ), 'utf8');
-
-  assert.doesNotMatch(accountHtml, /id="external-codex-status"|id="copy-external-codex-config"|外部 Codex/);
-  assert.match(aiHtml, /id="ai-custom-api-dialog"[\s\S]*?data-ai-config-page="codex">外部 Codex/);
-  assert.match(aiHtml, /id="ai-external-codex-panel"[\s\S]*?安装 Codex 插件/);
-  assert.match(aiHtml, /粘贴给 Codex/);
-  assert.match(aiHtml, /id="copy-external-codex-config"[^>]*>复制给 Codex/);
-  assert.match(aiHtml, /external-codex-preference\.js/);
-  assert.match(css, /\.ai-external-codex-steps\s*\{/);
-  assert.match(preference, /refreshExternalCodexPreference/);
-  assert.match(preference, /\(function bindExternalCodexPreferenceModule\(\)/);
-  assert.doesNotMatch(preference, /^function setStatus\(/m);
+test('MCP 配置脚本由 AI 控制页装载，不进入主窗口', () => {
+  const aiPage = path.join(appRoot, 'frontend/sidebar/ai-control.html');
+  const aiHtml = fs.readFileSync(aiPage, 'utf8');
+  const accountHtml = fs.readFileSync(path.join(appRoot, 'frontend/views/app-shell.html'), 'utf8');
+  const scripts = [...aiHtml.matchAll(/<script src="([^"]+\/ai-control-mcp-config\.js)">/g)];
+  assert.equal(scripts.length, 1);
+  assert.ok(fs.existsSync(path.resolve(path.dirname(aiPage), scripts[0][1])));
+  assert.doesNotMatch(accountHtml, /ai-control-mcp-config\.js|id="copy-external-mcp-config"/);
 });
 
 test('底部浏览器任务项在文字前装配首个网站图标', () => {

@@ -356,7 +356,6 @@ html.theme-light .ai-chat-composer textarea {
 .ai-chat-workspace-empty { color: var(--site-muted); }
 
 /* 个人中心与设置：统一为网站的白卡片/中性灰表单。 */
-.account-center-panel { background: var(--site-bg); }
 .info-group,
 .settings-section,
 .browser-settings-dialog-panel,
@@ -367,15 +366,6 @@ html.theme-light .ai-chat-composer textarea {
   background: var(--site-panel);
   box-shadow: var(--site-shadow);
 }
-.account-center-page .account-profile-shell,
-.account-center-page .account-profile-card {
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.account-center-page .account-profile-shell { overflow: visible; }
 .account-profile-cover {
   background:
     radial-gradient(circle at 85% 5%, rgba(99, 102, 241, .18), transparent 38%),

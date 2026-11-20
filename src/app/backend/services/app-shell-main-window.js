@@ -2,7 +2,6 @@
 
 const { createWindowBackgroundController } = require('../features/window/window-background-controller');
 const { clampSidebarWidth, resolveSidebarWidth } = require('../../shared/sidebar-layout');
-const { createAppShellWindowStateController } = require('./app-shell-window-state');
 
 function createWindowInstance(deps, windowStateController) {
   const iconPath = typeof deps.resolveAppIconPath === 'function'
@@ -67,7 +66,8 @@ function relaySidebarConsole(deps, details) {
   deps.logger[methods[details.level] || 'log']?.(message);
 }
 
-function loadSidebar(deps, sideView, fileName = 'account-center.html') {
+function loadSidebar(deps, sideView) {
+  const fileName = 'ai-control.html';
   const sidebarLocalPath = deps.resolveControlPanelHtmlPath(fileName);
   if (!sidebarLocalPath) {
     deps.logger.error?.(`[启动] 未找到本地侧边栏页面 ${fileName}，侧边栏无法加载`);
@@ -81,37 +81,43 @@ function loadSidebar(deps, sideView, fileName = 'account-center.html') {
   });
 }
 
-async function handleSidebarLoaded(deps, mainWindow) {
-  deps.setSideAnnouncementReady(true);
+async function refreshWindowAnnouncements(deps) {
+  deps.setAnnouncementReady(true);
   try {
     if (deps.canPollAnnouncements()) {
       await deps.ensureAnnouncementPoller().refreshNow();
     }
   } catch (error) {
-    deps.logger.warn?.('[公告轮询] 侧边栏加载完成后刷新失败:', error?.message || error);
+    deps.logger.warn?.('[公告轮询] 主窗口加载完成后刷新失败:', error?.message || error);
   }
-  deps.sendToSide('update-device-id', await deps.computeDeviceId());
+}
+
+async function publishWindowStartupData(deps, mainWindow) {
+  const deviceId = await deps.computeDeviceId();
+  if (mainWindow.isDestroyed()) return;
+  deps.sendToSide('update-device-id', deviceId);
   try {
     const history = typeof deps.getAppConsoleHistory === 'function' ? deps.getAppConsoleHistory() : [];
     deps.sendToSide('app-console-history', history);
   } catch (_) {}
   try { deps.sendToSide('app-version', deps.app.getVersion()); } catch (_) {}
-  setTimeout(async () => {
+  const timer = setTimeout(async () => {
+    mainWindow.removeListener('closed', cancel);
     try {
       await deps.checkDesktopShortcutAndPrompt(mainWindow, deps.sendToSide);
     } catch (error) {
       deps.logger.warn?.('[Startup] 桌面快捷方式检查失败:', error?.message || error);
     }
   }, 1000);
+  const cancel = () => clearTimeout(timer);
+  mainWindow.once('closed', cancel);
 }
 
-function bindSidebarEvents(deps, sideView, mainWindow) {
+function bindSidebarEvents(deps, sideView) {
   sideView.webContents.on('console-message', (details) => relaySidebarConsole(deps, details));
-  sideView.webContents.on('did-start-loading', () => deps.setSideAnnouncementReady(false));
-  sideView.webContents.on('did-finish-load', () => handleSidebarLoaded(deps, mainWindow));
   sideView.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
     if (!isMainFrame) return;
-    deps.logger.warn?.('[启动] 远程侧边栏加载失败:', { errorCode, errorDescription, validatedURL });
+    deps.logger.warn?.('[启动] 本地侧边栏加载失败:', { errorCode, errorDescription, validatedURL });
   });
 }
 
@@ -245,12 +251,20 @@ function scheduleControlPanel(deps) {
 function createMainWindow(deps, backgroundController, windowStateController) {
   const mainWindow = createWindowInstance(deps, windowStateController);
   deps.setMainWindow?.(mainWindow);
-  mainWindow.loadFile(deps.path.join(__dirname, '../../frontend/views/app-shell.html'), { query: { dev: deps.isDevMode ? '1' : '0' } });
   configureWindowMenu(deps, mainWindow);
   mainWindow.setTitle(deps.APP_DISPLAY_NAME);
   bindMainWindowEvents(deps, mainWindow);
+  mainWindow.webContents.on('did-start-loading', () => deps.setAnnouncementReady(false));
+  mainWindow.webContents.on('did-finish-load', () => void refreshWindowAnnouncements(deps));
+  mainWindow.webContents.once('did-finish-load', () => {
+    void publishWindowStartupData(deps, mainWindow).catch((error) => {
+      deps.logger.warn?.('[Startup] 主窗口初始化失败:', error?.message || error);
+    });
+  });
   const sideView = createSidebarView(deps, mainWindow);
-  bindSidebarEvents(deps, sideView, mainWindow);
+  bindSidebarEvents(deps, sideView);
+  updateMainWindowLayout(deps, mainWindow);
+  mainWindow.loadFile(deps.path.join(__dirname, '../../frontend/views/app-shell.html'), { query: { dev: deps.isDevMode ? '1' : '0' } });
   loadSidebar(deps, sideView);
   scheduleControlPanel(deps);
   backgroundController.bindWindow(mainWindow);
@@ -271,8 +285,7 @@ function revealMainWindow(deps) {
 
 function createAppShellMainWindowController(deps = {}) {
   const backgroundController = createWindowBackgroundController(deps);
-  const windowStateController = createAppShellWindowStateController(deps);
-  let sidebarPage = 'account-center.html';
+  const { windowStateController } = deps;
   let uiScale = 1;
   let preferredSidebarWidth = windowStateController.getSidebarWidth();
   const controllerDeps = {
@@ -301,30 +314,11 @@ function createAppShellMainWindowController(deps = {}) {
   return {
     createMainWindow: () => createMainWindow(controllerDeps, backgroundController, windowStateController),
     revealMainWindow: () => backgroundController.revealWindow() || revealMainWindow(deps),
-    openAiControlSidebar: () => {
-      return toggleSidebarPage('ai-control.html');
-    },
-    openAccountCenterSidebar: () => toggleSidebarPage('account-center.html'),
-    toggleSidebarPage,
     setSidebarWidth,
     setUiScale,
     getUiScale: () => uiScale,
   };
 
-  function toggleSidebarPage(fileName) {
-    const sideView = deps.getSideView?.();
-    if (!sideView) return false;
-    const visible = deps.getIsSidebarVisible?.() === true;
-    if (visible && sidebarPage === fileName) {
-      deps.toggleSidebar?.();
-      return false;
-    }
-    sidebarPage = fileName;
-    loadSidebar(controllerDeps, sideView, fileName);
-    if (!visible) deps.toggleSidebar?.();
-    else sideView.setVisible?.(true);
-    return true;
-  }
 }
 
 module.exports = {

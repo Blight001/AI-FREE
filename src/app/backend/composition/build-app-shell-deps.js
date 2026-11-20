@@ -60,6 +60,7 @@ function buildAppShellDeps({
 
   return {
     app,
+    windowStateController: services.windowStateController,
     fs,
     path,
     BrowserWindow,
@@ -116,8 +117,6 @@ function buildAppShellDeps({
     updateTabs: tabHelpers.updateTabs,
     getActiveWC: tabHelpers.getActiveWC,
     toggleSidebar: tabHelpers.toggleSidebar,
-    openAiControlSidebar: (...args) => getAppShell()?.openAiControlSidebar?.(...args),
-    openAccountCenterSidebar: (...args) => getAppShell()?.openAccountCenterSidebar?.(...args),
     sendToSide,
     startAppUpdate: appUpdater.startAppUpdate,
     handleServerUpdateCommand: appUpdater.handleServerUpdateCommand,

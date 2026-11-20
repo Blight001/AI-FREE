@@ -210,10 +210,11 @@ AI 对话和 HeySure 设备端都会发现当前所有已连接浏览器的工�
 - 外部调用目录由 [`browser-automation-external-gateway.js`](../src/app/backend/services/browser-automation-external-gateway.js) 汇总，并执行会员权限、浏览器路由和敏感参数限制。
 - 只有服务器实时校验为有效会员时，软件才会向 HeySure 注册为在线设备并接受调用。
 - 浏览器连接建立或断开后，设备会自动刷新工具目录。因此 HeySure 端可见工具数量可能在 9 个和 10 个之间变化（可选 `browser_environment`）。
-- 本地 AI、Codex Bridge 和 HeySure adapter 共用
+- 本地 AI、本机 MCP 网关和 HeySure adapter 共用
   [`automation-tool-contract.js`](../src/app/backend/services/automation-tool-contract.js)
   中的 Schema、浏览器路由、超时、路由参数清理和错误规范化规则；三端仅保留各自的传输与鉴权适配。
 - AI 控制 → 添加自定义模型：使用自有 API 配置和发送对话不要求登录或 VIP，不消耗 AI-FREE 内置模型额度。此规则不改变外部 MCP 或 HeySure 设备的授权要求。
-- AI-FREE 启动时会自动启动本机 Codex Bridge，并在检测到 `~/.codex/config.toml` 时写入受标记管理的 `ai_free` MCP 配置。配置使用本地 stdio adapter 动态读取桥接描述文件，因此桥接令牌刷新或应用重启后不需要重新复制令牌；AI 控制「添加自定义模型」弹窗中的「外部 Codex」栏目可复制一段给 Codex 看的对接说明，让它按自己的 MCP 配置方式接入。
-- Codex adapter 只访问 `127.0.0.1` 的 AI-FREE 网关，不把桥接令牌写入 Codex 配置；外部调用仍受现有 VIP 授权和浏览器 MCP 敏感参数限制。
+- AI 控制 → 添加自定义模型 → MCP 配置：服务就绪且账号已授权时，可复制本机连接参数。支持 Streamable HTTP 和自定义请求头的客户端使用当前 URL，通过 `POST` 发送 MCP JSON-RPC 2.0，并在 `Authorization: Bearer …` 中提供密钥。配置是通用参数，不是某个客户端可直接导入的配置文件。
+- 仅支持 stdio 的本机客户端可使用同一份参数中的 `command`、`args` 和 `env`。原有 Codex 自动配置继续使用此适配器，运行时从本机描述文件读取当前密钥，配置文件不包含密钥。
+- 网关只监听 `127.0.0.1`，云端执行器不能直连。不支持 MCP 的客户端也不能仅凭地址和密钥接入。HTTP 密钥只应粘贴到受信客户端的配置中；重启应用或授权状态变化后遇到 `401`，请重新复制。外部调用继续受现有 VIP 授权和浏览器 MCP 敏感参数限制。
 - 旧 `software_window`、`sandbox_files` 和 `browser_download` 名称只在执行层保留兼容，不再出现在公开工具目录；新调用分别使用 `windows_tab`、`run_command` 和 `browser_file`。

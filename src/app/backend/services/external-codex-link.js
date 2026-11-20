@@ -7,36 +7,23 @@ const path = require('path');
 const START_MARKER = '# BEGIN AI-FREE MCP - managed by AI-FREE';
 const END_MARKER = '# END AI-FREE MCP';
 
-function buildCodexMcpConfig({ executablePath, entryPath, descriptorPath }) {
-  return [
-    '[mcp_servers.ai_free]',
-    `command = ${JSON.stringify(executablePath)}`,
-    `args = ${JSON.stringify([entryPath, '--descriptor', descriptorPath])}`,
-    'env = { ELECTRON_RUN_AS_NODE = "1" }',
-    'startup_timeout_sec = 10',
-    'tool_timeout_sec = 180',
-    '',
-  ].join('\n');
+function getStdioConnection({ executablePath, entryPath, descriptorPath }) {
+  return {
+    command: executablePath,
+    args: [entryPath, '--descriptor', descriptorPath],
+    env: { ELECTRON_RUN_AS_NODE: '1' },
+  };
 }
 
-/** @param {{executablePath?: string, entryPath?: string, descriptorPath?: string}} [paths] */
-function buildCodexCopyText({ executablePath, entryPath, descriptorPath } = {}) {
-  const command = JSON.stringify(String(executablePath || ''));
-  const entry = JSON.stringify(String(entryPath || ''));
-  const descriptor = JSON.stringify(String(descriptorPath || ''));
+function buildCodexMcpConfig(paths) {
+  const { command, args, env } = getStdioConnection(paths);
   return [
-    '请把当前 Codex 接到本机正在运行的 AI-FREE，让我能调用 AI-FREE 已授权的 MCP 工具。',
-    '',
-    '请你完成这些事：',
-    '1. 若还没装 Codex CLI，或还没在 VS Code / Cursor 安装 Codex 插件，先安装。',
-    '2. 确认本机 AI-FREE 正在运行，并且已经登录已授权账号。',
-    '3. 用 Codex 自己的 MCP 配置方式接入，优先执行下面命令（不要把这段当最终 config.toml 原文照搬）：',
-    '',
-    `codex mcp add ai_free --env ELECTRON_RUN_AS_NODE=1 -- ${command} ${entry} --descriptor ${descriptor}`,
-    '',
-    '4. 如果 `codex mcp add` 不可用，再按 Codex 当前格式写入 MCP server `ai_free`：stdio、command/args 如上、env 含 ELECTRON_RUN_AS_NODE=1、startup_timeout_sec=10、tool_timeout_sec=180。',
-    '5. 不要把桥接密钥写进 Codex 配置。访问凭证由本机 adapter 从 descriptor 动态读取。',
-    '6. 接入后用 `codex mcp list` 或 `/mcp` 确认 `ai_free` 已出现，然后调用 AI-FREE 的 MCP 工具。',
+    '[mcp_servers.ai_free]',
+    `command = ${JSON.stringify(command)}`,
+    `args = ${JSON.stringify(args)}`,
+    `env = { ELECTRON_RUN_AS_NODE = ${JSON.stringify(env.ELECTRON_RUN_AS_NODE)} }`,
+    'startup_timeout_sec = 10',
+    'tool_timeout_sec = 180',
     '',
   ].join('\n');
 }
@@ -101,12 +88,11 @@ function createExternalCodexLink(options = {}) {
     },
     getStatus: () => ({ ...status }),
     getConfig: () => config,
-    getCopyText: () => buildCodexCopyText(connection),
+    getStdioConnection: () => getStdioConnection(connection),
   };
 }
 
 module.exports = {
-  buildCodexCopyText,
   buildCodexMcpConfig,
   createExternalCodexLink,
   mergeCodexConfig,

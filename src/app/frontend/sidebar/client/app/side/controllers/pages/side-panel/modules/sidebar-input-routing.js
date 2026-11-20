@@ -12,7 +12,6 @@ function initSidebarAnimationListener() {
   window.aiFree.ui.onSidebarExpand(() => {
     document.body.classList.add('expanding');
     document.body.classList.remove('collapsing');
-    setTimeout(() => requestSidebarInputFocus(), 150);
     setTimeout(() => {
       document.body.classList.remove('expanding');
     }, 200);

@@ -55,6 +55,7 @@ function readWindowState(deps, statePath) {
       maximized: parsed.maximized === true,
       bounds: normalizeBounds(parsed.bounds, deps.screen),
       sidebarWidth: Math.max(0, finiteNumber(parsed.sidebarWidth) || 0),
+      sidebarVisible: parsed.sidebarVisible !== false,
     };
   } catch (error) {
     deps.logger.warn?.('[WindowState] 读取主窗口状态失败，使用默认大窗口:', error?.message || error);
@@ -86,6 +87,7 @@ function createAppShellWindowStateController(deps = {}) {
     maximized: true,
     bounds: { ...DEFAULT_BOUNDS },
     sidebarWidth: 0,
+    sidebarVisible: true,
   };
   let saveTimer = null;
 
@@ -122,6 +124,12 @@ function createAppShellWindowStateController(deps = {}) {
   return {
     bindWindow,
     flush,
+    getIsSidebarVisible: () => state.sidebarVisible,
+    setIsSidebarVisible: (visible) => {
+      if (typeof visible !== 'boolean') return;
+      state = { ...state, sidebarVisible: visible };
+      flush();
+    },
     getSidebarWidth: () => state.sidebarWidth || 0,
     getWindowOptions: () => ({ ...state.bounds }),
     setSidebarWidth: (width) => {

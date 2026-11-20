@@ -65,6 +65,9 @@ if (window.aiFree) {
   UpdatesApi.onComplete( (payload = {}) => {
     appShellUpdateState.activated = true;
     renderAppShellUpdateProgress({ ...payload, phase: 'completed', percent: 100 });
+    const version = appShellUpdateState.version.replace(/^v/i, '');
+    const hint = version ? ` v${version}` : '';
+    window.MessageModal?.showInfoMessage?.(`更新包已下载完成，请关闭软件后继续安装${hint}`);
   });
   UpdatesApi.onError( () => resetAppShellUpdateProgress());
   UpdatesApi.onSkip( () => resetAppShellUpdateProgress());
@@ -72,7 +75,6 @@ if (window.aiFree) {
 }
 
 let tabsContainer = document.getElementById('tabs-container');
-let addTabBtn = document.getElementById('add-tab-btn');
 let newBrowserWindowBtn = document.getElementById('new-browser-window-btn');
 
 function renderAppShellVersion(version) {
@@ -108,7 +110,12 @@ function setBrowserEmptyStateSidebarWidth(payload = {}) {
 async function syncBrowserEmptyStateSidebarWidth() {
   try {
     const result = await UiApi.setSidebarWidth?.({});
-    if (result?.ok) setBrowserEmptyStateSidebarWidth({ width: result.width });
+    if (result?.ok) {
+      const visible = result.width > 0;
+      setBrowserEmptyStateSidebarVisible(visible);
+      setBrowserEmptyStateSidebarWidth({ visible, width: result.width });
+      document.getElementById('shell-ai-control-btn')?.setAttribute('aria-expanded', String(visible));
+    }
   } catch (_) {}
 }
 
@@ -197,7 +204,6 @@ function onReady(fn) {
   else fn();
 }
 
-let toggleSidebarClickLock = false;
 let draggedTabId = null;
 let dragHoverTabId = null;
 let dragHoverPosition = null;

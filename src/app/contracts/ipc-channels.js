@@ -53,7 +53,7 @@ const INVOKE_CHANNELS = [
   { channel: 'get-app-session-id', kind: 'invoke', domain: 'ui', registrar: 'src/app/backend/ipc/register/misc.js' },
   { channel: 'get-app-theme', kind: 'invoke', domain: 'ui', registrar: 'src/app/backend/ipc/register/ui.js' },
   { channel: 'get-app-version', kind: 'invoke', domain: 'ui', registrar: 'src/app/backend/ipc/register/misc.js' },
-  { channel: 'get-external-codex-status', kind: 'invoke', domain: 'ui', registrar: 'src/app/backend/ipc/register/ui.js' },
+  { channel: 'get-external-codex-status', kind: 'invoke', domain: 'ui', registrar: 'src/app/backend/features/browser/register-external-mcp-config-ipc.js' },
   { channel: 'get-startup-settings', kind: 'invoke', domain: 'ui', registrar: 'src/app/backend/ipc/register/ui.js' },
   { channel: 'get-window-close-behavior', kind: 'invoke', domain: 'ui', registrar: 'src/app/backend/ipc/register/ui.js' },
   { channel: 'get-browser-history', kind: 'invoke', domain: 'browser', registrar: 'src/app/backend/features/browser/register-browser-history-ipc.js' },
@@ -114,7 +114,7 @@ const INVOKE_CHANNELS = [
   { channel: 'show-browser-history-gesture-popup', kind: 'invoke', domain: 'browser', registrar: 'src/app/backend/features/browser/register-browser-history-ipc.js' },
   { channel: 'show-tab-context-menu', kind: 'invoke', domain: 'browser', registrar: 'src/app/backend/ipc/register/ui.js' },
   { channel: 'start-app-update', kind: 'invoke', domain: 'updates', registrar: 'src/app/backend/ipc/register/misc.js' },
-  { channel: 'copy-external-codex-config', kind: 'invoke', domain: 'ui', registrar: 'src/app/backend/ipc/register/ui.js' },
+  { channel: 'copy-external-codex-config', kind: 'invoke', domain: 'ui', registrar: 'src/app/backend/features/browser/register-external-mcp-config-ipc.js' },
   { channel: 'start-clash-mini', kind: 'invoke', domain: 'network', registrar: 'src/app/backend/ipc/register/clash.js' },
   { channel: 'stop-clash-mini', kind: 'invoke', domain: 'network', registrar: 'src/app/backend/ipc/register/clash.js' },
   { channel: 'stop-clash-service', kind: 'invoke', domain: 'network', registrar: 'src/app/backend/ipc/register/clash.js' },
@@ -127,8 +127,6 @@ const INVOKE_CHANNELS = [
 ];
 
 const EVENT_CHANNELS = [
-  { channel: 'open-ai-control-sidebar', kind: 'event', domain: 'ui', registrar: 'src/app/backend/ipc/register/ui.js' },
-  { channel: 'open-account-center-sidebar', kind: 'event', domain: 'ui', registrar: 'src/app/backend/ipc/register/ui.js' },
   { channel: 'add-tab', kind: 'event', domain: 'browser', registrar: 'src/app/backend/ipc/register/ui.js' },
   { channel: 'ai-control-browser-selection-changed', kind: 'event', domain: 'ai', registrar: 'src/app/backend/features/ai-chat/register-support-ipc.js', requestSchema: 'ai.browser-selection' },
   { channel: 'app-theme-changed', kind: 'event', domain: 'ui', registrar: 'src/app/backend/ipc/register/ui.js' },
@@ -194,7 +192,6 @@ const PUSH_CHANNELS = [
   { channel: 'independent-browser-create-complete', kind: 'push', domain: 'browser' },
   { channel: 'independent-browser-create-failed', kind: 'push', domain: 'browser' },
   { channel: 'license-usage-updated', kind: 'push', domain: 'license' },
-  { channel: 'open-vip-plans', kind: 'push', domain: 'license' },
   { channel: 'open-account-center', kind: 'push', domain: 'ui' },
   { channel: 'platform-name-updated', kind: 'push', domain: 'updates' },
   { channel: 'server-account-cookie-received', kind: 'push', domain: 'account' },

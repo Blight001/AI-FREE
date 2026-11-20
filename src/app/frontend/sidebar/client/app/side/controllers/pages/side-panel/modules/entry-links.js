@@ -49,14 +49,3 @@ function bindTutorialLink() {
     });
   });
 }
-
-// 同步/连接：bindSecondaryEntryButtons的具体业务逻辑。
-function bindSecondaryEntryButtons() {
-  const startBananaBtn = safeGetEl('start-banana-btn');
-  if (startBananaBtn) {
-    startBananaBtn.addEventListener('click', () => {
-      window.MessageModal.showInfoMessage('「一键启动 BananaAI」 功能已经上线，如需请联系客服开通账号权限！');
-    });
-  }
-
-}

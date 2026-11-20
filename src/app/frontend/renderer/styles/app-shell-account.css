@@ -1,0 +1,19 @@
+#home-personal {
+  width: min(100%, 780px);
+  margin-inline: auto;
+}
+
+#home-personal .shell-home-actions { margin-block-end: 10px; }
+#home-personal .account-profile-card {
+  min-width: 0;
+  background: var(--shell-panel);
+}
+#home-personal .account-profile-cover { border-radius: 8px 8px 0 0; }
+#home-personal .account-profile-identity { min-width: 0; overflow-wrap: anywhere; }
+
+#browser-empty-state .vip-benefits-dialog { position: absolute; }
+#browser-empty-state .vip-benefits-backdrop { background: rgb(0 0 0 / 45%); }
+#browser-empty-state .vip-benefits-panel {
+  width: min(620px, 100%);
+  max-height: 100%;
+}

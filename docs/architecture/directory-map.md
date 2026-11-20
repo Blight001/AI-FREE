@@ -13,7 +13,11 @@
 
 推荐定位顺序：先按进程边界查 `backend` 或 `frontend`，再按业务域查 `backend/features/<domain>`，最后沿 `contracts` 查 IPC 调用方和注册方。
 
+主窗口首页由 `frontend/views/app-shell.html` 承载，默认显示「浏览器管理」，左侧可切换账号、Cookie、浏览器、个人中心和插件栏目。账号与 Cookie 列表复用浏览器记录，Cookie 编辑复用浏览器参数弹窗；个人中心栏目承载登录、资料、套餐、公告和常规设置。右侧 `WebContentsView` 始终加载 `ai-control.html`，显隐不会导航；AI 和独立代理弹窗的登录请求通过 `request-account-center` 返回首页个人中心。
+
 `backend/services/` 尚未完全按业务域收敛，里面同时存在窗口/标签服务、跨域桥接和历史模块。目录名不代表这些模块都是通用服务。新逻辑优先放入 `features/<domain>/`；修改既有模块时先确认真实调用方和生命周期，再决定是否迁移，避免复制出第二份实现。
+
+AI 控制侧栏的显隐与宽度记录在 `userData/app-window-state.json`。切换显隐时立即保存，下次启动恢复；没有有效的显隐记录时仍默认展开。
 
 ## 常用术语
 

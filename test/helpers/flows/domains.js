@@ -19,7 +19,7 @@ const domains = {
   },
   'account-preferences': {
     requireOracle: true,
-    operations: { click: 'action', reload: 'action', inspect: 'oracle', inspectSaved: 'oracle' },
+    operations: { openPersonal: 'action', click: 'action', reload: 'action', inspect: 'oracle', inspectSaved: 'oracle' },
   },
   'home-workspace': {
     requireOracle: true,

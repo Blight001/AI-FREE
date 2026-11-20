@@ -118,20 +118,9 @@
       }
     });
     chatInput?.addEventListener('click', renderMentionMenu);
-    window.setTimeout(() => {
-      if (document.getElementById('ai-control-panel')?.classList.contains('active')) {
-        reclaimAiInputFocus(chatInput);
-      }
-    }, 150);
   }
 
-  function bindAiPanelRefresh() {
-    document.querySelector('[data-tab="ai-control-panel"]')?.addEventListener('click', () => {
-      loadModels();
-      loadBrowserConnections();
-      void refreshHistoryList();
-      window.setTimeout(() => reclaimAiInputFocus(el('ai-chat-input')), 50);
-    });
+  function bindAiAccountSessionRefresh() {
     window.aiFree?.account?.onSessionUpdated?.(() => {
       if (aiInputHasActiveDraft()) {
         state.accountSessionRefreshQueued = true;
@@ -159,12 +148,15 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     if (!document.getElementById('ai-control-panel')) return;
+    window.MessageModal?.initServerMessageListener?.();
+    if (typeof initSidebarAnimationListener === 'function') initSidebarAnimationListener();
+    if (typeof initSidebarInputRouting === 'function') initSidebarInputRouting();
     initCustomSelects();
     bindAiHeaderEvents();
     bindBrowserSelection();
     bindChatForm();
     bindChatInput();
     if (typeof bindChatWorkspace === 'function') bindChatWorkspace();
-    bindAiPanelRefresh();
+    bindAiAccountSessionRefresh();
     startAiControlPolling();
   });

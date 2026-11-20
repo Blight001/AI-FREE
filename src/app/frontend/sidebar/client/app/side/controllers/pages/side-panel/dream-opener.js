@@ -112,7 +112,7 @@
     container.addEventListener('click', async (e) => {
       const clickedButton = e.target && e.target.closest ? e.target.closest('.open-wool-platform-btn') : null;
       if (!clickedButton || !container.contains(clickedButton) || clickedButton.disabled) return;
-      if (await window.redirectToSidebarAccountLogin?.()) return;
+      if (await redirectToAccountLogin()) return;
       const task = withBusyButton(clickedButton, () => openDreamPlatform(clickedButton, container), {
         companions: [
           document.getElementById('VPN-switch'),

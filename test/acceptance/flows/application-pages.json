@@ -61,54 +61,6 @@
       ]
     },
     {
-      "id": "accountLoad",
-      "use": "load",
-      "args": {
-        "page": "account"
-      },
-      "expect": [
-        {
-          "path": "loaded",
-          "op": "equals",
-          "value": true
-        }
-      ]
-    },
-    {
-      "id": "accountRead",
-      "use": "inspect",
-      "args": {
-        "page": "account"
-      },
-      "expect": [
-        {
-          "path": "active",
-          "op": "equals",
-          "value": true
-        },
-        {
-          "path": "sameColumn",
-          "op": "equals",
-          "value": true
-        },
-        {
-          "path": "legacyFooterRemoved",
-          "op": "equals",
-          "value": true
-        },
-        {
-          "path": "woolResourceBelowRedeem",
-          "op": "equals",
-          "value": true
-        },
-        {
-          "path": "dialogShellRemoved",
-          "op": "equals",
-          "value": true
-        }
-      ]
-    },
-    {
       "id": "shellLoad",
       "use": "load",
       "args": {
@@ -145,7 +97,7 @@
           "value": true
         },
         {
-          "path": "accountCenterButton",
+          "path": "personalCenterInHome",
           "op": "equals",
           "value": true
         },
@@ -240,34 +192,6 @@
       "expect": [
         {
           "path": "opened",
-          "op": "equals",
-          "value": true
-        }
-      ]
-    },
-    {
-      "id": "accountReload",
-      "use": "load",
-      "args": {
-        "page": "account"
-      },
-      "expect": [
-        {
-          "path": "loaded",
-          "op": "equals",
-          "value": true
-        }
-      ]
-    },
-    {
-      "id": "accountReopened",
-      "use": "inspect",
-      "args": {
-        "page": "account"
-      },
-      "expect": [
-        {
-          "path": "active",
           "op": "equals",
           "value": true
         }

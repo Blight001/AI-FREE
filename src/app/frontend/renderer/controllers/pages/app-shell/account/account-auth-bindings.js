@@ -56,26 +56,25 @@ function subscribeAccountApi(api, method, handler) {
 function bindAccountApiEvents() {
   const rootApi = window.aiFree || {};
   subscribeAccountApi(rootApi.account, 'onSessionUpdated', handleAccountSessionUpdate);
-  subscribeAccountApi(rootApi.ui, 'onOpenAccountCenter', openAccountCenterPanel);
+  subscribeAccountApi(rootApi.ui, 'onOpenAccountCenter', window.AppShellHome.openPersonal);
   subscribeAccountApi(rootApi.license, 'onVipAccessRequired', openVipAccountCenter);
-  subscribeAccountApi(rootApi.license, 'onOpenVipPlans', handleOpenVipPlans);
 }
 
+let accountSessionRevision = 0;
+
 function handleAccountSessionUpdate(session = {}) {
+  accountSessionRevision += 1;
   renderSidebarAccountSession(session);
   if (vipPlansOpenRequested && session.authenticated === true) openVipBenefitsDialog();
 }
 
-function handleOpenVipPlans() {
-  openVipAccountCenter();
-}
-
 function initializeAccountSessionView() {
   setSidebarAuthMode('login');
+  const currentRevision = accountSessionRevision;
   window.aiFree?.account?.getSession?.().then((session) => {
-    renderSidebarAccountSession(session || {});
+    if (currentRevision === accountSessionRevision) handleAccountSessionUpdate(session || {});
   }).catch(() => {
-    renderSidebarAccountSession({ authenticated: false });
+    if (currentRevision === accountSessionRevision) handleAccountSessionUpdate({ authenticated: false });
   });
 }
 
@@ -88,4 +87,32 @@ function bindSidebarAccountAuth() {
   bindAccountAuthControls();
   bindAccountApiEvents();
   initializeAccountSessionView();
+}
+
+function bindHomeAccountRuntime() {
+  if (!window.aiFree?.ui) return;
+
+  window.aiFree.ui.onDeviceIdUpdated((deviceId) => {
+    try {
+      const deviceIdInput = document.getElementById('device-id');
+      if (deviceIdInput) {
+        deviceIdInput.value = deviceId || '';
+      }
+    } catch (e) {
+      console.warn('更新设备号失败:', e);
+    }
+  });
+
+  window.aiFree.ui.onLicenseUsageUpdated((usage) => {
+    try {
+      const usageText = formatUsageTimesText(usage);
+      if (typeof setWoolPlatformRemainingUsage === 'function') {
+        const usagePayload = usage?.licenseUsage || usage?.result || usage || {};
+        const platform = usagePayload.platform || usagePayload.platform_name || usagePayload.currentPlatform || '';
+        setWoolPlatformRemainingUsage(usageText, platform);
+      }
+    } catch (e) {
+      console.warn('更新本地试用次数显示失败:', e);
+    }
+  });
 }

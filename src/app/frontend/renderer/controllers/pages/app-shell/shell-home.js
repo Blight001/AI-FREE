@@ -1,10 +1,38 @@
 (() => {
+  let focusPersonalOnShow = false;
+
   function setVisible(tabs = []) {
     const home = document.getElementById('browser-empty-state');
     if (!home) return;
     const activeTab = Array.isArray(tabs) ? tabs.find((tab) => tab?.isActive) : null;
     const status = String(activeTab?.runtimeStatus || '').trim().toLowerCase();
+    const wasVisible = !home.hidden;
     home.hidden = status === 'ready' || status === 'hidden';
+    if (home.hidden && wasVisible) leavePersonal();
+    else if (focusPersonalOnShow) focusPersonal();
+  }
+
+  function leavePersonal() {
+    closeVipBenefitsDialog();
+    closeAccountProfileMenu();
+    vipPlansOpenRequested = false;
+    clearSidebarAuthPasswords();
+    focusPersonalOnShow = false;
+  }
+
+  function focusPersonal() {
+    if (document.getElementById('browser-empty-state').hidden) return;
+    focusPersonalOnShow = false;
+    const vip = document.getElementById('vip-benefits-dialog');
+    const target = !vip.hidden ? vip.querySelector('.vip-benefits-close')
+      : document.getElementById(isSidebarAccountAuthenticated() ? 'home-personal' : 'sidebar-auth-username');
+    target?.focus();
+  }
+
+  function openPersonal() {
+    document.getElementById('home-personal-tab').click();
+    focusPersonalOnShow = true;
+    focusPersonal();
   }
 
   function tabIndexFromKey(key, current, count) {
@@ -22,12 +50,15 @@
     if (!tabList) return;
     const tabs = [...tabList.querySelectorAll('[role="tab"]')];
     const panels = tabs.map((tab) => document.getElementById(tab.getAttribute('aria-controls')));
-    const select = (selected) => tabs.forEach((tab, index) => {
-      const active = index === selected;
-      tab.setAttribute('aria-selected', String(active));
-      tab.tabIndex = active ? 0 : -1;
-      panels[index].hidden = !active;
-    });
+    const select = (selected) => {
+      if (panels[selected].id !== 'home-personal' && !document.getElementById('home-personal').hidden) leavePersonal();
+      tabs.forEach((tab, index) => {
+        const active = index === selected;
+        tab.setAttribute('aria-selected', String(active));
+        tab.tabIndex = active ? 0 : -1;
+        panels[index].hidden = !active;
+      });
+    };
     tabList.addEventListener('click', (event) => {
       const index = tabs.indexOf(event.target.closest('[role="tab"]'));
       if (index !== -1) select(index);
@@ -45,20 +76,6 @@
 
   function bind() {
     bindHomeTabs();
-    document.getElementById('home-open-account-center')?.addEventListener('click', () => {
-      rememberSidebarToggleSource('account-center');
-      window.aiFree?.ui?.openAccountCenterSidebar?.();
-    });
-    const aiButton = document.getElementById('shell-ai-control-btn');
-    aiButton?.addEventListener('click', async () => {
-      aiButton.disabled = true;
-      try {
-        rememberSidebarToggleSource?.('ai-control');
-        window.aiFree?.ui?.openAiControlSidebar?.();
-      } catch (error) {
-        window.MessageModal?.showErrorMessage?.(error?.message || String(error));
-      } finally { aiButton.disabled = false; }
-    });
     const button = document.getElementById('browser-settings-dev-console');
     button?.addEventListener('click', async () => {
       button.disabled = true;
@@ -71,5 +88,5 @@
     });
   }
 
-  window.AppShellHome = Object.freeze({ bind, setVisible });
+  window.AppShellHome = Object.freeze({ bind, setVisible, openPersonal });
 })();

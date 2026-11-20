@@ -8,6 +8,24 @@ const path = require('node:path');
 const test = require('node:test');
 
 const { createBrowserAutomationBridge } = require('../../src/app/backend/services/browser-automation-bridge');
+const { registerExternalMcpConfigIpc } = require('../../src/app/backend/features/browser/register-external-mcp-config-ipc');
+
+function bindMcpConfig(bridge) {
+  const handlers = new Map();
+  const frame = { url: 'file:///app/src/app/frontend/sidebar/ai-control.html' };
+  const sender = { mainFrame: frame, isDestroyed: () => false };
+  let text = '';
+  const ipc = { handle: (name, handler) => handlers.set(name, handler) };
+  registerExternalMcpConfigIpc(ipc, {
+    browserAutomationBridge: bridge,
+    ui: { getSideView: () => ({ webContents: sender }) },
+  }, (value) => { text = value; });
+  return {
+    status: () => handlers.get('get-external-codex-status')(),
+    copy: (event = { sender, senderFrame: frame }) => handlers.get('copy-external-codex-config')(event),
+    config: () => JSON.parse(text),
+  };
+}
 
 async function reservePort() {
   const server = http.createServer();
@@ -44,8 +62,28 @@ test('automation bridge exposes authenticated external MCP without a legacy exte
     }),
   });
   try {
+    const configIpc = bindMcpConfig(bridge);
+    assert.equal((await configIpc.copy()).ok, false);
     await bridge.start();
+    assert.equal((await configIpc.copy({ sender: {}, senderFrame: {} })).ok, false);
+    assert.deepEqual(await configIpc.copy(), { ok: true, data: { mode: 'streamable-http' } });
+    const { url, method, headers: requestHeaders, transport } = configIpc.config().streamableHttp;
+    assert.equal(transport, 'streamable-http');
+    assert.equal(method, 'POST');
+    assert.equal(new URL(url).origin, `http://127.0.0.1:${port}`);
+    assert.equal(requestHeaders.Accept, 'application/json, text/event-stream');
+    const post = (message) => fetch(url, {
+      method, headers: requestHeaders, body: JSON.stringify({ jsonrpc: '2.0', ...message }),
+    });
+    const initialized = await post({ id: 1, method: 'initialize' });
+    assert.equal(initialized.status, 200);
+    assert.equal((await initialized.json()).result.serverInfo.name, 'ai-free');
+    assert.equal((await post({ method: 'notifications/initialized' })).status, 202);
+    const tools = await post({ id: 2, method: 'tools/list' });
+    assert.equal(tools.status, 200);
+    assert.deepEqual((await tools.json()).result.tools.map(({ name }) => name), ['browser_control', 'software_window']);
     const descriptor = JSON.parse(fs.readFileSync(descriptorPath, 'utf8'));
+    assert.equal(JSON.stringify(await configIpc.status()).includes(descriptor.token), false);
     const headers = { 'x-ai-free-mcp-token': descriptor.token };
     const listedResponse = await fetch(`${descriptor.endpoint}/mcp/v1/tools`, { headers });
     assert.equal(listedResponse.status, 200);
@@ -91,6 +129,8 @@ test('external MCP reports VIP requirement while calls follow live membership ac
   });
   try {
     await bridge.start();
+    const configIpc = bindMcpConfig(bridge);
+    assert.equal((await configIpc.copy()).ok, false);
     assert.equal(fs.existsSync(descriptorPath), true);
     const freeDescriptor = JSON.parse(fs.readFileSync(descriptorPath, 'utf8'));
     const freeHeaders = { 'x-ai-free-mcp-token': freeDescriptor.token };
@@ -105,6 +145,8 @@ test('external MCP reports VIP requirement while calls follow live membership ac
     assert.equal(bridge.refreshExternalMcpAccess(), true);
     const descriptor = JSON.parse(fs.readFileSync(descriptorPath, 'utf8'));
     assert.notEqual(descriptor.token, freeDescriptor.token);
+    assert.equal((await configIpc.copy()).ok, true);
+    assert.equal(configIpc.config().streamableHttp.headers.Authorization === `Bearer ${descriptor.token}`, true);
     const headers = { 'x-ai-free-mcp-token': descriptor.token };
     const memberStatus = await fetch(`${descriptor.endpoint}/mcp/v1/status`, { headers });
     assert.equal(memberStatus.status, 200);
@@ -112,6 +154,7 @@ test('external MCP reports VIP requirement while calls follow live membership ac
 
     isVip = false;
     assert.equal(bridge.refreshExternalMcpAccess(), true);
+    assert.equal((await configIpc.copy()).ok, false);
     assert.equal(fs.existsSync(descriptorPath), true);
     const denied = await fetch(`${descriptor.endpoint}/mcp/v1/status`, { headers });
     assert.equal(denied.status, 401);

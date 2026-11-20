@@ -1,13 +1,14 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const fs = require('fs');
 const path = require('path');
+const { attachContextMenu } = require('../../../src/app/backend/utils/removeWatermark');
 const { applicationLayout, runtimeArgument } = require('../../helpers/flows/app-layout');
 const { accountPreferencesDrivers } = require('../../helpers/flows/account-preferences');
 const { homeWorkspaceDrivers } = require('../../helpers/flows/home-workspace');
+const { checkHomeAccountIntegration } = require('../../helpers/electron/home-account-integration');
 const { runFlow } = require('../../helpers/flows/runner');
 const { emitFlowReport } = require('../../../scripts/verification/flow-reports');
 const layout = applicationLayout(runtimeArgument(process.argv, 'source'));
-const { attachContextMenu } = require('../../../src/app/backend/utils/removeWatermark');
 const performanceProbeStartedAt = process.hrtime.bigint();
 
 let browserHistoryOpenRequests = 0;
@@ -15,6 +16,8 @@ let homeSwitchRequests = 0;
 let independentBrowserCreateRequests = 0;
 let accountSessionRequests = 0;
 let accountCenterRequests = 0;
+let mcpCopyRequests = 0;
+let accountSession = { authenticated: false };
 let windowCloseBehavior = 'ask';
 let startupSettings = { openAtLogin: false, startMinimized: false };
 ipcMain.handle('open-browser-history', (_event, payload = {}) => {
@@ -31,10 +34,9 @@ ipcMain.handle('create-independent-browser', () => {
 ipcMain.handle('get-app-version', () => ({ ok: true, version: '2.6.38' }));
 ipcMain.handle('account-get-session', () => {
   accountSessionRequests += 1;
-  return { authenticated: false };
+  return accountSession;
 });
 ipcMain.on('request-account-center', () => { accountCenterRequests += 1; });
-ipcMain.on('open-account-center-sidebar', () => { accountCenterRequests += 1; });
 ipcMain.handle('get-window-close-behavior', () => ({ ok: true, data: { behavior: windowCloseBehavior } }));
 ipcMain.handle('set-window-close-behavior', (_event, payload = {}) => {
   windowCloseBehavior = String(payload.behavior || '');
@@ -50,12 +52,12 @@ ipcMain.handle('set-startup-settings', (_event, payload = {}) => {
 });
 ipcMain.handle('get-external-codex-status', () => ({
   ok: true,
-  data: { ready: true, membershipRequired: false, toolCount: 0, connectionCount: 0 },
+  data: { published: true, ready: true, membershipRequired: false, toolCount: 0, connectionCount: 0 },
 }));
-ipcMain.handle('copy-external-codex-config', () => ({
-  ok: true,
-  data: { endpoint: 'http://127.0.0.1:18765/mcp/v1' },
-}));
+ipcMain.handle('copy-external-codex-config', () => {
+  mcpCopyRequests += 1;
+  return { ok: true, data: { mode: 'streamable-http' } };
+});
 ipcMain.handle('get-ai-free-browser-settings', () => ({
   ok: true,
   settings: require('../../../src/app/backend/utils/ai-free-browser-settings').normalizeAiFreeBrowserSettings({}),
@@ -149,6 +151,7 @@ for (const [channel, response] of /** @type {Array<[string, any]>} */ ([
       serviceId: '', toolCount: 0, aiConfigId: null, message: '尚未连接 AI 服务器',
     },
   }],
+  ['get-vip-plans', { ok: true, data: { plans: [] } }],
   ['focus-sidebar-input', { ok: true }],
 ])) ipcMain.handle(channel, () => response);
 
@@ -161,8 +164,87 @@ async function checkScenario(defaultScenario, fixture) {
 }
 
 function checkAccountPreferences(win) {
-  return checkScenario(require('../flows/account-preferences.json'), accountPreferencesDrivers(win, layout.pages.account,
+  return checkScenario(require('../flows/account-preferences.json'), accountPreferencesDrivers(win, layout.pages.shell,
     () => ({ closeBehavior: windowCloseBehavior, ...startupSettings })));
+}
+
+async function clickTaskbarCorner(contents) {
+  const target = await contents.executeJavaScript(`(() => {
+    const home = document.getElementById('home-tab-btn');
+    const { width, height } = home.getBoundingClientRect();
+    const radius = getComputedStyle(home).borderTopLeftRadius;
+    const radiusPx = parseFloat(radius) * (radius.endsWith('%') ? width / 100 : 1);
+    return { x: 0, y: innerHeight - 1, square: width > 0 && width === height && radiusPx < width / 4 };
+  })()`);
+  if (!target.square) throw new Error('Expected a square taskbar home button');
+  const { x, y } = target;
+  const before = homeSwitchRequests;
+  await contents.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+  for (const type of ['mousePressed', 'mouseReleased']) {
+    await contents.debugger.sendCommand('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
+  }
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  if (homeSwitchRequests !== before + 1) throw new Error('Bottom-left pixel did not activate Home exactly once');
+}
+
+async function checkTaskbarHomeButton(win) {
+  const contents = win.webContents;
+  contents.debugger.attach();
+  try {
+    await clickTaskbarCorner(contents);
+    contents.send('update-tabs', Array.from({ length: 16 }, (_, index) => ({
+      id: `corner-fixture-${index}`, title: `Browser ${index + 1}`, runtimeStatus: 'ready', isActive: index === 0,
+    })));
+    const scrolled = await contents.executeJavaScript(`(async () => {
+      const tabs = document.getElementById('tabs-container');
+      for (let attempt = 0; attempt < 50; attempt += 1) {
+        tabs.scrollLeft = tabs.scrollWidth;
+        if (tabs.scrollLeft > 0) return true;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      return false;
+    })()`);
+    if (!scrolled) throw new Error('Expected overflow tabs to scroll');
+    await clickTaskbarCorner(contents);
+  } finally {
+    contents.send('update-tabs', []);
+    contents.debugger.detach();
+  }
+}
+
+async function checkNewWindowButtonHover(contents) {
+  const readButton = `(() => {
+    const button = document.getElementById('new-browser-window-btn');
+    // The hidden test window may not tick CSS transitions.
+    for (const animation of button.getAnimations({ subtree: true })) animation.finish();
+    const bounds = button.getBoundingClientRect();
+    const style = getComputedStyle(button);
+    return {
+      bounds: bounds.toJSON(),
+      iconBounds: button.querySelector('svg').getBoundingClientRect().toJSON(),
+      background: style.backgroundColor,
+      hovered: button.matches(':hover'),
+    };
+  })()`;
+  contents.debugger.attach();
+  try {
+    await contents.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
+    const before = await contents.executeJavaScript(readButton);
+    const { x, y, width, height } = before.bounds;
+    await contents.debugger.sendCommand('Input.dispatchMouseEvent', {
+      type: 'mouseMoved', x: x + width / 2, y: y + height / 2,
+    });
+    const after = await contents.executeJavaScript(readButton);
+    if (!after.hovered || before.background === after.background) {
+      throw new Error(`Expected the new window button to highlight on hover: ${JSON.stringify({ before, after })}`);
+    }
+    if (JSON.stringify(before.bounds) !== JSON.stringify(after.bounds)
+      || JSON.stringify(before.iconBounds) !== JSON.stringify(after.iconBounds)) {
+      throw new Error('Expected the new window button and icon to stay stationary on hover');
+    }
+  } finally {
+    contents.debugger.detach();
+  }
 }
 
 app.whenReady().then(async () => {
@@ -174,7 +256,7 @@ app.whenReady().then(async () => {
   });
   if (process.argv.includes('--account-only')) {
     try {
-      await win.loadFile(layout.pages.account);
+      await win.loadFile(layout.pages.shell);
       await checkAccountPreferences(win);
     } finally {
       win.destroy();
@@ -185,24 +267,18 @@ app.whenReady().then(async () => {
   attachContextMenu(win.webContents);
   await win.loadFile(layout.pages.shell);
   await new Promise((resolve) => setTimeout(resolve, 120));
+  const firstSidebarReadyMs = Number(process.hrtime.bigint() - performanceProbeStartedAt) / 1e6;
+  await checkNewWindowButtonHover(win.webContents);
+  await checkTaskbarHomeButton(win);
   await checkScenario(require('../flows/home-workspace.json'),
     homeWorkspaceDrivers(win.webContents, () => ({ count: accountCenterRequests })));
   accountCenterRequests = 0;
   if (process.argv.includes('--home-only')) {
     win.destroy();
+    console.log(`home workspace UI checks passed (${layout.runtime})`);
     app.quit();
     return;
   }
-  const firstSidebarReadyMs = Number(process.hrtime.bigint() - performanceProbeStartedAt) / 1e6;
-  const homeButtonIsSquare = await win.webContents.executeJavaScript(`(() => {
-    const homeButton = document.getElementById('home-tab-btn');
-    if (!homeButton) return false;
-    const { width, height } = homeButton.getBoundingClientRect();
-    const radius = getComputedStyle(homeButton).borderTopLeftRadius;
-    const radiusPx = parseFloat(radius) * (radius.endsWith('%') ? width / 100 : 1);
-    return width > 0 && width === height && radiusPx < width / 4;
-  })()`);
-  if (!homeButtonIsSquare) throw new Error('Expected a square taskbar home button');
   const result = await win.webContents.executeJavaScript(`(async () => {
     const initialDefault = {
       settingsActive: document.getElementById('ai-free-settings-panel')?.classList.contains('active') === true,
@@ -212,7 +288,7 @@ app.whenReady().then(async () => {
     const navButtons = Array.from(document.querySelectorAll('.tab-nav .tab-button'));
     const navTops = navButtons.map((button) => Math.round(button.getBoundingClientRect().top));
     document.getElementById('browser-settings-create-browser')?.click();
-    await window.redirectToSidebarAccountLogin?.();
+    await redirectToAccountLogin();
     await new Promise((resolve) => setTimeout(resolve, 30));
     await new Promise((resolve) => setTimeout(resolve, 120));
     const panel = document.getElementById('ai-free-settings-panel');
@@ -274,7 +350,7 @@ app.whenReady().then(async () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
     const extensionItems = Array.from(document.querySelectorAll('.extension-plugin-item'));
-    const extensionListStyle = extensionList ? getComputedStyle(extensionList) : null;
+    const flexWrap = extensionList ? getComputedStyle(extensionList).flexWrap : '';
     const extensionListBox = extensionList?.getBoundingClientRect();
     const firstExtensionBox = extensionItems[0]?.getBoundingClientRect();
     const secondExtensionBox = extensionItems[1]?.getBoundingClientRect();
@@ -298,6 +374,7 @@ app.whenReady().then(async () => {
       active: panel.classList.contains('active'),
       dedicatedSettingsPage: document.documentElement.classList.contains('browser-settings-page'),
       sidebarNavigationRemoved: !document.querySelector('.tab-nav'),
+      configHomeLogoVisible: !!document.querySelector('#browser-empty-state img[data-app-logo]')?.naturalWidth,
       configHomeCreateVisible: document.getElementById('browser-settings-create-browser')
         ?.getBoundingClientRect().width > 0,
       vpnAutoStartBusyAppearance,
@@ -323,9 +400,8 @@ app.whenReady().then(async () => {
       nodeAnimationDisabled: !nodePanel || nodeAnimationName === 'none',
       initialDefault,
       navRemoved: navTops.length === 0,
-      accountCenterRemoved: !document.getElementById('account-center-panel'),
-      standaloneLoginRemoved: !document.getElementById('sidebar-account-auth')
-        && !document.getElementById('account-profile-name'),
+      accountCenterEmbedded: !!document.querySelector('#home-personal #sidebar-account-auth'),
+      standaloneLoginRemoved: !document.getElementById('account-center-panel'),
       rows: panel.querySelectorAll('.vb-row').length,
       labels,
       browserHistoryVisible: !!document.getElementById('browser-history-list'),
@@ -342,17 +418,17 @@ app.whenReady().then(async () => {
         && !!document.getElementById('import-extension-plugin'),
       unifiedExtensionHintRemoved: !document.querySelector('#extension-manager-title')?.parentElement?.querySelector('p')
         && !(document.querySelector('.extension-manager-inline')?.textContent || '').includes('这里启用的插件会安装到全部'),
-      unifiedExtensionWraps: extensionListStyle?.flexWrap === 'wrap' && (extensionsShareRow
+      unifiedExtensionWraps: flexWrap === 'wrap' && (extensionsShareRow
         || (secondExtensionBox?.top >= firstExtensionBox?.bottom
           && secondExtensionBox?.right <= extensionListBox?.right + 1)),
       unifiedExtensionCardCapped: extensionItems.length >= 2
         && firstExtensionWidth > 0
-        && firstExtensionBox.right <= extensionListBox.right + 1,
+        && firstExtensionWidth <= 230,
       unifiedExtensionDetailsInline: !!detailsBtn
         && detailsBtn.previousElementSibling?.classList.contains('extension-plugin-summary'),
       unifiedExtensionDetailsOpened: detailsHiddenBefore && detailsOpened,
-      woolResourceMovedOut: !document.getElementById('wool-platform-buttons')
-        && !document.getElementById('wool-resource-title'),
+      woolResourceInPersonal: !!document.querySelector('#home-personal #wool-platform-buttons')
+        && !!document.querySelector('#home-personal #wool-resource-title'),
       automationWorkbenchRemoved,
       removedNetworkHeading: !document.getElementById('network-tools-title') && !panel.querySelector('.settings-network-tools-hint'),
       overflowY: getComputedStyle(document.getElementById('browser-empty-state')).overflowY,
@@ -367,10 +443,11 @@ app.whenReady().then(async () => {
     !result.active
     || !result.dedicatedSettingsPage
     || !result.sidebarNavigationRemoved
+    || !result.configHomeLogoVisible
     || !result.configHomeCreateVisible
     || !result.vpnAutoStartBusyAppearance
     || !result.automationWorkbenchRemoved
-    || !result.woolResourceMovedOut
+    || !result.woolResourceInPersonal
     || !result.homeProxyRemoved
     || !result.magicLauncherVisible
     || !result.magicDialogOpened
@@ -390,7 +467,7 @@ app.whenReady().then(async () => {
     || !result.nodeAnimationDisabled
     || Object.values(result.initialDefault).some((value) => value !== true)
     || !result.navRemoved
-    || !result.accountCenterRemoved
+    || !result.accountCenterEmbedded
     || !result.standaloneLoginRemoved
     || !result.browserHistoryVisible
     || result.browserHistoryMaxHeight <= 238
@@ -417,11 +494,11 @@ app.whenReady().then(async () => {
   if (independentBrowserCreateRequests !== 1) {
     throw new Error('浏览器配置首页的新建按钮未创建浏览器');
   }
-  if (accountSessionRequests !== 1) {
+  if (accountSessionRequests !== 2) {
     throw new Error(`浏览器配置首页登录门禁读取账号会话次数异常，实际请求 ${accountSessionRequests} 次`);
   }
   if (accountCenterRequests !== 1) {
-    throw new Error(`未登录操作应请求侧边栏个人中心，实际请求 ${accountCenterRequests} 次`);
+    throw new Error(`未登录操作应请求首页个人中心，实际请求 ${accountCenterRequests} 次`);
   }
   const browserHistoryInteractionResult = await win.webContents.executeJavaScript(`(async () => {
     const getMain = () => document.querySelector('[data-history-id="shared-browser"] .browser-history-main');
@@ -481,7 +558,7 @@ app.whenReady().then(async () => {
   if (promptResult !== '新名称') {
     throw new Error(`软件重命名弹窗校验失败: ${JSON.stringify(promptResult)}`);
   }
-  await win.loadFile(path.join(__dirname, '../../../src/app/frontend/sidebar/ai-control.html'));
+  await win.loadFile(layout.pages.ai);
   await new Promise((resolve) => setTimeout(resolve, 120));
   const aiWelcomeResult = await win.webContents.executeJavaScript(`(() => {
     return {
@@ -495,16 +572,16 @@ app.whenReady().then(async () => {
     || !aiWelcomeResult.welcomeStillVisible) {
     throw new Error(`AI 新对话首页校验失败: ${JSON.stringify(aiWelcomeResult)}`);
   }
-  const externalCodexResult = await win.webContents.executeJavaScript(`(async () => {
+  const externalMcpResult = await win.webContents.executeJavaScript(`(async () => {
     const dialog = document.getElementById('ai-custom-api-dialog');
     document.getElementById('ai-chat-model-trigger')?.click();
     const addModel = document.querySelector('.ai-model-custom-api-action');
     addModel?.click();
     const opensWithoutLogin = addModel?.textContent === '添加自定义模型' && dialog.hidden === false;
-    const tab = document.getElementById('ai-external-codex-title');
-    const panel = document.getElementById('ai-external-codex-panel');
-    const status = document.getElementById('external-codex-status');
-    const copyButton = document.getElementById('copy-external-codex-config');
+    const tab = document.getElementById('ai-external-mcp-title');
+    const panel = document.getElementById('ai-external-mcp-panel');
+    const status = document.getElementById('external-mcp-status');
+    const copyButton = document.getElementById('copy-external-mcp-config');
     const steps = panel?.textContent || '';
     tab?.click();
     await new Promise((done) => setTimeout(done, 30));
@@ -514,113 +591,21 @@ app.whenReady().then(async () => {
     return {
       opensWithoutLogin,
       tabInCustomDialog: tab?.closest('#ai-custom-api-dialog') === dialog,
-      tabLabel: tab?.textContent === '外部 Codex',
+      tabLabel: tab?.textContent === 'MCP 配置',
       panelVisibleAfterTab: panel?.hidden === false,
-      explainsPlugin: steps.includes('安装 Codex 插件') || steps.includes('Codex 插件'),
-      explainsPasteToCodex: steps.includes('粘贴给 Codex'),
+      warnsAboutConfigSecret: steps.includes('配置包含密钥'),
       ready,
       copied: status?.textContent === '配置已复制到剪贴板',
     };
   })()`);
-  if (Object.values(externalCodexResult).some((value) => value !== true)) {
-    throw new Error(`AI 控制外部 Codex 栏目校验失败: ${JSON.stringify(externalCodexResult)}`);
+  if (mcpCopyRequests !== 1 || Object.values(externalMcpResult).some((value) => value !== true)) {
+    throw new Error(`AI 控制 MCP 配置栏目校验失败: ${JSON.stringify(externalMcpResult)}`);
   }
   if (process.env.AI_FREE_AI_WELCOME_CAPTURE) {
     win.setSize(500, 850);
     await new Promise((resolve) => setTimeout(resolve, 80));
     const image = await win.webContents.capturePage();
     fs.writeFileSync(process.env.AI_FREE_AI_WELCOME_CAPTURE, image.toPNG());
-    win.setSize(805, 1200);
-  }
-  await win.webContents.executeJavaScript(`(() => {
-    const input = document.getElementById('ai-chat-input');
-    input.value = '测试未登录发送';
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    document.getElementById('ai-chat-form').requestSubmit();
-    window.openAccountCenterPanel();
-    return true;
-  })()`);
-  await new Promise((resolve) => setTimeout(resolve, 220));
-  const aiLoginTriggerResult = await win.webContents.executeJavaScript(`(() => ({
-      accountPanelActive: document.getElementById('account-center-panel').classList.contains('active'),
-      authFormVisible: document.getElementById('sidebar-account-auth').hidden === false,
-      authFormEmbedded: document.getElementById('sidebar-account-auth').parentElement
-        === document.getElementById('sidebar-account-session'),
-    }))()`);
-  if (
-    aiLoginTriggerResult.accountPanelActive !== true
-    || aiLoginTriggerResult.authFormVisible !== true
-    || aiLoginTriggerResult.authFormEmbedded !== true
-  ) {
-    throw new Error(`AI 未登录切换个人中心栏目校验失败: ${JSON.stringify(aiLoginTriggerResult)}`);
-  }
-  const accountCenterResult = await win.webContents.executeJavaScript(`new Promise((resolve) => {
-    const panel = document.getElementById('account-center-panel');
-    setTimeout(async () => {
-      const active = panel.classList.contains('active');
-      const profileVisible = !!panel.querySelector('#sidebar-account-session')
-        && !!panel.querySelector('#announcement-bar');
-      const accountCard = panel.querySelector('#sidebar-account-session');
-      const sameColumn = panel.querySelector('#announcement-bar')?.parentElement === accountCard;
-      const legacyFooterRemoved = !panel.querySelector('.personal-footer')
-        && !panel.querySelector('#tutorial-link')
-        && !panel.querySelector('#app-version');
-      const profileStyle = getComputedStyle(panel.querySelector('.account-profile-shell'));
-      const profileBackgroundRemoved = profileStyle.backgroundColor === 'rgba(0, 0, 0, 0)'
-        && profileStyle.boxShadow === 'none';
-      const accountContainer = panel.querySelector(':scope > .container');
-      const accountContentScrolls = getComputedStyle(panel).overflowY === 'auto'
-        && getComputedStyle(accountContainer).overflowY === 'visible';
-      const woolResource = panel.querySelector('.account-wool-resource');
-      const woolResourceBelowRedeem = panel.querySelector('.sidebar-quota-redeem')?.nextElementSibling === woolResource
-        && woolResource?.parentElement === accountCard
-        && woolResource.querySelector('#wool-platform-buttons');
-      const dialogShellRemoved = !document.getElementById('account-center-dialog')
-        && !document.querySelector('.account-center-dialog-backdrop')
-        && !document.querySelector('.account-center-dialog-panel');
-      const authForm = panel.querySelector('#sidebar-account-auth');
-      const inlineAuthVisible = authForm?.hidden === false
-        && authForm.parentElement === accountCard
-        && !authForm.hasAttribute('aria-modal')
-        && authForm.getAttribute('role') !== 'dialog'
-        && panel.querySelector('#sidebar-auth-username')?.spellcheck === false;
-      const emptyStatusSpaceCollapsed = getComputedStyle(
-        panel.querySelector('#sidebar-auth-status'),
-      ).display === 'none';
-      const nativeSelectRemoved = !panel.querySelector('select#window-close-behavior');
-      const externalCodexMovedOut = !panel.querySelector('#external-codex-status')
-        && !panel.querySelector('#copy-external-codex-config')
-        && !panel.querySelector('.account-codex-bridge');
-      resolve({
-        active,
-        profileVisible,
-        sameColumn,
-        legacyFooterRemoved,
-        profileBackgroundRemoved,
-        accountContentScrolls,
-        woolResourceBelowRedeem: !!woolResourceBelowRedeem,
-        dialogShellRemoved,
-        inlineAuthVisible,
-        emptyStatusSpaceCollapsed,
-        nativeSelectRemoved,
-        externalCodexMovedOut,
-      });
-    }, 30);
-  })`);
-  if (Object.values(accountCenterResult).some((value) => value !== true)) {
-    throw new Error(`个人中心侧边栏栏目校验失败: ${JSON.stringify(accountCenterResult)}`);
-  }
-  await checkAccountPreferences(win);
-  if (process.env.AI_FREE_UI_CAPTURE) {
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    const image = await win.webContents.capturePage();
-    fs.writeFileSync(process.env.AI_FREE_UI_CAPTURE, image.toPNG());
-  }
-  if (process.env.AI_FREE_ACCOUNT_UI_CAPTURE) {
-    win.setSize(430, 720);
-    await new Promise((resolve) => setTimeout(resolve, 120));
-    const image = await win.webContents.capturePage();
-    fs.writeFileSync(process.env.AI_FREE_ACCOUNT_UI_CAPTURE, image.toPNG());
     win.setSize(805, 1200);
   }
   homeSwitchRequests = 0;
@@ -631,7 +616,7 @@ app.whenReady().then(async () => {
     const updateWidget = document.getElementById('update-widget');
     const theme = document.getElementById('theme-toggle-btn');
     const version = document.getElementById('shell-app-version');
-    const appLauncher = document.getElementById('add-tab-btn');
+    const aiButton = document.getElementById('shell-ai-control-btn');
     const createButton = document.getElementById('new-browser-window-btn');
     const homeButton = document.getElementById('home-tab-btn');
     const homeCreateButton = document.getElementById('browser-settings-create-browser');
@@ -641,27 +626,22 @@ app.whenReady().then(async () => {
     await new Promise((resolve) => setTimeout(resolve, 30));
     homeButton?.click();
     homeCreateButton?.click();
-    appLauncher?.click();
     await new Promise((resolve) => setTimeout(resolve, 30));
     return {
       controlsOrdered: updateWidget?.nextElementSibling === version
         && version?.nextElementSibling === theme
         && theme?.nextElementSibling === document.getElementById('shell-network-magic')
-        && document.getElementById('shell-network-magic')?.nextElementSibling === appLauncher
-        && appLauncher?.nextElementSibling === document.getElementById('shell-ai-control-btn'),
+        && document.getElementById('shell-network-magic')?.nextElementSibling === aiButton,
       versionVisible: version?.hidden === false && version.textContent === 'v2.6.38',
-      homeButtonFirst: document.getElementById('tabs-container')?.firstElementChild === homeButton,
+      homeButtonFirst: document.getElementById('tab-bar')?.firstElementChild === homeButton,
       avatarRemoved: !document.getElementById('account-center-btn'),
       themeToggled: document.documentElement.classList.contains('theme-light') !== wasLight,
-      accountCenterButton: appLauncher?.tagName === 'BUTTON'
-        && appLauncher?.textContent.trim() === '个人中心'
-        && !!appLauncher?.querySelector('.shell-action-icon'),
+      legacyAccountButtonRemoved: !document.getElementById('add-tab-btn'),
       networkMagicButton: document.getElementById('shell-network-magic-toggle')?.textContent.trim() === '内置代理'
         && !!document.getElementById('shell-network-magic-toggle')?.querySelector('.shell-action-icon'),
       aiControlButton: document.getElementById('shell-ai-control-btn')?.textContent.trim() === 'AI 控制'
         && !!document.getElementById('shell-ai-control-btn')?.querySelector('.shell-action-icon'),
-      matchingActionIcons: !!appLauncher?.querySelector('.shell-action-icon')
-        && !!document.getElementById('shell-ai-control-btn')?.querySelector('.shell-action-icon')
+      matchingActionIcons: !!aiButton?.querySelector('.shell-action-icon')
         && !!document.getElementById('shell-network-magic-toggle')?.querySelector('.shell-action-icon'),
       modernCreateIcon: !!createButton?.querySelector('svg.new-window-icon') && createButton.textContent.trim() === '',
       taskbarAtBottom: document.getElementById('tab-bar')?.getBoundingClientRect().bottom === window.innerHeight,
@@ -674,11 +654,13 @@ app.whenReady().then(async () => {
   })()`);
   shellAccountResult.taskbarAndHomeCreateRequestedBrowsers = independentBrowserCreateRequests === 2;
   shellAccountResult.homeButtonOpenedHomeOnly = homeSwitchRequests === 1;
-  shellAccountResult.accountCenterOpened = Number(accountCenterRequests) === 2;
   await new Promise((resolve) => setTimeout(resolve, 30));
   if (Object.values(shellAccountResult).some((value) => value !== true)) {
     throw new Error(`主窗口内置首页与控件校验失败: ${JSON.stringify(shellAccountResult)}`);
   }
+  ipcMain.removeAllListeners('request-account-center');
+  await checkHomeAccountIntegration(win, layout, (session) => { accountSession = session; });
+  await checkAccountPreferences(win);
   win.webContents.send('app-update-activated', { version: '9.9.9', percent: 0 });
   win.webContents.send('app-update-progress', { version: '9.9.9', phase: 'downloading', percent: 64 });
   await new Promise((resolve) => setTimeout(resolve, 30));
@@ -712,7 +694,7 @@ app.whenReady().then(async () => {
   const destroyStartedAt = process.hrtime.bigint();
   win.destroy();
   const destroyMs = Number(process.hrtime.bigint() - destroyStartedAt) / 1e6;
-  console.log(`browser settings, sidebar account center and app-shell controls UI checks passed (${result.rows} rows)`);
+  console.log(`browser settings, home account center and app-shell controls UI checks passed (${result.rows} rows)`);
   console.log(`[performance-baseline] first-sidebar-ready=${firstSidebarReadyMs.toFixed(1)}ms working-set=${workingSetMb.toFixed(1)}MB window-destroy=${destroyMs.toFixed(1)}ms`);
   app.quit();
 }).catch((error) => {

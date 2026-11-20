@@ -28,20 +28,22 @@ function readAccount() {
       && !document.querySelector('.account-close-behavior-options small'),
     closeBehavior: activeClose?.value,
     closeSaved: get('window-close-behavior-status')?.textContent === '已保存',
-    startupEnabled: (/** @type {HTMLInputElement | null} */ (get('app-startup-enabled')))?.checked,
+    startupEnabled: /** @type {HTMLInputElement | null} */ (get('app-startup-enabled'))?.checked,
     startupSaved: get('app-startup-status')?.textContent === '已保存',
   };
 }
 
-function accountPreferencesDrivers(win, accountPath, saved) {
+function accountPreferencesDrivers(win, shellPath, saved) {
   const execute = rendererProbe(win.webContents);
   const matches = (state, expected) => Object.entries(expected).every(([key, value]) => state[key] === value);
+  const openPersonal = () => execute(dispatchControl, '#home-personal-tab', null);
   return bindDomain('account-preferences', {
     click: ({ target }) => {
       if (!Object.hasOwn(controls, target)) throw new Error('UNKNOWN_ACCOUNT_CONTROL');
       return execute(dispatchControl, controls[target], null);
     },
-    reload: async () => { await win.loadFile(accountPath); return { loaded: true }; },
+    openPersonal,
+    reload: async () => { await win.loadFile(shellPath); return { loaded: true }; },
     inspect: ({ ready = {} }, { signal }) => poll(() => execute(readAccount), (state) => matches(state, ready), signal),
     inspectSaved: () => saved(),
   });

@@ -7,7 +7,6 @@ const controls = Object.freeze({
   accounts: '#home-accounts-tab', cookies: '#home-cookies-tab', browsers: '#home-browsers-tab',
   personal: '#home-personal-tab', plugins: '#home-plugins-tab',
   editCookies: '#home-cookie-list button', closeEditor: '#browser-settings-dialog-close',
-  openAccount: '#home-open-account-center',
 });
 
 function readWorkspace() {
@@ -28,6 +27,8 @@ function readWorkspace() {
     reservedSidebarWidth: Math.round(innerWidth - home.getBoundingClientRect().right),
     accountVisible: visible(get('home-account-list')) && get('home-account-list').textContent.includes('账号123456'),
     pluginsVisible: visible(get('import-extension-plugin')) && !visible(get('browser-history-list')),
+    personalVisible: visible(get('sidebar-account-auth')) && !!get('home-personal').querySelector('#sidebar-account-session'),
+    legacyAccountButtonRemoved: !get('add-tab-btn'),
     focused: document.activeElement?.id,
     editorVisible: visible(dialog),
     editorHasRecord: get('browser-settings-dialog-title').textContent.includes('平台 A'),

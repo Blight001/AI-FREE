@@ -122,29 +122,6 @@ html.theme-light .vip-plan-option small { color: #6e5624; }
 html.theme-light .vip-plan-status { color: #6e5624; }
 html.theme-light .vip-use-gift-code { color: #2a1d05; }
 
-.account-center-panel {
-  display: flex;
-  flex-direction: column;
-  padding: 14px 14px 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  box-sizing: border-box;
-  overscroll-behavior: contain;
-}
-
-.account-center-panel .container {
-  display: grid;
-  flex: 0 0 auto;
-  gap: 0;
-  min-height: auto;
-  width: 100%;
-  max-width: none;
-  margin: 0;
-  padding-bottom: 12px;
-  overflow: visible;
-  box-sizing: border-box;
-}
-
 .account-profile-card > .announcement-bar {
   position: absolute;
   top: 40px;

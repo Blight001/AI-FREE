@@ -383,7 +383,7 @@ function bindClashToggleButtons({ startBtn, vpnBtn, dreamBtn }) {
   }
   if (vpnBtn && vpnBtn.dataset.bound !== '1') {
     vpnBtn.addEventListener('click', async () => {
-      if (await window.redirectToSidebarAccountLogin?.()) return;
+      if (await redirectToAccountLogin()) return;
       observeNetworkMagicTask(withBusyButton(
         vpnBtn,
         [startBtn, dreamBtn],

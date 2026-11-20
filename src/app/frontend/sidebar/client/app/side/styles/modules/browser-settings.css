@@ -68,22 +68,7 @@ html.browser-settings-page .settings-container {
   padding-inline: 18px;
 }
 
-.browser-settings-home { display: none; }
-html.browser-settings-page .browser-settings-home {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  padding: 30px 18px 14px;
-}
-.browser-settings-home-logo { width: 132px; height: 132px; object-fit: contain; filter: drop-shadow(0 14px 28px rgba(0, 0, 0, .3)); }
-.browser-settings-home-actions { display: flex; align-items: stretch; justify-content: center; gap: 10px; }
-.browser-settings-home-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-width: 174px; padding: 13px 22px; border: 0; border-radius: 10px; color: #fff; background: var(--brand-grad); box-shadow: var(--brand-shadow); font: inherit; font-size: 17px; font-weight: 700; cursor: pointer; }
-.browser-settings-home-button[hidden],
 html:not(.development-mode) [data-dev-only] { display: none !important; }
-.browser-settings-create-browser:disabled { opacity: .58; cursor: wait; }
-.browser-settings-home-button svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2.2; }
 
 .settings-container { width: 100%; max-width: var(--content-max); margin: 0 auto; padding: 8px 2px 24px; box-sizing: border-box; }
 .browser-default-settings-btn { min-height: 36px; padding: 0 14px; border: 1px solid rgba(91, 116, 153, .52); border-radius: 9px; color: #c7d6e9; background: rgba(29, 38, 53, .8); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }

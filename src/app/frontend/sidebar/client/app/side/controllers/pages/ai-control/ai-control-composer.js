@@ -63,9 +63,7 @@
     }, 0);
   }
 
-  function openPersonalLogin() {
-    window.openAccountCenterPanel?.();
-  }
+  let checkingChatLogin = false;
 
   async function ensureAuthenticatedForChat() {
     try {
@@ -76,7 +74,7 @@
     } catch (_) {}
     state.accountAuthenticated = false;
     syncSendState();
-    openPersonalLogin();
+    window.aiFree?.ui?.requestAccountCenter?.();
     return false;
   }
 
@@ -220,7 +218,7 @@
   function handleChatBusinessFailure(result) {
     const message = String(result?.message || result?.error || '对话请求失败');
     if (/请先.*登录|未登录/.test(message)) {
-      openPersonalLogin();
+      window.aiFree?.ui?.requestAccountCenter?.();
     }
     if (isQuotaFailure(message)) {
       if (result?.quota) renderQuota(result.quota);
@@ -288,9 +286,6 @@
   }
 
   async function requestChatResult(run) {
-    if (!run.useCustomApi && !await ensureAuthenticatedForChat()) {
-      throw new Error('请先在个人中心登录账号');
-    }
     await refreshQuotaBeforeSend(run.useCustomApi);
     if (!run.useCustomApi && isQuotaExhausted()) {
       throw new Error('AI 对话额度已用尽，请联系管理员');
@@ -322,6 +317,16 @@
       return;
     }
 
+    if (checkingChatLogin) return;
+    if (!selectedModelIsCustom()) {
+      checkingChatLogin = true;
+      try {
+        if (!await ensureAuthenticatedForChat()) return;
+      } finally {
+        checkingChatLogin = false;
+      }
+      if (String(input?.value || '').trim() !== typedContent) return;
+    }
     const run = prepareChatSend(input, select, content);
     if (!run) return;
     run.requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;

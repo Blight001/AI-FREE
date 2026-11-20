@@ -1,6 +1,6 @@
 # 交互验证流程与迁移边界
 
-目标是把夹具、交互参数和验收断言分开，让新维护者能从一个入口找到测试范围，而不是为每个变体复制脚本。当前已登记交互入口可统一编排；步骤级 JSON 已迁移原生浏览器对齐、原生工作流、远程 peer 、应用页面、首页栏目和个人中心偏好六个场景，覆盖五个领域。其他脚本内部仍有固定序列，不能称为全量迁移完成。阶段状态及验收条件见 [分阶段推进清单](verification-rollout.md)。
+目标是把夹具、交互参数和验收断言分开，让新维护者能从一个入口找到测试范围，而不是为每个变体复制脚本。当前已登记交互入口可统一编排；步骤级 JSON 已迁移原生浏览器对齐、原生工作流、远程 peer、页面资源、首页栏目和个人中心偏好六个场景，覆盖五个领域。其他脚本内部仍有固定序列，不能称为全量迁移完成。阶段状态及验收条件见 [分阶段推进清单](verification-rollout.md)。
 
 ## 使用入口
 
@@ -15,9 +15,9 @@ node scripts/verify-project.js --flow test/acceptance/flows/project-browser.json
 node scripts/verify-project.js --plan test/acceptance/flows/project-browser.json
 # 页面与远程 peer：分别检查源码、生成态和已有安装包
 node scripts/verify-project.js --flow test/acceptance/flows/project-pages.json
-# 真实 Electron 首页与个人中心，验证源码与生成态
+# 日常验证首页与个人中心，覆盖源码和生成态
 node scripts/verify-project.js --flow test/acceptance/flows/project-business-ui.json
-# 使用重新打包后的 ASAR 运行同一场景
+# 重新打包后从新 ASAR 验证同一业务流程
 node scripts/verify-project.js interactions --only home-workspace-packaged,account-preferences-packaged
 ```
 
@@ -65,9 +65,9 @@ node scripts/verify-project.js interactions --only home-workspace-packaged,accou
 | native-workflow | 21 个 JSON 步骤和独立状态回读；支持自定义场景 | 保持浏览器工具驱动，不复制生产工作流算法 |
 | remote-browser-peer / generated / packaged | JSON 的启动、offer、帧、ready；事件读回作为 oracle，finally stop | 源码、生成态与重新构建的 2.6.53 打包态均真实执行通过 |
 | chromium-alignment | 36 个 JSON 步骤；导航、AX/PNG、输入、旧引用拒绝、切换/关闭 | 独立读回点击次数、isTrusted、输入值与标签数；保留相邻底层验收 |
-| home-workspace / account-preferences | 真实 Electron 页面和 preload，共用源码、生成态和打包态 JSON 场景 | 从 DOM 回读栏目、编辑框焦点及表单状态，从隔离的主进程夹具回读设置写入，并验证重新加载后的显示 |
-| browser-settings-ui | 复用首页和个人中心偏好场景，保留其他交互检查 | 其余固定操作继续按业务行为迁移 |
-| source-pages / generated-pages / packaged-sidebar | 共用 application-pages.json 的 17 步和 electron-pages 领域；保留原页面断言，增加切换返回、关闭重开及窗口读回 | 当前为不加载业务 preload 的页面资源/结构验收，不能替代真实 IPC、业务表单、侧栏导航与主窗口/侧栏遮挡验收 |
+| home-workspace / account-preferences | 真实 Electron 页面和 preload，独立读取 DOM 与夹具主进程状态，覆盖键盘栏目切换、Cookie 编辑框焦点、表单切换和偏好重载 | 源码、生成态、打包态使用同一场景；设置写入由隔离夹具接收 |
+| browser-settings-ui | 复用首页和偏好场景，另覆盖 AI 侧栏、MCP 配置、任务栏与更新控件 | 剩余固定操作序列按业务行为逐段迁移 |
+| source-pages / generated-pages / packaged-sidebar | 共用 application-pages.json 和 electron-pages 领域；保留原页面断言，增加切换返回、关闭重开及窗口读回 | 当前为不加载业务 preload 的页面资源/结构验收，不能替代真实 IPC、业务表单、侧栏导航与主窗口/侧栏遮挡验收 |
 | embed-smoke / chromium-phase2 | 可独立编排；内部仍为原生生命周期序列 | 生命周期状态驱动；Phase 2 默认 500 次切换和两小时 soak |
 | chromium-input / chromium-phase3 | 可独立编排；内部仍为底层输入/协议序列 | 使用原生输入、Profile、文件和协议专属驱动，不能全部改成高层点击 |
 | session-storage / chromium-media | 可独立编排；内部仍为专属 API 检查 | 存储和能力声明保留专属断言，不冒充用户交互 |
@@ -77,7 +77,7 @@ node scripts/verify-project.js interactions --only home-workspace-packaged,accou
 
 远程 peer 的路径错误已修复：由 backend/config/paths.js 解析 backend/views 下的唯一页面，显式 viewPath 覆盖保持兼容。remote-browser-peer、remote-browser-peer-generated、remote-browser-peer-packaged 使用同一场景，分别加载各运行态的真实 controller；三个运行态均已通过，新包验证独立于源码测试。
 
-electron-pages 只允许 ai/account/shell 页面标识和具名只读 probe，场景不能注入路径或 JavaScript。applicationLayout 集中选择三种资源布局；保留旧脚本显式 SIDEBAR_HTML_PATH/PACKAGED_APP_DIR 覆盖，但前者报告为 override，不能冒称打包态。统一执行器不继承这些覆盖变量。场景持有应用生命周期，最后一个测试窗口关闭后仍可重建，结束时移除 window-all-closed 监听；这只服务测试，不改变产品的退出行为。
+electron-pages 只允许场景契约列出的页面标识和具名只读 probe，场景不能注入路径或 JavaScript。applicationLayout 集中选择三种资源布局；保留旧脚本显式 SIDEBAR_HTML_PATH/PACKAGED_APP_DIR 覆盖，但前者报告为 override，不能冒称打包态。统一执行器不继承这些覆盖变量。场景持有应用生命周期，最后一个测试窗口关闭后仍可重建，结束时移除 window-all-closed 监听；这只服务测试，不改变产品的退出行为。
 
 ## 二阶、三阶影响与约束
 

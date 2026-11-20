@@ -3,9 +3,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
+const { EventEmitter } = require('node:events');
+const { createAppState } = require('../../../src/app/backend/runtime/app-state');
 const { createAppShellMainWindowController } = require('../../../src/app/backend/services/app-shell-main-window');
+const { createAppShellWindowStateController } = require('../../../src/app/backend/services/app-shell-window-state');
 
-test('浏览器配置内嵌主窗口且只创建侧边栏子视图', () => {
+function createMainWindowFixture(storedState) {
   const views = [];
   let mainWindow = null;
   let sideView = null;
@@ -30,10 +33,10 @@ test('浏览器配置内嵌主窗口且只创建侧边栏子视图', () => {
   class FakeWindow {
     constructor() {
       this.events = new Map();
-      this.webContents = {
-        on: () => {}, isDestroyed: () => false,
+      this.webContents = Object.assign(new EventEmitter(), {
+        isDestroyed: () => false,
         send: (channel, payload) => shellMessages.push({ channel, payload }),
-      };
+      });
       this.contentView = { addChildView: () => {} };
     }
     on(name, listener) {
@@ -62,12 +65,21 @@ test('浏览器配置内嵌主窗口且只创建侧边栏子视图', () => {
     setContextMenu() {}
     setToolTip() {}
   }
+  const windowDeps = {
+    app: { getPath: () => 'C:/tmp', on: () => {}, once: () => {} },
+    fs: {
+      existsSync: (file) => Boolean(storedState) && file.endsWith('.json'),
+      readFileSync: () => JSON.stringify(storedState),
+    },
+    path, screen: {}, logger: { error: () => {}, log: () => {}, warn: () => {} },
+  };
+  const windowStateController = createAppShellWindowStateController(windowDeps);
+  const runtime = createAppState(windowStateController);
   const controller = createAppShellMainWindowController({
+    ...windowDeps,
+    windowStateController,
     APP_DISPLAY_NAME: 'AI-FREE', BrowserWindow: FakeWindow, WebContentsView: FakeView, Tray: FakeTray,
     Menu: { buildFromTemplate: () => ({}), setApplicationMenu: () => {} },
-    app: { getPath: () => 'C:/tmp', on: () => {}, once: () => {} },
-    fs: { existsSync: () => false, mkdirSync: () => {}, unlinkSync: () => {} },
-    path, screen: {}, logger: { error: () => {}, log: () => {}, warn: () => {} },
     resolveAppIconPath: () => 'C:/app/logo.ico',
     attachContextMenu: () => {}, resolveAddTab: () => null, resolveTabs: () => new Map(),
     resolveActiveTabId: () => null, resolveRefreshActiveTab: () => null, resolveAuth: () => null,
@@ -75,14 +87,18 @@ test('浏览器配置内嵌主窗口且只创建侧边栏子视图', () => {
     getSideView: () => sideView, setSideView: (view) => { sideView = view; },
     setMainWindow: (window) => { mainWindow = window; }, resolveMainWindow: () => mainWindow,
     resolveControlPanelWindow: () => null,
-    getIsSidebarVisible: () => true, isControlPanelModeEnabled: () => false,
+    getIsSidebarVisible: runtime.getIsSidebarVisible, isControlPanelModeEnabled: () => false,
   });
+  return { controller, views, loadedPages, shellMessages, getMaximizeCalls: () => maximizeCalls };
+}
 
+test('浏览器配置内嵌主窗口且只创建侧边栏子视图', () => {
+  const { controller, views, loadedPages, shellMessages, getMaximizeCalls } = createMainWindowFixture();
   const window = controller.createMainWindow();
-  assert.equal(maximizeCalls, 1);
+  assert.equal(getMaximizeCalls(), 1);
   window.emit('ready-to-show');
   assert.equal(views.length, 1);
-  assert.deepEqual(loadedPages, ['C:/app/frontend/sidebar/account-center.html']);
+  assert.deepEqual(loadedPages, ['C:/app/frontend/sidebar/ai-control.html']);
   assert.deepEqual(views[0].bounds, { x: 700, y: 0, width: 300, height: 659 });
   assert.equal(views[0].visible, true);
   assert.equal(controller.setSidebarWidth(500), 500);
@@ -95,5 +111,24 @@ test('浏览器配置内嵌主窗口且只创建侧边栏子视图', () => {
   assert.deepEqual(shellMessages.at(-1), {
     channel: 'sidebar-width-changed', payload: { visible: true, width: 680 },
   });
+  window.emit('closed');
+});
+
+test('上次收起 AI 侧边栏时，本次窗口首次加载不预留侧边栏宽度', () => {
+  const { controller, views, loadedPages, shellMessages } = createMainWindowFixture({
+    version: 1,
+    bounds: { width: 1000, height: 700 },
+    sidebarWidth: 500,
+    sidebarVisible: false,
+  });
+  const window = controller.createMainWindow();
+  assert.equal(views.length, 1);
+  assert.equal(views[0].visible, false);
+  assert.deepEqual(loadedPages, ['C:/app/frontend/sidebar/ai-control.html']);
+  window.emit('ready-to-show');
+  assert.deepEqual(shellMessages.at(-1), {
+    channel: 'sidebar-width-changed', payload: { visible: false, width: 0 },
+  });
+  assert.equal(controller.setSidebarWidth(550), 0);
   window.emit('closed');
 });

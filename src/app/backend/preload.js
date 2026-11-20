@@ -86,7 +86,6 @@ contextBridge.exposeInMainWorld('aiFree', Object.freeze({
     redeemWoolGiftCode: invokeChannel('redeem-wool-gift-code'),
     unbindDevice: invokeChannel('unbind-device'),
     onCredentialsUpdated: subscribeChannel('license-credentials-updated'),
-    onOpenVipPlans: subscribeChannel('open-vip-plans'),
     onVipAccessRequired: subscribeChannel('vip-access-required'),
   }),
   network: Object.freeze({
@@ -179,8 +178,6 @@ contextBridge.exposeInMainWorld('aiFree', Object.freeze({
     onIndependentBrowserCreateFailed: subscribeChannel('independent-browser-create-failed'),
   }),
   ui: Object.freeze({
-    openAiControlSidebar: sendChannel('open-ai-control-sidebar'),
-    openAccountCenterSidebar: sendChannel('open-account-center-sidebar'),
     emitAppThemeChanged: sendChannel('app-theme-changed'),
     emitServerAccountCookieReceived: sendChannel('server-account-cookie-received'),
     getExternalCodexStatus: invokeChannel('get-external-codex-status'),

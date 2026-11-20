@@ -63,14 +63,10 @@ test('sidebar logos use the runtime asset resolver in source and packaged apps',
   const sidebarRoot = path.join(__dirname, '../../src/app/frontend/sidebar');
   const index = fs.readFileSync(path.join(sidebarRoot, 'index.html'), 'utf8');
   const aiControlPage = fs.readFileSync(path.join(sidebarRoot, 'ai-control.html'), 'utf8');
-  const accountCenterPage = fs.readFileSync(path.join(sidebarRoot, 'account-center.html'), 'utf8');
+  assert.equal(fs.existsSync(path.join(sidebarRoot, 'account-center.html')), false);
   const devConsolePage = fs.readFileSync(path.join(__dirname, '../../src/app/backend/views/dev-console.html'), 'utf8');
   const appShellSource = fs.readFileSync(path.join(__dirname, '../../src/app/backend/services/app-shell.js'), 'utf8');
   const appShell = fs.readFileSync(path.join(__dirname, '../../src/app/frontend/views/app-shell.html'), 'utf8');
-  const accountAuthCss = fs.readFileSync(
-    path.join(sidebarRoot, 'client/app/side/styles/modules/account-auth.css'),
-    'utf8',
-  );
   const layoutCss = fs.readFileSync(
     path.join(sidebarRoot, 'client/app/side/styles/modules/layout.css'),
     'utf8',
@@ -82,22 +78,17 @@ test('sidebar logos use the runtime asset resolver in source and packaged apps',
   const aiControl = readAiControlSource();
 
   assert.ok(index.includes("location.replace('./ai-control.html')"));
-  for (const html of [aiControlPage, accountCenterPage]) {
+  for (const html of [aiControlPage]) {
     assert.ok(html.includes('<script src="./client/scripts/logo-assets.js"></script>'));
   }
   assert.equal((aiControlPage.match(/<img[^>]*data-app-logo/g) || []).length, 1);
-  assert.equal((accountCenterPage.match(/<img[^>]*data-app-logo/g) || []).length, 1);
   assert.ok(logoResolver.includes('AiFreeAppAssets.resolveLogoUrl'));
-  for (const html of [aiControlPage, accountCenterPage, appShell]) {
+  for (const html of [aiControlPage, appShell]) {
     assert.ok(html.includes('<script src="../../shared/app-assets.js"></script>'));
   }
   assert.ok(aiControl.includes('window.aiFreeLogoAssets.url'));
   assert.equal(appShell.includes('id="account-center-btn"'), false);
-  assert.equal(accountCenterPage.includes('data-open-ai-control'), false);
-  assert.equal(accountCenterPage.includes('sidebar-bottom-actions'), false);
-  assert.ok(accountCenterPage.includes('id="account-center-panel"'));
   assert.ok(aiControlPage.includes('data-dev-only'));
-  assert.ok(accountCenterPage.includes('data-dev-only'));
   assert.match(appShell, /id="browser-settings-dev-console"[^>]*data-dev-only[^>]*hidden/);
   assert.match(
     fs.readFileSync(
@@ -120,8 +111,9 @@ test('sidebar logos use the runtime asset resolver in source and packaged apps',
   assert.equal(aiControlPage.includes('network-magic-sidebar.js'), false);
   assert.equal(aiControlPage.includes('id="vpn-node-selector-panel"'), false);
   assert.equal(appShell.includes('settings-network-tools-proxy-title'), false);
-  assert.equal((appShell.match(/<img[^>]*data-app-logo/g) || []).length, 1);
-  assert.match(appShell, /id="shell-network-magic-toggle"[\s\S]*?内置代理[\s\S]*?id="add-tab-btn"[\s\S]*?个人中心/);
+  assert.equal((appShell.match(/<img[^>]*data-app-logo/g) || []).length, 2);
+  assert.match(appShell, /id="home-personal"[\s\S]*?id="sidebar-account-auth"/);
+  assert.doesNotMatch(appShell, /id="add-tab-btn"/);
   assert.match(appShell, /id="shell-ai-control-btn"[\s\S]*?AI 控制/);
   assert.ok(appShell.includes('id="ai-free-settings-panel"'));
   assert.ok(appShell.includes('id="browser-settings-tutorial"'));
@@ -131,8 +123,6 @@ test('sidebar logos use the runtime asset resolver in source and packaged apps',
   assert.equal(appShell.includes('shell-automation-workbench.js'), false);
   assert.equal(appShell.includes('app-shell-automation-canvas.css'), false);
   assert.equal(appShell.includes('app-shell-automation.css'), false);
-  assert.match(accountAuthCss, /\.account-center-panel\s*\{[^}]*overflow-y:\s*auto;/s);
-  assert.match(accountAuthCss, /\.account-center-panel \.container\s*\{[^}]*overflow:\s*visible;/s);
   assert.match(layoutCss, /#browser-empty-state::\-webkit-scrollbar-thumb/);
 });
 

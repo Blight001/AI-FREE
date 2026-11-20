@@ -1,11 +1,5 @@
-// 侧边栏公告、设备号、版本号与动画事件
+// 首页个人中心公告
 
-let updateWidgetState = {
-  visible: false,
-  shownVersion: '',
-  lastPhase: '',
-  activated: false,
-};
 let cachedAppVersion = '';
 
 const {
@@ -158,7 +152,7 @@ function buildAnnouncementHtml(payload = {}) {
 
 // 获取/读取/解析：getCurrentAppVersion的具体业务逻辑。
 async function getCurrentAppVersion() {
-  const domVersion = stripVersionPrefix(safeGetEl('app-version')?.textContent || '');
+  const domVersion = stripVersionPrefix(safeGetEl('shell-app-version')?.textContent || '');
   if (domVersion) {
     cachedAppVersion = domVersion;
     return domVersion;
@@ -177,7 +171,7 @@ async function getCurrentAppVersion() {
         return version;
       }
     } catch (e) {
-      console.warn('[侧边栏] 获取当前版本失败:', e?.message || e);
+      console.warn('[个人中心] 获取当前版本失败:', e?.message || e);
     }
   }
 
@@ -227,100 +221,6 @@ function normalizeUpdateAnnouncementPayload(messageData = {}) {
 // 1. 收到更新通知时只更新公告文案，不展示进度
 // 2. 只有用户确认下载后，主进程发出 app-update-activated，才开始显示进度
 // 3. 下载完成后提示用户关闭软件完成更新，关闭后由主进程启动安装器
-function safeUpdateWidgetEl(id) {
-  return safeGetEl(id);
-}
-
-// 设置/更新/持久化：setUpdateWidgetVisible的具体业务逻辑。
-function setUpdateWidgetVisible(visible) {
-  const widget = safeUpdateWidgetEl('update-widget');
-  if (widget) {
-    widget.hidden = !visible;
-  }
-  updateWidgetState.visible = !!visible;
-}
-
-function normalizeUpdateWidgetPayload(payload) {
-  const percentValue = Number(payload.percent);
-  const versionFields = ['version', 'targetVersion', 'latest_version', 'latestVersion'];
-  return {
-    percent: Number.isFinite(percentValue) ? Math.max(0, Math.min(100, Math.round(percentValue))) : null,
-    version: String(versionFields.map((field) => payload[field]).find(Boolean) || '').trim(),
-    phase: String(payload.phase || '').trim().toLowerCase(),
-    message: String(payload.message || payload.content || '').trim(),
-  };
-}
-
-function renderUpdateWidgetElements(percent, version, message) {
-  const ring = safeUpdateWidgetEl('update-widget-ring');
-  const percentEl = safeUpdateWidgetEl('update-widget-percent');
-  const labelEl = safeUpdateWidgetEl('update-widget-label');
-  const textEl = safeUpdateWidgetEl('update-widget-text');
-  if (ring && percent !== null) ring.style.setProperty('--update-progress', `${percent}%`);
-  if (percentEl) percentEl.textContent = percent !== null ? `${percent}%` : '…';
-  if (labelEl) labelEl.textContent = version ? `更新中 v${version}` : '更新中';
-  if (textEl) textEl.textContent = message || '正在下载更新...';
-}
-
-function shouldResetUpdateWidget(phase) {
-  return ['error', 'failed', 'skip'].includes(phase);
-}
-
-function canShowUpdateWidget(isActivated, phase) {
-  return isActivated || ['confirmed', 'downloading', 'opening'].includes(phase);
-}
-
-// 渲染/刷新：renderUpdateWidget的具体业务逻辑。
-function renderUpdateWidget(payload = {}) {
-  const normalized = normalizeUpdateWidgetPayload(payload);
-  const { percent: clampedPercent, version, phase, message } = normalized;
-  const isActivated = updateWidgetState.activated === true;
-
-  if (version && updateWidgetState.shownVersion && updateWidgetState.shownVersion !== version && phase !== 'opening') {
-    return;
-  }
-
-  if (shouldResetUpdateWidget(phase)) {
-    setUpdateWidgetVisible(false);
-    updateWidgetState.activated = false;
-    updateWidgetState.lastPhase = phase;
-    return;
-  }
-
-  if (!canShowUpdateWidget(isActivated, phase)) return;
-
-  if (!updateWidgetState.visible) {
-    setUpdateWidgetVisible(true);
-  }
-
-  if (version) {
-    updateWidgetState.shownVersion = version;
-  }
-  updateWidgetState.lastPhase = phase || updateWidgetState.lastPhase;
-
-  renderUpdateWidgetElements(clampedPercent, version, message);
-}
-
-// 不同于公告列表，这里只控制“下载进度卡片”的状态。
-// 重置时要清空版本和激活标记，避免下一次更新沿用上一次状态。
-function resetUpdateWidget() {
-  updateWidgetState = {
-    visible: false,
-    shownVersion: '',
-    lastPhase: '',
-    activated: false,
-  };
-  setUpdateWidgetVisible(false);
-  const ring = safeUpdateWidgetEl('update-widget-ring');
-  const percentEl = safeUpdateWidgetEl('update-widget-percent');
-  const labelEl = safeUpdateWidgetEl('update-widget-label');
-  const textEl = safeUpdateWidgetEl('update-widget-text');
-  if (ring) ring.style.setProperty('--update-progress', '0%');
-  if (percentEl) percentEl.textContent = '0%';
-  if (labelEl) labelEl.textContent = '更新中';
-  if (textEl) textEl.textContent = '准备更新...';
-}
-
 // 创建/初始化：initAnnouncementListener的具体业务逻辑。
 function initAnnouncementListener() {
   bindAnnouncementMailControls();
@@ -361,60 +261,11 @@ function initAnnouncementListener() {
           }
           updateAnnouncement(normalizeUpdateAnnouncementPayload(messageData || {}));
         } catch (e) {
-          console.warn('[侧边栏] 处理更新公告失败:', e?.message || e);
+          console.warn('[个人中心] 处理更新公告失败:', e?.message || e);
         }
       })();
     });
 
-    // 主进程确认进入更新流程后才会发这个事件。
-    window.aiFree.updates.onProgress((payload) => {
-      renderUpdateWidget(payload || {});
-    });
-
-    // 用户点了“确认下载”后，才允许进度卡片显示。
-    window.aiFree.updates.onActivated((payload) => {
-      updateWidgetState.activated = true;
-      renderUpdateWidget({
-        ...(payload || {}),
-        phase: 'confirmed',
-      });
-    });
-
-    // 完成态要保留提示，避免用户看到 100% 后没有任何明确反馈。
-    window.aiFree.updates.onComplete((payload) => {
-      renderUpdateWidget({
-        ...(payload || {}),
-        phase: 'completed',
-      });
-      const version = String(payload?.version || payload?.targetVersion || '').trim();
-      const text = version
-        ? `更新包已下载完成，请关闭软件后继续安装 v${version}`
-        : '更新包已下载完成，请关闭软件后继续安装';
-      if (window.MessageModal && typeof window.MessageModal.showInfoMessage === 'function') {
-        window.MessageModal.showInfoMessage(text);
-      }
-      const ring = safeUpdateWidgetEl('update-widget-ring');
-      const percentEl = safeUpdateWidgetEl('update-widget-percent');
-      const labelEl = safeUpdateWidgetEl('update-widget-label');
-      const textEl = safeUpdateWidgetEl('update-widget-text');
-      if (ring) ring.style.setProperty('--update-progress', '100%');
-      if (percentEl) percentEl.textContent = '100%';
-      if (labelEl) labelEl.textContent = version ? `已下载 v${version}` : '已下载完成';
-      if (textEl) textEl.textContent = text;
-      setUpdateWidgetVisible(true);
-    });
-
-    window.aiFree.updates.onError((payload) => {
-      renderUpdateWidget({
-        ...(payload || {}),
-        phase: 'error',
-      });
-      resetUpdateWidget();
-    });
-
-    window.aiFree.updates.onSkip(() => {
-      resetUpdateWidget();
-    });
   }
 }
 
@@ -507,48 +358,6 @@ function updateAnnouncement(announcementData) {
     announcementContent.innerHTML = contentHtml || '<p>暂无公告内容</p>';
     markAnnouncementMailUnread();
   } catch (e) {
-    console.error('[侧边栏] 更新公告栏失败:', e);
+    console.error('[个人中心] 更新公告栏失败:', e);
   }
-}
-
-// 创建/初始化：initSidebarUiListeners的具体业务逻辑。
-function initSidebarUiListeners() {
-  if (typeof window.aiFree?.ui?.onSidebarCollapse !== 'function') return;
-
-  window.aiFree.ui.onDeviceIdUpdated((deviceId) => {
-    try {
-      const deviceIdInput = document.getElementById('device-id');
-      if (deviceIdInput) {
-        deviceIdInput.value = deviceId || '';
-      }
-    } catch (e) {
-      console.warn('更新设备号失败:', e);
-    }
-  });
-
-  window.aiFree.ui.onLicenseUsageUpdated((usage) => {
-    try {
-      const usageText = formatUsageTimesText(usage);
-      if (typeof setWoolPlatformRemainingUsage === 'function') {
-        const usagePayload = usage?.licenseUsage || usage?.result || usage || {};
-        const platform = usagePayload.platform || usagePayload.platform_name || usagePayload.currentPlatform || '';
-        setWoolPlatformRemainingUsage(usageText, platform);
-      }
-    } catch (e) {
-      console.warn('更新本地试用次数显示失败:', e);
-    }
-  });
-
-  window.aiFree.ui.onAppVersion((version) => {
-    try {
-      cachedAppVersion = stripVersionPrefix(version || '') || cachedAppVersion;
-      const el = document.getElementById('app-version');
-      if (el) {
-        const v = String(version || '').trim();
-        el.textContent = v ? `v${v}` : '';
-      }
-    } catch (e) {
-      console.warn('更新版本号失败:', e);
-    }
-  });
 }

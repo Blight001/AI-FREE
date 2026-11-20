@@ -4,6 +4,7 @@
 'use strict';
 
 const { createAppState } = require('../runtime/app-state');
+const { createAppShellWindowStateController } = require('../services/app-shell-window-state');
 const { createLicenseCache } = require('../runtime/license-cache');
 const { createUiBridge } = require('./create-ui-bridge');
 const { createAppUpdater } = require('../services/app-updater');
@@ -78,7 +79,8 @@ function prepareAiSandboxDirectory(app, fileSystem) {
 
 function createCoreServices({ app, fs, path, BrowserWindow, dialog, shell, screen, powerSaveBlocker, safeStorage, safeModePolicy, getTabManager }) {
   // ---- 全局状态 ----
-  const appRuntime = createAppState();
+  const windowStateController = createAppShellWindowStateController({ app, fs, path, screen, logger: console });
+  const appRuntime = createAppState(windowStateController);
   const tabs = appRuntime.tabs;
   const lookupByIp = createBrowserIpGeolocationLookup();
 
@@ -369,6 +371,7 @@ function createCoreServices({ app, fs, path, BrowserWindow, dialog, shell, scree
   return {
     APP_DISPLAY_NAME,
     appRuntime,
+    windowStateController,
     tabs,
     browserRuntimeManager,
     lookupByIp,

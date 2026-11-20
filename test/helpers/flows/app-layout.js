@@ -14,7 +14,6 @@ function applicationLayout(runtime, options = {}) {
   const sidebar = options.sidebarPath || path.join(root, 'src/app/frontend/sidebar/ai-control.html');
   const pages = {
     ai: sidebar,
-    account: path.join(path.dirname(sidebar), 'account-center.html'),
     shell: path.join(options.sidebarPath ? projectRoot : root, 'src/app/frontend/views/app-shell.html'),
   };
   return Object.freeze({ runtime: options.sidebarPath ? 'override' : runtime, root, pages: Object.freeze(pages),

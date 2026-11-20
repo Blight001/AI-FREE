@@ -3,6 +3,7 @@ const { resolveTabTitle } = require('../../services/tab-common');
 const { createTabContextMenuController } = require('../../features/browser/tab-context-menu-controller');
 const { createNetworkMagicPopupController } = require('../../features/network/network-magic-popup-controller');
 const { createSidebarFocusHandler } = require('../../features/browser/sidebar-focus-controller');
+const { registerExternalMcpConfigIpc } = require('../../features/browser/register-external-mcp-config-ipc');
 const {
   readWindowCloseBehavior,
   writeWindowCloseBehavior,
@@ -292,21 +293,23 @@ function registerTabIPC(ipc, ui, contextMenu) {
 }
 
 function readSidebarWidth(sideView) {
-  if (!sideView) return 0;
+  if (!sideView || sideView.getVisible?.() === false) return 0;
   const bounds = sideView.getBounds?.();
   return Number(bounds?.width) || 0;
 }
 
-function registerSidebarNavigationIPC(ipc, ui) {
-  ipc.on('toggle-sidebar', () => {
-    ui.toggleSidebar();
-  });
-  ipc.on('open-ai-control-sidebar', () => {
-    ui.openAiControlSidebar?.();
-  });
-  ipc.on('open-account-center-sidebar', () => {
-    ui.openAccountCenterSidebar?.();
-  });
+function openHomeAccountCenter(ui) {
+  const contents = ui.getMainWindow?.()?.webContents;
+  if (!contents || contents.isDestroyed?.()) return;
+  const open = () => {
+    if (contents.isDestroyed?.()) return;
+    ui.switchTab(null);
+    ui.revealMainWindow?.();
+    contents.focus?.();
+    contents.send('open-account-center');
+  };
+  if (contents.isLoadingMainFrame?.()) contents.once('did-finish-load', open);
+  else open();
 }
 
 function alignedStartupPayload(ctx, overrides = {}) {
@@ -334,27 +337,6 @@ function registerStartupPreferenceIPC(ipc, ctx) {
       options: { platform: process.platform, execPath: process.execPath },
     })
   ));
-}
-
-function registerExternalCodexIPC(ipc, ctx) {
-  ipc.handle('get-external-codex-status', async () => {
-    const bridge = ctx.browserAutomationBridge;
-    if (!bridge?.getExternalMcpStatus) return { ok: false, error: '外部 Codex 桥接尚未装配' };
-    return {
-      ok: true,
-      data: { ...bridge.getExternalMcpStatus(), codex: ctx.externalCodexLink?.getStatus?.() || null },
-    };
-  });
-  ipc.handle('copy-external-codex-config', async () => {
-    const copyText = ctx.externalCodexLink?.getCopyText?.() || ctx.externalCodexLink?.getConfig?.();
-    if (!copyText) return { ok: false, error: '外部 Codex 自动连接组件尚未装配' };
-    try {
-      clipboard.writeText(copyText);
-      return { ok: true, data: { mode: 'stdio' } };
-    } catch (error) {
-      return { ok: false, error: uiIpcError(error) };
-    }
-  });
 }
 
 function registerWindowPreferencesIPC(ipc, ctx) {
@@ -404,19 +386,16 @@ function registerUiUtilityIPC(ipc, ctx) {
     ui.setUiScale?.(payload.scale);
   });
   registerWindowPreferencesIPC(ipc, ctx);
-  registerExternalCodexIPC(ipc, ctx);
-  registerSidebarNavigationIPC(ipc, ui);
+  ipc.on('toggle-sidebar', () => ui.toggleSidebar());
   const networkMagicPopup = createNetworkMagicPopupController({ ui });
   ipc.on('toggle-network-magic-panel', (_event, payload = {}) => {
     networkMagicPopup.toggle(payload);
   });
   ipc.on('ensure-sidebar-visible', () => ui.ensureSidebarVisible?.());
-  ipc.on('request-account-center', () => {
-    try {
-      ui.ensureSidebarVisible?.();
-      const contents = ui.getSideView?.()?.webContents;
-      if (contents && !contents.isDestroyed?.()) contents.send('open-account-center');
-    } catch (_) {}
+  ipc.on('request-account-center', (event) => {
+    const popup = networkMagicPopup.getWindow();
+    if (popup && popup.webContents.id === event.sender?.id) networkMagicPopup.close();
+    openHomeAccountCenter(ui);
   });
   ipc.handle('open-active-web-console', async () => {
     try {
@@ -461,6 +440,7 @@ function registerUiIPC(ctx) {
   ipc.handle('get-app-theme', async () => ({ ok: true, theme: theme.current() }));
   registerTabIPC(ipc, ctx.ui, contextMenu);
   registerUiUtilityIPC(ipc, ctx);
+  registerExternalMcpConfigIpc(ipc, ctx, (text) => clipboard.writeText(text));
 }
 
 module.exports = { registerUiIPC };

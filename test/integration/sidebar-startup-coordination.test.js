@@ -444,21 +444,19 @@ test('独立首页登录门禁读取真实会话，已登录继续操作、未�
       },
     });
     vm.runInContext(
-      readSource('src/app/frontend/sidebar/client/app/side/controllers/pages/side-panel/modules/account-auth.js'),
+      readSource('src/app/frontend/sidebar/client/app/side/controllers/pages/side-panel/modules/account-login-gate.js'),
       context,
     );
-    const redirected = await context.redirectToSidebarAccountLogin();
-    return { accountCenterRequests, authenticated: context.document.documentElement.dataset.accountAuthenticated, redirected };
+    const redirected = await context.redirectToAccountLogin();
+    return { accountCenterRequests, redirected };
   }
 
   assert.deepEqual(await runGate(true), {
     accountCenterRequests: 0,
-    authenticated: 'true',
     redirected: false,
   });
   assert.deepEqual(await runGate(false), {
     accountCenterRequests: 1,
-    authenticated: 'false',
     redirected: true,
   });
 });

@@ -1,5 +1,5 @@
 // 创建/初始化：createAppState的具体业务逻辑。
-function createAppState() {
+function createAppState(windowStateController) {
   const tabs = new Map();
 
   const state = {
@@ -9,7 +9,6 @@ function createAppState() {
     devConsoleWindow: null,
     activeTabId: null,
     sideView: null,
-    isSidebarVisible: true,
     isServerShutdownInProgress: false,
     isMainBootstrapped: false,
     isSwitchingToLicense: false,
@@ -55,8 +54,8 @@ function createAppState() {
     setActiveTabId: (next) => { state.activeTabId = next; },
     getSideView: () => state.sideView,
     setSideView: (next) => { state.sideView = next; },
-    getIsSidebarVisible: () => state.isSidebarVisible,
-    setIsSidebarVisible: (next) => { state.isSidebarVisible = next; },
+    getIsSidebarVisible: windowStateController.getIsSidebarVisible,
+    setIsSidebarVisible: windowStateController.setIsSidebarVisible,
     getIsServerShutdownInProgress: () => state.isServerShutdownInProgress,
     setIsServerShutdownInProgress: (next) => { state.isServerShutdownInProgress = next; },
     getIsMainBootstrapped: () => state.isMainBootstrapped,

@@ -3,6 +3,7 @@
   "id": "account-preferences",
   "domain": "account-preferences",
   "steps": [
+    {"id":"openPersonal","use":"openPersonal","args":{},"expect":[{"path":"sent","op":"equals","value":true}]},
     {"id":"initial","use":"inspect","args":{"ready":{"authVisible":true,"closeBehavior":"ask","startupEnabled":false}},"expect":[{"path":"authVisible","op":"equals","value":true},{"path":"confirmVisible","op":"equals","value":false},{"path":"authSubmit","op":"equals","value":"登录"},{"path":"authSwitch","op":"equals","value":"去注册"},{"path":"hasModeArrow","op":"equals","value":true},{"path":"closeBehavior","op":"equals","value":"ask"},{"path":"startupEnabled","op":"equals","value":false},{"path":"settingsOpen","op":"equals","value":false},{"path":"settingsTitle","op":"equals","value":"常规设置"},{"path":"settingsBelowAnnouncement","op":"equals","value":true}]},
     {"id":"showRegistration","use":"click","args":{"target":"authMode"},"expect":[{"path":"sent","op":"equals","value":true}]},
     {"id":"registration","use":"inspect","args":{"ready":{}},"expect":[{"path":"confirmVisible","op":"equals","value":true},{"path":"authSubmit","op":"equals","value":"注册并登录"},{"path":"authSwitch","op":"equals","value":"去登录"}]},
@@ -17,6 +18,7 @@
     {"id":"startupSaved","use":"inspect","args":{"ready":{"startupSaved":true}},"expect":[{"path":"startupEnabled","op":"equals","value":true},{"path":"startupSaved","op":"equals","value":true}]},
     {"id":"startupPersisted","use":"inspectSaved","args":{},"expect":[{"path":"closeBehavior","op":"equals","value":"hide"},{"path":"openAtLogin","op":"equals","value":true},{"path":"startMinimized","op":"equals","value":true}]},
     {"id":"reload","use":"reload","args":{},"expect":[{"path":"loaded","op":"equals","value":true}]},
+    {"id":"reopenPersonal","use":"openPersonal","args":{},"expect":[{"path":"sent","op":"equals","value":true}]},
     {"id":"reloaded","use":"inspect","args":{"ready":{"closeBehavior":"hide","startupEnabled":true}},"expect":[{"path":"settingsOpen","op":"equals","value":false},{"path":"closeBehavior","op":"equals","value":"hide"},{"path":"startupEnabled","op":"equals","value":true}]}
   ]
 }

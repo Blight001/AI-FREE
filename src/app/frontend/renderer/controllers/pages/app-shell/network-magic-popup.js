@@ -1,5 +1,7 @@
 function bindNetworkMagicPopupPage() {
   if (!document.documentElement.classList.contains('network-magic-popup-page')) return;
+  window.MessageModal.initServerMessageListener();
+  bindClashMiniControls();
   const originalSetNodeOpen = window.setVpnNodeSelectorOpen;
   window.setVpnNodeSelectorOpen = (open) => {
     originalSetNodeOpen?.(open);

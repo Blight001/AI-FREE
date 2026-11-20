@@ -138,12 +138,19 @@ test('公告轮询启动后立即拉取并下发，不等待首个定时间隔',
   assert.equal(requestCount, 1);
 });
 
-test('切换侧栏页面重新刷新时同一公告在本次软件运行中只展示一次', async () => {
+test('首页重载恢复普通公告，但不重复执行软件更新命令', async () => {
   let deliveryCount = 0;
+  let updateCount = 0;
+  let pageRevision = 1;
   const poller = createAnnouncementPoller({
-    getJson: async () => ({ success: true, data: [{ id: 10, content: '仅展示一次' }] }),
+    getJson: async () => ({ success: true, data: [
+      { id: 10, content: '本日公告', type: 'announcement' },
+      { id: 11, message_type: 'update', app_version: '99.0.0' },
+    ] }),
     getServerBase: () => 'https://example.test',
+    getPageRevision: () => pageRevision,
     shouldPoll: () => true,
+    sendUpdateNotice: () => { updateCount += 1; return true; },
     sendToSide: (channel) => {
       if (channel === 'server-message') deliveryCount += 1;
       return true;
@@ -152,9 +159,12 @@ test('切换侧栏页面重新刷新时同一公告在本次软件运行中只�
   });
 
   await poller.refreshNow();
-  await poller.refreshNow({ resetDelivery: true });
-
+  await poller.refreshNow();
   assert.equal(deliveryCount, 1);
+  pageRevision += 1;
+  await poller.refreshNow();
+  assert.equal(deliveryCount, 2);
+  assert.equal(updateCount, 1);
 });
 
 test('主进程仅对高于当前版本的公告发出更新提醒', async () => {

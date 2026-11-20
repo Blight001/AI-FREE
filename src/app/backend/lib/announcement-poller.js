@@ -1,5 +1,6 @@
 const DEFAULT_INTERVAL_MS = 60000;
 const { summarizeUpdatePayload } = require('../utils/update-payload');
+const { isShutdownAnnouncement } = require('../../shared/server-message-utils');
 
 class AnnouncementPoller {
   constructor(options = {}) {
@@ -7,6 +8,7 @@ class AnnouncementPoller {
     this.postJson = options.postJson;
     this.getServerBase = options.getServerBase;
     this.getClientIdentity = options.getClientIdentity;
+    this.getPageRevision = options.getPageRevision;
     this.shouldPoll = options.shouldPoll;
     this.sendToSide = options.sendToSide;
     this.sendUpdateNotice = options.sendUpdateNotice;
@@ -124,28 +126,30 @@ class AnnouncementPoller {
       const id = this.resolveAnnouncementId(announcement);
       const fingerprint = this.resolveAnnouncementFingerprint(announcement);
       if (!id || !fingerprint) continue;
-      current.set(id, fingerprint);
-      if (previous.get(id) === fingerprint) continue;
-      await this.deliverAnnouncement(announcement, id, current);
+      const channel = this.resolveDeliveryChannel(announcement);
+      const pageOnly = channel === 'server-message' && !isShutdownAnnouncement(announcement);
+      const deliveryKey = JSON.stringify([fingerprint, pageOnly ? this.getPageRevision?.() : null]);
+      current.set(id, deliveryKey);
+      if (previous.get(id) === deliveryKey) continue;
+      await this.deliverAnnouncement(announcement, channel, id, current);
     }
     this.seenByServer.set(base, current);
   }
 
-  async deliverAnnouncement(announcement, id, current) {
+  async deliverAnnouncement(announcement, channel, id, current) {
     try {
-      const channel = this.resolveDeliveryChannel(announcement);
       const delivered = channel === 'app-update-notice' && typeof this.sendUpdateNotice === 'function'
         ? await this.sendUpdateNotice(announcement)
         : this.sendToSide(channel, announcement);
       if (delivered === false) {
         current.delete(id);
-        this.logger.warn?.('[公告轮询] 侧边栏尚未就绪，公告将在下次轮询重试:', id);
+        this.logger.warn?.('[公告轮询] 主窗口尚未就绪，公告将在下次轮询重试:', id);
       } else {
         this.logger.log?.('[公告轮询] 公告已交给软件界面:', id);
       }
     } catch (error) {
       current.delete(id);
-      this.logger.warn?.('[公告轮询] 下发公告到侧边栏失败:', error?.message || error);
+      this.logger.warn?.('[公告轮询] 下发公告到主窗口失败:', error?.message || error);
     }
   }
 

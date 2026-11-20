@@ -171,9 +171,10 @@ function openVipBenefitsDialog() {
 }
 
 function openVipAccountCenter() {
+  if (safeGetEl('browser-empty-state').hidden) window.aiFree.shell.switchTab(null);
   vipPlansOpenRequested = true;
-  openAccountCenterPanel();
   if (isSidebarAccountAuthenticated()) openVipBenefitsDialog();
+  window.AppShellHome.openPersonal();
 }
 
 function renderVipCardCopy(vip, title, description, action) {

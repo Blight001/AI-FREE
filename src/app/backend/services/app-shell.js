@@ -12,7 +12,8 @@ class AppShellRuntime {
     this.deps = /** @type {Record<string, any>} */ ({ logger: console, ...deps });
     this.controlPanelWindow = null;
     this.announcementPoller = null;
-    this.sideAnnouncementReady = false;
+    this.announcementReady = false;
+    this.announcementPageRevision = 0;
     this.initializeControllers();
   }
 
@@ -51,10 +52,10 @@ class AppShellRuntime {
     return this.resolveDependency('getControlPanelWindow', this.controlPanelWindow);
   }
 
-  sendAnnouncementToSide(channel, payload) {
+  sendAnnouncementToHome(channel, payload) {
     try {
-      const webContents = this.resolveSideView()?.webContents;
-      if (!this.sideAnnouncementReady || !webContents || webContents.isDestroyed()) return false;
+      const webContents = this.resolveMainWindow()?.webContents;
+      if (!this.announcementReady || !webContents || webContents.isDestroyed()) return false;
       if (typeof webContents.isLoadingMainFrame === 'function' && webContents.isLoadingMainFrame()) return false;
       webContents.send(channel, payload);
       return true;
@@ -79,7 +80,7 @@ class AppShellRuntime {
 
   async sendUpdateNotice(payload) {
     if (typeof this.deps.handleServerUpdateCommand !== 'function') {
-      return this.sendAnnouncementToSide('app-update-notice', payload);
+      return this.sendAnnouncementToHome('app-update-notice', payload);
     }
     await this.deps.handleServerUpdateCommand(payload);
     return true;
@@ -92,8 +93,9 @@ class AppShellRuntime {
       postJson: this.deps.postJson,
       getServerBase: this.deps.getServerBase,
       getClientIdentity: this.getAnnouncementClientIdentity.bind(this),
+      getPageRevision: () => this.announcementPageRevision,
       shouldPoll: this.canPollAnnouncements.bind(this),
-      sendToSide: this.sendAnnouncementToSide.bind(this),
+      sendToSide: this.sendAnnouncementToHome.bind(this),
       sendUpdateNotice: this.sendUpdateNotice.bind(this),
       logger: this.deps.logger,
     });
@@ -234,12 +236,13 @@ class AppShellRuntime {
       resolveMainWindow: this.resolveMainWindow.bind(this),
       resolveRefreshActiveTab: this.resolveRefreshActiveTab.bind(this),
       resolveTabs: this.resolveTabs.bind(this),
-      setSideAnnouncementReady: (value) => { this.sideAnnouncementReady = value; },
+      setAnnouncementReady: (value) => {
+        this.announcementReady = value;
+        if (value) this.announcementPageRevision += 1;
+      },
     });
     this.createMainWindow = mainController.createMainWindow;
     this.revealMainWindow = mainController.revealMainWindow;
-    this.openAiControlSidebar = mainController.openAiControlSidebar;
-    this.openAccountCenterSidebar = mainController.openAccountCenterSidebar;
     this.setSidebarWidth = mainController.setSidebarWidth;
     this.setUiScale = mainController.setUiScale;
     this.getUiScale = mainController.getUiScale;
@@ -296,8 +299,6 @@ function createAppShell(deps = {}) {
     bootstrapMainApp: runtime.bootstrapMainApp,
     createMainWindow: runtime.createMainWindow,
     revealMainWindow: runtime.revealMainWindow,
-    openAiControlSidebar: runtime.openAiControlSidebar,
-    openAccountCenterSidebar: runtime.openAccountCenterSidebar,
     getUiScale: runtime.getUiScale.bind(runtime),
     isLaunchMinimizedStartupRequested: runtime.isLaunchMinimizedStartupRequested.bind(runtime),
     refreshAnnouncements: runtime.refreshAnnouncements.bind(runtime),

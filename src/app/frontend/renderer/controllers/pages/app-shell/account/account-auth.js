@@ -58,9 +58,6 @@ function openSidebarAccountAuth(mode = 'login') {
   setSidebarAuthMode(mode);
   panel.hidden = false;
   panel.setAttribute('aria-hidden', 'false');
-  if (safeGetEl('account-center-panel')?.classList.contains('active')) {
-    setTimeout(() => safeGetEl('sidebar-auth-username')?.focus(), 0);
-  }
 }
 
 function closeSidebarAccountAuth() {
@@ -68,62 +65,22 @@ function closeSidebarAccountAuth() {
   if (!panel || panel.hidden) return;
   panel.hidden = true;
   panel.setAttribute('aria-hidden', 'true');
-  const password = safeGetEl('sidebar-auth-password');
-  const confirmation = safeGetEl('sidebar-auth-password-confirm');
-  if (password) password.value = '';
-  if (confirmation) confirmation.value = '';
+  clearSidebarAuthPasswords();
   setSidebarAuthStatus('');
   sidebarAuthPreviousFocus?.focus?.();
   sidebarAuthPreviousFocus = null;
 }
 
-function openAccountCenterPanel() {
-  if (!safeGetEl('account-center-panel')) {
-    if (document.documentElement?.classList?.contains('ai-control-page')) {
-      try { sessionStorage.setItem('ai-free.account-center.open-login', 'true'); } catch (_) {}
-      location.assign('./account-center.html');
-      return;
-    }
-    window.aiFree?.ui?.requestAccountCenter?.();
-    return;
+function clearSidebarAuthPasswords() {
+  for (const id of ['sidebar-auth-password', 'sidebar-auth-password-confirm']) {
+    const input = safeGetEl(id);
+    if (input) input.value = '';
   }
-  window.activateSidebarPanel?.('account-center-panel');
-  if (!isSidebarAccountAuthenticated()) openSidebarAccountAuth('login');
 }
 
 function isSidebarAccountAuthenticated() {
-  const profile = safeGetEl('sidebar-account-session');
-  if (profile) return profile.dataset.authenticated === 'true';
-  return document.documentElement.dataset.accountAuthenticated === 'true';
+  return safeGetEl('sidebar-account-session')?.dataset.authenticated === 'true';
 }
-
-// 返回 true 表示本次操作已被登录门禁接管，只切换侧边栏栏目，
-// 不发起任何业务服务器请求。
-async function redirectToSidebarAccountLogin() {
-  if (isSidebarAccountAuthenticated()) return false;
-  if (!safeGetEl('sidebar-account-session')) {
-    const session = await window.aiFree?.account?.getSession?.().catch(() => null);
-    const authenticated = session?.authenticated === true;
-    document.documentElement.dataset.accountAuthenticated = String(authenticated);
-    if (authenticated) return false;
-  }
-  openAccountCenterPanel();
-  return true;
-}
-
-window.openAccountCenterPanel = openAccountCenterPanel;
-window.isSidebarAccountAuthenticated = isSidebarAccountAuthenticated;
-window.redirectToSidebarAccountLogin = redirectToSidebarAccountLogin;
-
-document.addEventListener?.('DOMContentLoaded', () => {
-  if (!safeGetEl('account-center-panel')) return;
-  let shouldOpenLogin = false;
-  try {
-    shouldOpenLogin = sessionStorage.getItem('ai-free.account-center.open-login') === 'true';
-    sessionStorage.removeItem('ai-free.account-center.open-login');
-  } catch (_) {}
-  if (shouldOpenLogin && !isSidebarAccountAuthenticated()) openSidebarAccountAuth('login');
-});
 
 function collectSidebarVipSources(session) {
   const validation = session.validation && typeof session.validation === 'object' ? session.validation : {};

@@ -17,7 +17,6 @@ test('page fixture resolves source, generated and packaged layouts without cwd o
   for (const [index, runtime] of ['source', 'generated', 'packaged'].entries()) {
     const layout = applicationLayout(runtime, { projectRoot });
     assert.equal(layout.pages.ai, path.join(roots[index], 'src/app/frontend/sidebar/ai-control.html'));
-    assert.equal(layout.pages.account, path.join(roots[index], 'src/app/frontend/sidebar/account-center.html'));
     assert.equal(layout.pages.shell, path.join(roots[index], 'src/app/frontend/views/app-shell.html'));
     assert.equal(layout.peerController, path.join(roots[index], 'src/app/backend/features/browser/remote-browser-peer-controller.js'));
   }

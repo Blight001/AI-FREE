@@ -32,7 +32,7 @@ test('homepage no longer ships the native Chromium automation workbench', () => 
 });
 
 test('sidebar pages do not reload the removed workbench assets', () => {
-  for (const page of ['src/app/frontend/sidebar/ai-control.html', 'src/app/frontend/sidebar/account-center.html']) {
+  for (const page of ['src/app/frontend/sidebar/ai-control.html']) {
     const html = source(page);
     assert.equal(html.includes('app-shell-automation'), false, `${page} 仍引用工作台样式`);
     assert.equal(html.includes('shell-automation-'), false, `${page} 仍引用工作台脚本`);

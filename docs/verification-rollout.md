@@ -6,15 +6,29 @@
 
 | 阶段 | 交付与验收条件 | 当前状态 |
 |---|---|---|
-| 1：统一契约与执行边界 | 一个领域能力真源；list/plan/run；场景预检与快照；取消不重放写操作；有界证据；资源逆序释放，Electron 退出后清磁盘 | 已实现，验证工具 25 项测试通过；全项目门禁仍有既有阻塞 |
+| 1：统一契约与执行边界 | 一个领域能力真源；list/plan/run；场景预检与快照；取消不重放写操作；有界证据；资源逆序释放，Electron 退出后清磁盘 | 已实现。验证工具测试与日常源码门禁通过 |
 | 2：浏览器领域场景 | 对齐、工作流、remote peer 使用可替换 JSON；保留原断言；直接读回关键副作用；真实内核执行 | 对齐 36 步和工作流 21 步已通过；peer 路径已修复，源码/生成态/新打包态各 4 步通过；2.6.53 重新打包与独立资源检查通过 |
-| 3：Electron UI 与运行态 | 主窗口、AI 页、账号页各有明确夹具和领域驱动；动作与 DOM 判定分离；覆盖首次加载、导航、关闭重开和显隐；源码、生成态、打包态分别验证 | 部分落地：三个运行态共用 application-pages 的 17 步资源/结构场景，均通过。browser-settings-ui 的业务操作仍为固定序列，真实 preload/IPC、应用内侧栏导航和主窗口/侧栏显隐遮挡尚未迁移 |
+| 3：Electron UI 与运行态 | 主窗口、AI 页、账号页各有明确夹具和领域驱动；动作与 DOM 判定分离；覆盖首次加载、导航、关闭重开和显隐；源码、生成态、打包态分别验证 | 部分落地。首页栏目与个人中心偏好已迁移，源码、生成态、打包态共用场景。browser-settings-ui 保留侧栏、任务栏等其他固定验收 |
 | 4：原生生命周期与故障恢复 | 原生窗口、输入、Phase 3、存储和媒体采用各自领域；覆盖失败、取消、进程退出、恢复；记录源码/Host/Chromium/扩展指纹 | 待迁移。保留低层 trusted 输入与协议拒绝检查，不以高层点击代替；Phase 3 品牌断言阻塞尚在 |
 | 5：有界探索与 MCP 适配 | 复用领域动作生成有种子、可缩减的状态序列及受约束组合；MCP 仅适配同一 list/plan/run；验证取消、错误和证据兼容 | 待实现。目前只有 CLI/JavaScript 接口，没有注册 MCP 服务，也没有随机测试框架依赖 |
 
 每阶段通过后再扩大范围。保留 `schemaVersion:1` 的既有含义，新增领域能力采取显式扩展；旧普通函数映射 API 保持兼容。业务工作流仍由生产执行器负责，JSON 不增加脚本、循环或未知结果的自动重试。
 
-## 关闭应用后的重新打包复核
+## 首页业务交互增量
+
+2026-11-20，首页和个人中心偏好迁移至 `home-workspace.json` 和 `account-preferences.json`。首页覆盖栏目、键盘导航、Cookie 编辑框与焦点恢复。个人中心覆盖登录和注册表单切换、设置按钮、关闭方式、开机启动、主进程状态读回、重载恢复。两条场景分别为 18、17 步。监听页面及 preload 使用实际产品代码，偏好写入使用隔离夹具状态。验收还覆盖 AI 表单触发个人中心、侧栏草稿保持和 MCP 配置复制请求。
+
+项目入口为 `node scripts/verify-project.js --flow test/acceptance/flows/project-business-ui.json`。源码及生成态共 5 项通过，打包态另有 5 项通过，包括两条业务流程、页面资源、远程 peer 和准备步骤。两份报告的 cleanupOk 均为 true。
+
+修复测试读取账号会话时落到默认用户数据路径的问题，隔离账号会话、旧数据迁移及存储目录。源码构建测试改用独立临时目录，避免覆盖率或并行验证清理共享生成目录。原有过期结构检查按现行入口更新，业务预期由真实页面验收执行。guardrails 零超限。verify 包含架构检查、全量测试 876 项及覆盖率复跑 876 项，均通过。通用验收通过。2.6.53 重新构建与独立打包资源检查通过，未安装。
+
+原生对齐 36 步和原生工作流 21 步用本轮已构建的 Host 通过。较晚复跑时，开发版 Electron 占用 Host，统一入口的重新编译报 LNK1104，因此两项原生场景改用同一隔离夹具独立执行。日志为 `ai-free-business-native-existing.txt`。
+
+Phase 3 仍在首个导航请求的 Sec-CH-UA HTTP 头与自定义品牌不符处失败。页面读取同一自定义品牌已通过，应独立排查发送时序和内核行为。0052 的补丁上下文和块计数已按前序补丁的实际输出重建。59 个有效补丁在隔离索引中完整重放通过，未重新编译 Chromium。下方较早构建和失败记录保留供追溯。
+
+本机报告位于系统临时目录。`ai-free-business-current-flow.json` 记录源码和生成态，`ai-free-business-packaged.json` 记录打包态，`ai-free-business-verified.txt` 记录代码门禁和覆盖率。`ai-free-business-final-acceptance.txt` 记录通用验收，`ai-free-business-patches-fixed.json` 记录补丁重放。
+
+## 关闭应用后的重新打包复核（早期记录）
 
 2026-11-20：用户关闭应用后，native-build 已成功，原 Host 文件占用解除；接口/DPI 两项测试和 Electron 40 真实加载通过。统一执行器重新执行 prepare、native-build、alignment 36 步和 workflow 21 步，全部通过，报告 `ai-free-rebuilt-host-flows-20261120.json`。
 
@@ -93,7 +107,3 @@ build:win 前两次继续在清理旧 win-unpacked 时遇到 EPERM。对 app.asa
 持续记录增加场景需要修改的文件/脚本行数、无业务改动时的偶发失败率、定位耗时、失败/超时后的残留资源数。资源作用域与领域声明仅提供机制，不能自动证明判定独立或安全并行；并行前还需隔离构建产物、桌面焦点和原生 Host。先依据实际维护数据决定是否增加依赖和基础设施。
 
 用法及职责真源见 [项目验证接口](project-verification.md) 和 [交互验证流程](interactive-verification.md)。
-
-## 首页与个人中心偏好
-
-`node scripts/verify-project.js --flow test/acceptance/flows/project-business-ui.json` 使用相同流程验证源码和生成态。首页场景覆盖键盘切换、Cookie 编辑框焦点和个人中心打开请求。偏好场景覆盖登录表单切换、保存到隔离夹具和重新加载后的状态。重新打包后可用 `interactions --only home-workspace-packaged,account-preferences-packaged` 在同一入口验证 ASAR。

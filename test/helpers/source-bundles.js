@@ -28,7 +28,7 @@ function readAiControlSource() {
 }
 
 const splitSourceFiles = {
-  'src/app/frontend/sidebar/client/app/side/controllers/pages/side-panel/modules/account-auth.js': [
+  'src/app/frontend/renderer/controllers/pages/app-shell/account/account-auth.js': [
     'account-auth.js', 'account-auth-vip-plans.js', 'account-auth-usage.js',
     'account-auth-actions.js', 'account-auth-bindings.js',
   ],

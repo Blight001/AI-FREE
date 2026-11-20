@@ -152,6 +152,7 @@ html.sidebar-collapsed #browser-empty-state {
 .shell-home-content .shell-home-primary:hover { box-shadow: 0 0 0 2px var(--shell-tab-active-border); }
 .shell-home-primary:disabled { opacity: .65; cursor: wait; }
 .shell-home-content .browser-history-heading { flex-wrap: wrap; }
+.shell-home-content .browser-history-heading-actions { flex: 0 1 auto; flex-wrap: wrap; }
 
 .shell-home-record-list { display: grid; gap: 5px; }
 .shell-home-record-row, .shell-home-record-empty {
