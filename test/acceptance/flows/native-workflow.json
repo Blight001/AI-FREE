@@ -1,0 +1,485 @@
+{
+  "schemaVersion": 1,
+  "domain": "native-browser",
+  "id": "native-workflow",
+  "steps": [
+    {
+      "id": "acquire",
+      "use": "browser_control",
+      "args": {
+        "action": "acquire"
+      },
+      "expect": [
+        {
+          "path": "success",
+          "op": "equals",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "navigate",
+      "use": "browser_tab",
+      "args": {
+        "action": "navigate",
+        "url": {
+          "$ref": "input.url"
+        }
+      },
+      "expect": [
+        {
+          "path": "success",
+          "op": "equals",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "ready",
+      "use": "browser_wait",
+      "args": {
+        "selector": "#project",
+        "condition": "visible",
+        "timeout_ms": 5000
+      },
+      "expect": [
+        {
+          "path": "success",
+          "op": "equals",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "debug",
+      "use": "browser_workflow",
+      "args": {
+        "action": "set_mode",
+        "mode": "debug",
+        "probes": {
+          "$ref": "input.probes"
+        },
+        "identity_probe": "project"
+      },
+      "expect": [
+        {
+          "path": "success",
+          "op": "equals",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "initial",
+      "use": "browser_observe",
+      "args": {
+        "mark": false
+      },
+      "expect": [
+        {
+          "path": "region",
+          "op": "equals",
+          "value": null
+        }
+      ]
+    },
+    {
+      "id": "missingRegion",
+      "use": "browser_observe",
+      "args": {
+        "region": {
+          "role": "navigation",
+          "label": "missing"
+        },
+        "mark": false
+      },
+      "expect": [
+        {
+          "path": "errorCode",
+          "op": "equals",
+          "value": "REGION_NOT_FOUND"
+        }
+      ]
+    },
+    {
+      "id": "reacquire",
+      "use": "browser_control",
+      "args": {
+        "action": "acquire"
+      },
+      "expect": [
+        {
+          "path": "success",
+          "op": "equals",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "multiline",
+      "use": "browser_action",
+      "args": {
+        "action": "click",
+        "locator": {
+          "role": "button",
+          "name": "♫ 音频"
+        },
+        "probes": [
+          {
+            "name": "clicked",
+            "selector": "#multiline",
+            "read": "attribute",
+            "attribute": "data-state"
+          }
+        ],
+        "identity_probe": "",
+        "expect": [
+          {
+            "name": "clicked",
+            "op": "equals",
+            "value": "clicked"
+          }
+        ]
+      },
+      "expect": [
+        {
+          "path": "success",
+          "op": "equals",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "observed",
+      "use": "browser_observe",
+      "args": {
+        "mark": false
+      },
+      "expect": [
+        {
+          "path": "observationId",
+          "op": "truthy",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "add",
+      "use": "findObserved",
+      "args": {
+        "observation": {
+          "$ref": "observed"
+        },
+        "testId": "add"
+      },
+      "expect": [
+        {
+          "path": "ref",
+          "op": "truthy",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "move",
+      "use": "browser_action",
+      "args": {
+        "action": "click",
+        "selector": "#move"
+      },
+      "expect": [
+        {
+          "path": "success",
+          "op": "equals",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "staleAfterMove",
+      "use": "browser_action",
+      "args": {
+        "action": "click",
+        "ref": {
+          "$ref": "add.ref"
+        },
+        "observation_id": {
+          "$ref": "observed.observationId"
+        },
+        "probes": {
+          "$ref": "input.probes"
+        },
+        "identity_probe": "project",
+        "expect": [
+          {
+            "name": "clips",
+            "op": "increases_by",
+            "value": 1
+          }
+        ]
+      },
+      "expect": [
+        {
+          "path": "success",
+          "op": "equals",
+          "value": false
+        },
+        {
+          "path": "errorCode",
+          "op": "oneOf",
+          "value": [
+            "OBSERVATION_MISMATCH",
+            "OBSERVED_REF_EXPIRED"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "moved",
+      "use": "browser_action",
+      "args": {
+        "action": "click",
+        "locator": {
+          "test_id": "add"
+        },
+        "probes": {
+          "$ref": "input.probes"
+        },
+        "identity_probe": "project",
+        "expect": [
+          {
+            "name": "clips",
+            "op": "increases_by",
+            "value": 1
+          }
+        ]
+      },
+      "expect": [
+        {
+          "path": "success",
+          "op": "equals",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "report",
+      "use": "browser_workflow",
+      "args": {
+        "action": "report",
+        "include_images": true,
+        "include_details": true
+      },
+      "expect": [
+        {
+          "path": "success",
+          "op": "equals",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "evidence",
+      "use": "checkReport",
+      "args": {
+        "report": {
+          "$ref": "report"
+        }
+      },
+      "expect": [
+        {
+          "path": "images",
+          "op": "equals",
+          "value": 2
+        },
+        {
+          "path": "ax",
+          "op": "truthy",
+          "value": true
+        },
+        {
+          "path": "metadataSafe",
+          "op": "equals",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "automation",
+      "use": "browser_workflow",
+      "args": {
+        "action": "set_mode",
+        "mode": "automation"
+      },
+      "expect": [
+        {
+          "path": "success",
+          "op": "equals",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "delayed",
+      "use": "browser_workflow",
+      "args": {
+        "action": "run",
+        "probes": {
+          "$ref": "input.probes"
+        },
+        "identity_probe": "project",
+        "steps": [
+          {
+            "name": "延迟添加",
+            "tool": "browser_action",
+            "arguments": {
+              "action": "click",
+              "selector": "#delayed",
+              "timeout_ms": 100,
+              "expect": [
+                {
+                  "name": "clips",
+                  "op": "increases_by",
+                  "value": 1
+                }
+              ]
+            }
+          },
+          {
+            "name": "导出",
+            "tool": "browser_action",
+            "arguments": {
+              "action": "click",
+              "selector": "#export",
+              "probes": [
+                {
+                  "name": "title",
+                  "selector": "#dialog h2",
+                  "read": "text"
+                },
+                {
+                  "name": "dialog",
+                  "selector": "#dialog",
+                  "read": "visible"
+                }
+              ],
+              "identity_probe": "",
+              "expect": [
+                {
+                  "name": "title",
+                  "op": "equals",
+                  "value": "导出测试项目"
+                },
+                {
+                  "name": "dialog",
+                  "op": "equals",
+                  "value": true
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "expect": [
+        {
+          "path": "success",
+          "op": "equals",
+          "value": false
+        },
+        {
+          "path": "mode",
+          "op": "equals",
+          "value": "debug"
+        },
+        {
+          "path": "status",
+          "op": "equals",
+          "value": "paused"
+        }
+      ]
+    },
+    {
+      "id": "resumed",
+      "use": "browser_workflow",
+      "args": {
+        "action": "resume"
+      },
+      "expect": [
+        {
+          "path": "success",
+          "op": "equals",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "state",
+      "use": "inspectState",
+      "args": {
+        "probes": {
+          "$ref": "input.probes"
+        }
+      },
+      "expect": [
+        {
+          "path": "values.clips.value",
+          "op": "equals",
+          "value": 2
+        },
+        {
+          "path": "values.clicks.value",
+          "op": "equals",
+          "value": "1"
+        }
+      ]
+    },
+    {
+      "id": "switched",
+      "use": "browser_workflow",
+      "args": {
+        "action": "run",
+        "probes": {
+          "$ref": "input.probes"
+        },
+        "identity_probe": "project",
+        "steps": [
+          {
+            "tool": "browser_action",
+            "arguments": {
+              "action": "click",
+              "selector": "#switch",
+              "timeout_ms": 1000,
+              "wait_for_stable": false
+            }
+          }
+        ]
+      },
+      "expect": [
+        {
+          "path": "success",
+          "op": "equals",
+          "value": false
+        },
+        {
+          "path": "errorCode",
+          "op": "equals",
+          "value": "BUSINESS_STATE_MISMATCH"
+        }
+      ]
+    },
+    {
+      "id": "cancel",
+      "use": "browser_workflow",
+      "args": {
+        "action": "cancel"
+      },
+      "expect": [
+        {
+          "path": "success",
+          "op": "equals",
+          "value": true
+        }
+      ]
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict');
-const { mcpToolResult } = require('../../../src/app/backend/services/mcp-tool-result');
+const { nativeBrowserDrivers } = require('../../helpers/flows/native-browser-drivers');
+const { emitFlowReport } = require('../../../scripts/verification/flow-reports');
 const html = `<title>Workflow acceptance</title><style>button{margin:8px;padding:10px}#timeline{min-height:35px}</style>
 <header><button>顶部工具栏</button></header>
 <h1 id="project">测试项目</h1><div id="timeline"></div><output id="clicks">0</output>
@@ -16,57 +17,16 @@ const probes = [
   { name: 'project', selector: '#project', read: 'text' },
   { name: 'clips', selector: '.clip', read: 'count' },
   { name: 'clicks', selector: '#clicks', read: 'text' },
-  { name: 'export', selector: '#dialog', read: 'attribute', attribute: 'hidden' },
 ];
 
-async function run(automation, id, origin) {
-  const call = (tool, args) => automation.dispatch(id, tool, args);
-  await call('browser_control', { action: 'acquire' });
-  await call('browser_tab', { action: 'navigate', url: `${origin}/workflow` });
-  await call('browser_wait', { selector: '#project', condition: 'visible', timeout_ms: 5000 });
-  await call('browser_workflow', { action: 'set_mode', mode: 'debug', probes: probes.slice(0, 3), identity_probe: 'project' });
-  let observed = await call('browser_observe', { mark: false });
-  assert.equal(observed.region, null, 'default observation must not select the first header');
-  const missingRegion = await call('browser_observe', { region: { role: 'navigation', label: 'missing' }, mark: false });
-  assert.equal(missingRegion.errorCode, 'REGION_NOT_FOUND');
-  await call('browser_control', { action: 'acquire' });
-  const multiline = await call('browser_action', { action: 'click', locator: { role: 'button', name: '♫ 音频' },
-    probes: [{ name: 'clicked', selector: '#multiline', read: 'attribute', attribute: 'data-state' }], identity_probe: '',
-    expect: [{ name: 'clicked', op: 'equals', value: 'clicked' }] });
-  assert.equal(multiline.success, true, JSON.stringify(multiline));
-  observed = await call('browser_observe', { mark: false });
-  const add = observed.items.find((item) => item.testId === 'add');
-  assert(add, 'data-testid metadata must survive observation');
-  assert.equal((await call('browser_action', { action: 'click', selector: '#move' })).success, true);
-  const moved = await call('browser_action', { action: 'click', ref: add.id, observation_id: observed.observationId,
-    expect: [{ name: 'clips', op: 'increases_by', value: 1 }] });
-  assert.equal(moved.success, true, JSON.stringify(moved));
-  const report = await call('browser_workflow', { action: 'report', include_images: true });
-  assert.equal(report.images.length, 2);
-  assert(report.steps[0].before.accessibilityTree.nodes.length > 0);
-  assert(!JSON.stringify(mcpToolResult(report).structuredContent).includes('base64,'));
-  assert.equal(mcpToolResult(report).content.filter((item) => item.type === 'image').length, 2);
-
-  await call('browser_workflow', { action: 'set_mode', mode: 'automation' });
-  const chain = await call('browser_workflow', { action: 'run', steps: [
-    { name: '延迟添加', tool: 'browser_action', arguments: { action: 'click', selector: '#delayed', timeout_ms: 100,
-      expect: [{ name: 'clips', op: 'increases_by', value: 1 }] } },
-    { name: '导出', tool: 'browser_action', arguments: { action: 'click', selector: '#export',
-      probes: [{ name: 'title', selector: '#dialog h2', read: 'text' }, { name: 'dialog', selector: '#dialog', read: 'visible' }],
-      identity_probe: '', expect: [{ name: 'title', op: 'equals', value: '导出测试项目' }, { name: 'dialog', op: 'equals', value: true }] } },
-  ] });
-  assert.equal(chain.success, false, 'business timeout must pause the chain');
-  assert.equal(chain.mode, 'debug'); assert.equal(chain.status, 'paused');
-  const resumed = await call('browser_workflow', { action: 'resume' });
-  assert.equal(resumed.success, true, JSON.stringify(resumed));
-  const state = await automation.runtimeCommand(automation.requireConnection(id), 'inspect-page-state', { probes });
-  assert.equal(state.values.clips.value, 2, 'resume must not duplicate the committed addition');
-  assert.equal(state.values.clicks.value, '1');
-  const switched = await call('browser_workflow', { action: 'run', steps: [
-    { tool: 'browser_action', arguments: { action: 'click', selector: '#switch', timeout_ms: 100 } },
-  ] });
-  assert.equal(switched.success, false); assert.equal(switched.errorCode, 'BUSINESS_STATE_MISMATCH');
-  await call('browser_workflow', { action: 'cancel' });
-  console.log('[native-workflow] moving refs, debug AX/images, state checks, delayed resume without duplicate, project switch passed');
+async function run(automation, id, origin, flow = require('../flows/native-workflow.json')) {
+  const { runFlow } = require('../../helpers/flows/runner');
+  const result = await runFlow(flow, {
+    ...nativeBrowserDrivers(automation, id, origin), input: { url: `${origin}/workflow`, probes },
+    onProgress: ({ id: step, status }) => console.log(`[native-workflow] ${step}: ${status}`),
+  });
+  emitFlowReport(result);
+  assert.equal(result.ok, true, JSON.stringify(result));
+  return result;
 }
 module.exports = { html, run };

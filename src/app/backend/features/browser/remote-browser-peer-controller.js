@@ -1,6 +1,6 @@
 'use strict';
 
-const path = require('path');
+const { resolveRemoteBrowserPeerViewPath } = require('../../config/paths');
 
 const POLL_INTERVAL_MS = 50;
 
@@ -12,7 +12,7 @@ class RemoteBrowserPeerController {
   constructor(options = {}) {
     this.BrowserWindow = options.BrowserWindow;
     this.logger = options.logger || console;
-    this.viewPath = options.viewPath || path.join(__dirname, '../../frontend/views/remote-browser-peer.html');
+    this.viewPath = options.viewPath || resolveRemoteBrowserPeerViewPath();
     this.onMessage = options.onMessage || (() => {});
     this.window = null;
     this.ready = null;

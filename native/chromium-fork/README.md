@@ -7,6 +7,9 @@
 `f405107495a07cb1bfcf687d4af8d91117098db6`。补丁必须按 `patches/series`
 顺序应用，禁止直接修改 `out/AI-Free` 中的生成文件。
 
+补丁真源、隔离重放和统一验证入口见 [项目验证接口](../../docs/project-verification.md)。
+执行 `npm run check:project -- patches` 可验证完整队列，不修改外部 Chromium 工作区。
+
 AI-FREE 品牌图标母版固定为 `assets/AI-FREE.png`。`generate-brand-assets.js`
 由该母版生成关于页 1x/2x 徽标、版本页横向品牌图、快捷方式 PNG、
 Windows 磁贴和 16/32/48/64/128/256 多尺寸 ICO；`0005` 补丁保存全部

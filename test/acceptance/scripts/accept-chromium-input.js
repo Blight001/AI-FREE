@@ -29,7 +29,7 @@ function assertReady(state) {
   }
 }
 
-function driveWin32Input(browserHwnd) {
+function driveWin32Input(browserHwnd, addressOnly = false) {
   const source = String.raw`
 using System;
 using System.Text;
@@ -52,6 +52,9 @@ public static class AiFreeInputAcceptance {
 
   [StructLayout(LayoutKind.Sequential)]
   struct RECT { public int Left, Top, Right, Bottom; }
+  [StructLayout(LayoutKind.Sequential)]
+  struct POINT { public int X, Y; }
+  [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(POINT point);
   [StructLayout(LayoutKind.Sequential)]
   struct GUITHREADINFO {
     public int cbSize;
@@ -123,7 +126,25 @@ public static class AiFreeInputAcceptance {
       inputs[i].data.keyboard.wVk = (i == 0 || i == 3) ? (ushort)0x11 : key;
       inputs[i].data.keyboard.dwFlags = i >= 2 ? KEYEVENTF_KEYUP : 0;
     }
-    return SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT))) == (uint)inputs.Length;
+    bool sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT))) == (uint)inputs.Length;
+    Thread.Sleep(100);
+    return sent;
+  }
+
+  static bool TypeText(string text) {
+    const uint KEYEVENTF_UNICODE = 0x0004;
+    INPUT[] inputs = new INPUT[text.Length * 2];
+    for (int i = 0; i < text.Length; i++) {
+      int down = i * 2;
+      inputs[down].type = 1;
+      inputs[down].data.keyboard.wScan = text[i];
+      inputs[down].data.keyboard.dwFlags = KEYEVENTF_UNICODE;
+      inputs[down + 1] = inputs[down];
+      inputs[down + 1].data.keyboard.dwFlags |= KEYEVENTF_KEYUP;
+    }
+    bool sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT))) == (uint)inputs.Length;
+    Thread.Sleep(150);
+    return sent;
   }
 
   static void Click(int x, int y) {
@@ -135,13 +156,20 @@ public static class AiFreeInputAcceptance {
 
   static AutomationElement FindAddressBar(IntPtr hwnd) {
     AutomationElement browser = AutomationElement.FromHandle(hwnd);
+    AutomationElement address = null;
+    double top = double.PositiveInfinity;
     foreach (AutomationElement edit in browser.FindAll(TreeScope.Descendants,
         new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit))) {
       object pattern;
-      if (edit.TryGetCurrentPattern(ValuePattern.Pattern, out pattern) &&
-          ((ValuePattern)pattern).Current.Value.Contains("127.0.0.1:")) return edit;
+      var bounds = edit.Current.BoundingRectangle;
+      // This fixture has only the toolbar edit and the page edit below it.
+      if (bounds.IsEmpty || bounds.Width <= 0 || bounds.Height <= 0 || bounds.Top >= top ||
+          !edit.TryGetCurrentPattern(ValuePattern.Pattern, out pattern)) continue;
+      address = edit;
+      top = bounds.Top;
     }
-    throw new InvalidOperationException("Could not locate the test URL in the address bar");
+    if (address == null) throw new InvalidOperationException("Could not locate the address bar");
+    return address;
   }
 
   static IntPtr FocusedWindow() {
@@ -155,11 +183,24 @@ public static class AiFreeInputAcceptance {
     AutomationElement edit = FindAddressBar(hwnd);
     ValuePattern value = (ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern);
     System.Windows.Rect bounds = edit.Current.BoundingRectangle;
-    Click((int)(bounds.Left + bounds.Width / 2), (int)(bounds.Top + bounds.Height / 2));
+    POINT point = new POINT { X = (int)(bounds.Left + bounds.Width / 2), Y = (int)(bounds.Top + bounds.Height / 2) };
+    IntPtr hit = WindowFromPoint(point);
+    if (hit != hwnd && !IsChild(hwnd, hit))
+      throw new InvalidOperationException("Address bar is covered by " + ClassName(hit));
+    Click(point.X, point.Y);
+    if (GetForegroundWindow() != GetAncestor(hwnd, GA_ROOT))
+      throw new InvalidOperationException("Address-bar click did not activate the test owner");
     if (FocusedWindow() != hwnd)
       throw new InvalidOperationException("Address-bar click left keyboard focus on " + ClassName(FocusedWindow()));
-    if (!Shortcut(0x41) || !Key(VK_K) || !Key(VK_E) || !Key(VK_Y) || value.Current.Value != "key")
-      throw new InvalidOperationException("Address bar did not accept typed text after click");
+    bool editFocused = edit.Current.HasKeyboardFocus;
+    string originalValue = value.Current.Value;
+    if (!Shortcut(0x41) || !TypeText("key"))
+      throw new InvalidOperationException("Windows did not dispatch the test keystrokes");
+    string typedValue = value.Current.Value;
+    if (typedValue != "key")
+      throw new InvalidOperationException("Address bar did not accept typed text after click; editFocused=" +
+        editFocused + ", unchanged=" + (typedValue == originalValue) + ", length=" + typedValue.Length +
+        ", startsWithExpected=" + typedValue.StartsWith("key", StringComparison.OrdinalIgnoreCase));
     if (!Shortcut(0x41) || !Shortcut(0x43))
       throw new InvalidOperationException("Could not send address-bar copy shortcut");
     Thread.Sleep(150);
@@ -206,7 +247,7 @@ public static class AiFreeInputAcceptance {
     return String.Join("|", descriptions.ToArray());
   }
 
-  public static string Drive(long rawHwnd) {
+  public static string Drive(long rawHwnd, bool addressOnly) {
     SetProcessDPIAware();
     IntPtr hwnd = new IntPtr(rawHwnd);
     if (!IsWindow(hwnd)) return "ALIVE=false;TITLE=";
@@ -214,20 +255,37 @@ public static class AiFreeInputAcceptance {
     RECT shellRect, browserRect;
     if (!GetWindowRect(root, out shellRect) || !GetWindowRect(hwnd, out browserRect))
       throw new InvalidOperationException("Missing test window bounds");
-    Click(shellRect.Left + 70, browserRect.Top - 12);
-    IntPtr focus = FocusedWindow();
-    if (GetForegroundWindow() != root || focus == IntPtr.Zero || focus == hwnd || IsChild(hwnd, focus))
-      throw new InvalidOperationException("Expected keyboard focus in the Electron host before clicking; foreground=" +
-        ClassName(GetForegroundWindow()) + ", focus=" + ClassName(focus));
-    IDataObject previousClipboard = Clipboard.GetDataObject();
+    if (!addressOnly) {
+      Click(shellRect.Left + 70, browserRect.Top - 12);
+      IntPtr focus = FocusedWindow();
+      if (GetForegroundWindow() != root || focus == IntPtr.Zero || focus == hwnd || IsChild(hwnd, focus))
+        throw new InvalidOperationException("Expected keyboard focus in the Electron host before clicking; foreground=" +
+          ClassName(GetForegroundWindow()) + ", focus=" + ClassName(focus));
+    }
+    IDataObject previousClipboard;
+    try {
+      previousClipboard = Clipboard.GetDataObject();
+    } catch (ExternalException error) {
+      throw new InvalidOperationException("Could not snapshot the Windows clipboard", error);
+    }
+    Exception inputError = null;
     try {
       CheckAddressBar(hwnd);
+      if (addressOnly) return "ADDRESS_BAR_OK";
       // The address bar must work both before and after a click in web content.
       Click((browserRect.Left + browserRect.Right) / 2, (browserRect.Top + browserRect.Bottom) / 2);
       CheckAddressBar(hwnd);
+    } catch (Exception error) {
+      inputError = error;
+      throw;
     } finally {
-      if (previousClipboard != null) Clipboard.SetDataObject(previousClipboard, true, 5, 50);
-      else Clipboard.Clear();
+      try {
+        if (previousClipboard != null) Clipboard.SetDataObject(previousClipboard, true, 10, 100);
+        else Clipboard.Clear();
+      } catch (ExternalException error) {
+        string context = inputError == null ? "" : "; input check: " + inputError.Message;
+        throw new InvalidOperationException("Could not restore the Windows clipboard" + context, error);
+      }
     }
     RECT rect;
     if (!GetWindowRect(hwnd, out rect)) throw new InvalidOperationException("Missing test browser bounds");
@@ -255,12 +313,15 @@ public static class AiFreeInputAcceptance {
   }
 }`;
   const script = `$ErrorActionPreference = 'Stop'\nAdd-Type -ReferencedAssemblies System.Windows.Forms,UIAutomationClient,UIAutomationTypes,WindowsBase -TypeDefinition @'\n${source}\n'@\n` +
-    `[AiFreeInputAcceptance]::Drive([long]'${browserHwnd}')`;
+    `[AiFreeInputAcceptance]::Drive([long]'${browserHwnd}', $${addressOnly})`;
   const encoded = Buffer.from(script, 'utf16le').toString('base64');
   return new Promise((resolve, reject) => {
     const child = spawn('powershell.exe', [
-      '-NoProfile', '-NonInteractive', '-Sta', '-WindowStyle', 'Hidden', '-EncodedCommand', encoded,
-    ], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+      '-NoProfile', '-NonInteractive', '-Sta', '-WindowStyle', 'Hidden', '-Command',
+      'Invoke-Command -ScriptBlock ([scriptblock]::Create([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String([Console]::In.ReadToEnd()))))',
+    ], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+    child.stdin.on('error', reject);
+    child.stdin.end(encoded);
     let stdout = '';
     let stderr = '';
     const timer = setTimeout(() => {
@@ -321,6 +382,53 @@ async function verifyNativeNewTab(owner, runtime, state) {
   throw new Error('Native New Tab click did not increase the Chromium tab count');
 }
 
+function resolveTestResources() {
+  const bundled = path.resolve(__dirname, '..', '..', '..', 'resources');
+  const candidate = process.argv[2];
+  if (!candidate) return bundled;
+  const fixtureRoot = process.env.AI_FREE_FIXTURE_ROOT;
+  if (!fixtureRoot || !path.isAbsolute(candidate) || path.basename(candidate) !== 'chrome.dll') {
+    throw new Error('DLL comparison requires an absolute chrome.dll path and the fixture runner');
+  }
+  const isolated = path.join(fixtureRoot, 'candidate-resources');
+  const chromium = path.join(isolated, 'chromium');
+  fs.cpSync(path.join(bundled, 'chromium'), chromium, { recursive: true });
+  fs.copyFileSync(candidate, path.join(chromium, 'chrome.dll'));
+  require('../../../scripts/chromium-runtime-manifest').writeChromiumRuntimeManifest(chromium);
+  return isolated;
+}
+
+async function verifyAddressBarAcrossProfiles(runtime, first, bounds, url) {
+  const secondId = 'phase2_input_second';
+  await runtime.hide(first.profileId, 'chromium');
+  const second = await runtime.launchProfile({
+    profileId: secondId,
+    runtimeType: 'chromium',
+    initialUrl: url,
+    launchTimeoutMs: 30000,
+  }, bounds);
+  assertReady(second);
+  const navigation = await runtime.navigate(secondId, 'chromium', url);
+  if (!navigation?.ok) throw new Error('Second test browser failed to navigate');
+  await runtime.hide(secondId, 'chromium');
+  // Keep desktop overlays out of the click path without focusing a browser HWND.
+  window.setAlwaysOnTop(true);
+  window.focus();
+  let previous;
+  for (const profile of [first, second, first]) {
+    if (previous) await runtime.hide(previous.profileId, 'chromium');
+    await runtime.show(profile.profileId, 'chromium');
+    try {
+      const result = await driveWin32Input(profile.browserHwnd, true);
+      if (result !== 'ADDRESS_BAR_OK') throw new Error(result);
+    } catch (error) {
+      throw new Error(`First address-bar click failed after ${previous?.profileId || 'initial switch'} -> ${profile.profileId}: ${error.message}`, { cause: error });
+    }
+    console.log(`[phase2-input] Address bar accepted input and copy/paste in ${profile.profileId}`);
+    previous = profile;
+  }
+}
+
 async function shutdown(code) {
   acceptanceFinished = true;
   try { await manager?.stopAll({ timeoutMs: 5000 }); } catch (_) {}
@@ -357,7 +465,7 @@ app.whenReady().then(async () => {
   await window.loadURL('data:text/html,<input aria-label="Host input" style="position:absolute;left:10px;top:8px">');
   manager = createBrowserRuntimeManager({
     userDataDir: profileRoot,
-    resourcesPath: path.resolve(__dirname, '..', '..', '..', 'resources'),
+    resourcesPath: resolveTestResources(),
     getParentWindow: () => window,
     logger: console,
   });
@@ -382,8 +490,8 @@ app.whenReady().then(async () => {
   window.moveTop();
   window.focus();
   await new Promise((resolve) => setTimeout(resolve, 300));
-  await verifyNativeNewTab(window, manager, state);
   if (process.env.AI_FREE_NATIVE_POINTER_ONLY === '1') {
+    await verifyNativeNewTab(window, manager, state);
     await shutdown(0);
     return;
   }
@@ -403,17 +511,29 @@ app.whenReady().then(async () => {
     console.log(`[phase2-input] manual input window: ${manualWaitMs} ms`);
     await new Promise((resolve) => setTimeout(resolve, manualWaitMs));
   }
+  await verifyAddressBarAcrossProfiles(manager, state, bounds, inputPageUrl);
+  if (process.argv[2]) {
+    console.log('[phase2-input] Candidate DLL passed address-bar focus across two browser profiles');
+    await shutdown(0);
+    return;
+  }
+  // Exercise the explicit handoff used when the Electron UI takes focus.
+  await manager.releaseFocus(state.profileId, 'chromium');
+  window.webContents.focus();
   const inputResult = await driveWin32Input(state.browserHwnd);
   await new Promise((resolve) => setTimeout(resolve, 3500));
   const after = manager.getState('phase2_input');
   assertReady(after);
-  if (after.lastHeartbeatAt <= heartbeatBefore ||
-      !/ALIVE=true/.test(inputResult) ||
-      !/;TITLE=AI_FREE_CLICK_OK_KEY_key(?:;| - )/.test(inputResult)) {
-    throw new Error(`Input/heartbeat acceptance failed: ${inputResult}; ${JSON.stringify(after)}`);
+  const title = /;TITLE=(.*?);KEYS_SENT=/.exec(inputResult)?.[1] || '';
+  const heartbeatAdvanced = after.lastHeartbeatAt > heartbeatBefore;
+  const windowAlive = /ALIVE=true/.test(inputResult);
+  const pageInputPassed = /;TITLE=AI_FREE_CLICK_OK_KEY_key(?:;| - )/.test(inputResult);
+  if (!heartbeatAdvanced || !windowAlive || !pageInputPassed) {
+    throw new Error(`Input acceptance failed: heartbeatAdvanced=${heartbeatAdvanced}, windowAlive=${windowAlive}, pageInputPassed=${pageInputPassed}, fixtureTitle=${title.startsWith('AI_FREE_CLICK_') ? title : 'not reported'}`);
   }
   console.log('[phase2-input] Web input typing, wheel, resize and focus passed');
   console.log('[phase2-input] HWND result:', inputResult);
+  await verifyNativeNewTab(window, manager, after);
   await shutdown(0);
 }).catch(async (error) => {
   console.error('[phase2-input] FAILED', error.stack || error);

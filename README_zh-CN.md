@@ -8,7 +8,7 @@ HeySure 地址统一读取聚合仓库 `device.config.json`；独立运行或安
 
 AI-FREE 是面向 Windows 的多环境 AI 浏览器工作台。Electron 负责桌面外壳、账号授权、网络与环境配置，实际网页统一运行在项目内置的 **AI-FREE Chromium Fork** 中，并通过原生 Win32 宿主嵌入主窗口。
 
-当前版本：`2.6.38`
+版本号以根目录 `package.json` 的 `version` 字段为准。
 
 > 当前仓库不是普通 Electron 内嵌网页项目。正式模式必须使用 `resources/chromium/ai-free-browser.exe`，并完成 Runtime Bridge 命名管道握手；不会回退到 Electron 网页视图或系统 Chrome/Edge。
 
@@ -126,7 +126,7 @@ npm install
 
 ## 内置扩展
 
-当前 `packagedExtensions` 包含 `aixdownloader-9.0.58`。AI 自动化由认证的 Chromium Runtime Bridge 提供，不再作为浏览器扩展打包。
+当前 `packagedExtensions` 包含 `aixdownloader-9.0.58`。AI 自动化由主进程 Browser Automation Bridge 提供，并通过认证的 Chromium Runtime Bridge 控制受管浏览器环境；它不作为浏览器扩展打包。
 - `remove_watermark`：网页复制与媒体处理相关能力。
 - `transform`：网页、输入框、图片、PDF 和视频字幕翻译能力。
 
@@ -172,10 +172,12 @@ npm run check:packaged-runtime
 
 ## 测试与检查
 
-运行仓库级 Node 测试：
+接手时建议先看[项目路径图](docs/architecture/project-paths.md)，再按[目录与进程边界](docs/architecture/directory-map.md)定位代码。Chromium 专项的标识符、配置应用和资源所有权见[Chromium 运行层接手说明](docs/architecture/browser-runtime.md)。
+
+运行完整 Node 测试集（`pretest` 会先准备源码）：
 
 ```powershell
-node --test "test/*.test.js"
+npm test
 ```
 
 常用专项检查：
@@ -229,6 +231,7 @@ npm run check:chromium-embedded-policy
 ## 相关文档
 
 - [目录与进程边界](docs/architecture/directory-map.md)
+- [主进程、浏览器启动与自动化路径图](docs/architecture/project-paths.md)
 - [浏览器运行模式](docs/browser-workflow-modes.md)
 - [Chromium Fork 构建说明](native/chromium-fork/README.md)
 - [原生浏览器宿主说明](native/browser-host/README.md)

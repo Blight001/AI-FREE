@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "project-browser",
+  "checks": [
+    { "id": "native-workflow", "scenario": "native-workflow.json" },
+    { "id": "remote-browser-peer", "scenario": "remote-browser-peer.json" },
+    { "id": "browser-settings-ui" },
+    { "id": "packaged-sidebar" }
+  ]
+}

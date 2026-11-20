@@ -1,0 +1,301 @@
+{
+  "schemaVersion": 1,
+  "domain": "electron-pages",
+  "id": "application-pages",
+  "steps": [
+    {
+      "id": "open",
+      "use": "open",
+      "args": {},
+      "expect": [
+        {
+          "path": "opened",
+          "op": "equals",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "windowOpened",
+      "use": "inspectWindow",
+      "args": {},
+      "expect": [
+        {
+          "path": "open",
+          "op": "equals",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "aiLoad",
+      "use": "load",
+      "args": {
+        "page": "ai"
+      },
+      "expect": [
+        {
+          "path": "loaded",
+          "op": "equals",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "aiRead",
+      "use": "inspect",
+      "args": {
+        "page": "ai"
+      },
+      "expect": [
+        {
+          "path": "logoCount",
+          "op": "equals",
+          "value": 1
+        },
+        {
+          "path": "logosLoaded",
+          "op": "equals",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "accountLoad",
+      "use": "load",
+      "args": {
+        "page": "account"
+      },
+      "expect": [
+        {
+          "path": "loaded",
+          "op": "equals",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "accountRead",
+      "use": "inspect",
+      "args": {
+        "page": "account"
+      },
+      "expect": [
+        {
+          "path": "active",
+          "op": "equals",
+          "value": true
+        },
+        {
+          "path": "sameColumn",
+          "op": "equals",
+          "value": true
+        },
+        {
+          "path": "legacyFooterRemoved",
+          "op": "equals",
+          "value": true
+        },
+        {
+          "path": "woolResourceBelowRedeem",
+          "op": "equals",
+          "value": true
+        },
+        {
+          "path": "dialogShellRemoved",
+          "op": "equals",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "shellLoad",
+      "use": "load",
+      "args": {
+        "page": "shell"
+      },
+      "expect": [
+        {
+          "path": "loaded",
+          "op": "equals",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "shellRead",
+      "use": "inspect",
+      "args": {
+        "page": "shell"
+      },
+      "expect": [
+        {
+          "path": "avatarRemoved",
+          "op": "equals",
+          "value": true
+        },
+        {
+          "path": "controlsOrdered",
+          "op": "equals",
+          "value": true
+        },
+        {
+          "path": "homeButtonFirst",
+          "op": "equals",
+          "value": true
+        },
+        {
+          "path": "accountCenterButton",
+          "op": "equals",
+          "value": true
+        },
+        {
+          "path": "networkMagicButton",
+          "op": "equals",
+          "value": true
+        },
+        {
+          "path": "aiControlButton",
+          "op": "equals",
+          "value": true
+        },
+        {
+          "path": "matchingActionIcons",
+          "op": "equals",
+          "value": true
+        },
+        {
+          "path": "modernCreateIcon",
+          "op": "equals",
+          "value": true
+        },
+        {
+          "path": "taskbarAtBottom",
+          "op": "equals",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "aiReturnLoad",
+      "use": "load",
+      "args": {
+        "page": "ai"
+      },
+      "expect": [
+        {
+          "path": "loaded",
+          "op": "equals",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "aiReturnRead",
+      "use": "inspect",
+      "args": {
+        "page": "ai"
+      },
+      "expect": [
+        {
+          "path": "logoCount",
+          "op": "equals",
+          "value": 1
+        },
+        {
+          "path": "logosLoaded",
+          "op": "equals",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "close",
+      "use": "close",
+      "args": {},
+      "expect": [
+        {
+          "path": "closed",
+          "op": "equals",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "windowClosed",
+      "use": "inspectWindow",
+      "args": {},
+      "expect": [
+        {
+          "path": "open",
+          "op": "equals",
+          "value": false
+        }
+      ]
+    },
+    {
+      "id": "reopen",
+      "use": "open",
+      "args": {},
+      "expect": [
+        {
+          "path": "opened",
+          "op": "equals",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "accountReload",
+      "use": "load",
+      "args": {
+        "page": "account"
+      },
+      "expect": [
+        {
+          "path": "loaded",
+          "op": "equals",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "accountReopened",
+      "use": "inspect",
+      "args": {
+        "page": "account"
+      },
+      "expect": [
+        {
+          "path": "active",
+          "op": "equals",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "finish",
+      "use": "close",
+      "args": {},
+      "expect": [
+        {
+          "path": "closed",
+          "op": "equals",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "released",
+      "use": "inspectWindow",
+      "args": {},
+      "expect": [
+        {
+          "path": "open",
+          "op": "equals",
+          "value": false
+        }
+      ]
+    }
+  ]
+}

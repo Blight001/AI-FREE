@@ -74,7 +74,7 @@
     return new Promise((resolve) => setTimeout(resolve, 190));
   }
 
-  function openBrowserSettingsDialog(title = '浏览器参数配置') {
+  function openBrowserSettingsDialog(title = '浏览器参数配置', focusId = 'browser-settings-dialog-close') {
     const dialog = el('browser-settings-dialog');
     if (!dialog) return;
     browserSettingsPreviousFocus = document.activeElement;
@@ -82,7 +82,7 @@
     if (titleElement) titleElement.textContent = title;
     dialog.hidden = false;
     document.body.classList.add('browser-settings-dialog-open');
-    setTimeout(() => el('browser-settings-dialog-close')?.focus(), 0);
+    setTimeout(() => { if (!dialog.hidden) el(focusId)?.focus(); }, 0);
   }
 
   function closeBrowserSettingsDialog() {
@@ -96,6 +96,7 @@
 
   const {
     renderBrowserHistory,
+    renderHistoryFailure,
     renderBrowserProfileAudit,
     formatBrowserHistoryDateTime,
   } = window.createAiFreeBrowserHistoryView({
@@ -130,8 +131,7 @@
       renderBrowserProfileAudit();
       return browserHistory;
     } catch (error) {
-      const list = el('browser-history-list');
-      if (list) list.innerHTML = '<div class="browser-history-empty">浏览器记录读取失败</div>';
+      renderHistoryFailure();
       if (options.silent !== true) setStatus(errorText(error), 'error');
       return [];
     } finally {
@@ -142,7 +142,6 @@
   async function selectBrowserHistory(historyId, options = {}) {
     editingDefaultSettings = false;
     selectedHistoryId = String(historyId || '');
-    renderBrowserHistory();
     const item = browserHistory.find((entry) => entry.id === selectedHistoryId);
     const recordFields = el('browser-record-edit-fields');
     const deleteButton = el('delete-browser-record');
@@ -151,7 +150,7 @@
     setValue('browser-record-name', text(item && item.name, '新建窗口'));
     if (el('save-ai-free-settings')) el('save-ai-free-settings').textContent = '保存修改';
     if (options.openDialog === true) {
-      openBrowserSettingsDialog(item ? `编辑浏览器 · ${item.name}` : '编辑浏览器');
+      openBrowserSettingsDialog(item ? `编辑浏览器 · ${item.name}` : '编辑浏览器', options.focusId);
     }
     setStatus('正在读取独立浏览器参数…');
     try {
@@ -164,14 +163,13 @@
     }
   }
 
-  async function openDefaultBrowserSettings() {
+  async function openDefaultBrowserSettings(focusId) {
     editingDefaultSettings = true;
     selectedHistoryId = '';
-    renderBrowserHistory();
     if (el('browser-record-edit-fields')) el('browser-record-edit-fields').hidden = true;
     if (el('delete-browser-record')) el('delete-browser-record').hidden = true;
     if (el('save-ai-free-settings')) el('save-ai-free-settings').textContent = '保存参数';
-    openBrowserSettingsDialog('浏览器默认环境配置');
+    openBrowserSettingsDialog('浏览器默认环境配置', focusId);
     setStatus('正在读取默认环境参数…');
     try {
       const response = await window.aiFree.browser.getSettings( {});

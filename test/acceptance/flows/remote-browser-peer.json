@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "domain": "remote-peer",
+  "id": "remote-browser-peer",
+  "steps": [
+    {
+      "id": "start", "use": "start", "args": {"session": "acceptance-remote"},
+      "expect": [{"path": "started", "op": "equals", "value": true}]
+    },
+    {
+      "id": "offer", "use": "waitEvent", "args": {"event": "offer"},
+      "expect": [
+        {"path": "sessionId", "op": "equals", "value": "acceptance-remote"},
+        {"path": "validSdp", "op": "equals", "value": true}
+      ]
+    },
+    {
+      "id": "frame", "use": "frame", "args": {"session": "acceptance-remote"},
+      "expect": [{"path": "sent", "op": "equals", "value": true}]
+    },
+    {
+      "id": "ready", "use": "waitEvent", "args": {"event": "ready"},
+      "expect": [
+        {"path": "width", "op": "equals", "value": 1},
+        {"path": "height", "op": "equals", "value": 1}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "project-pages",
+  "checks": [
+    { "id": "remote-browser-peer" },
+    { "id": "remote-browser-peer-generated" },
+    { "id": "source-pages" },
+    { "id": "generated-pages" },
+    { "id": "packaged-sidebar" },
+    { "id": "remote-browser-peer-packaged" }
+  ]
+}

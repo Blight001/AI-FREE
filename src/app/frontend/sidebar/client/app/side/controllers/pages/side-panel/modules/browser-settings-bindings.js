@@ -35,6 +35,7 @@
     bindElement(deps, 'extract-ai-free-proxy', 'click', () => void deps.extractProxy());
     bindElement(deps, 'refresh-browser-history', 'click', () => void deps.refreshBrowserHistory({keepSelection:true}));
     bindElement(deps, 'open-default-browser-settings', 'click', () => void deps.openDefaultBrowserSettings());
+    bindElement(deps, 'open-default-cookie-settings', 'click', () => void deps.openDefaultBrowserSettings('browser-cookies'));
     bindElement(deps, 'delete-browser-record', 'click', () => {
       const item = deps.getBrowserHistory().find((entry) => entry.id === deps.getSelectedHistoryId());
       if (item) void deps.deleteBrowserHistory(item, { closeDialogOnSuccess: true });

@@ -1,117 +1,38 @@
 'use strict';
 
-const path = require('path');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const { app, BrowserWindow } = require('electron');
+const { applicationLayout, runtimeArgument } = require('../../helpers/flows/app-layout');
+const { electronPageFixture } = require('../../helpers/flows/electron-page-fixture');
+const { runFlow } = require('../../helpers/flows/runner');
+const { emitFlowReport } = require('../../../scripts/verification/flow-reports');
 
 async function main() {
-  const projectDir = path.resolve(__dirname, '..', '..', '..');
-  const appOutDir = path.resolve(
-    process.env.PACKAGED_APP_DIR || path.join(projectDir, 'appbuild', 'win-unpacked'),
-  );
-  const sidebarPath = process.env.SIDEBAR_HTML_PATH
-    ? path.resolve(process.env.SIDEBAR_HTML_PATH)
-    : path.join(
-      appOutDir,
-      'resources',
-      'app.asar',
-      'src',
-      'app',
-      'sidebar',
-      'ai-control.html',
-    );
-  const appShellPath = process.env.SIDEBAR_HTML_PATH
-    ? path.join(projectDir, 'src', 'app', 'frontend', 'views', 'app-shell.html')
-    : path.join(
-      appOutDir,
-      'resources',
-      'app.asar',
-      'src',
-      'app',
-      'views',
-      'app-shell.html',
-    );
-  const window = new BrowserWindow({
-    show: false,
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-    },
+  const args = process.argv.slice(2);
+  const layout = applicationLayout(runtimeArgument(args, 'packaged'), {
+    appOutDir: process.env.PACKAGED_APP_DIR,
+    sidebarPath: process.env.SIDEBAR_HTML_PATH,
   });
-  await window.loadFile(sidebarPath);
-  const logos = await window.webContents.executeJavaScript(`(() => {
-    return Array.from(document.querySelectorAll('img[data-app-logo]')).map((image) => ({
-      src: image.src,
-      complete: image.complete,
-      naturalWidth: image.naturalWidth,
-      naturalHeight: image.naturalHeight,
-    }));
-  })()`);
-  if (logos.length !== 1 || logos.some((logo) => (
-    !logo.complete || logo.naturalWidth <= 0 || logo.naturalHeight <= 0
-  ))) {
-    throw new Error('AI 控制页 Logo 无法加载');
+  const index = args.indexOf('--scenario');
+  const scenario = index < 0 ? require('../flows/application-pages.json')
+    : JSON.parse(fs.readFileSync(args[index + 1], 'utf8'));
+  const fixture = electronPageFixture(BrowserWindow, layout);
+  // The scene owns app lifetime while it closes and recreates its last window.
+  const keepAlive = () => {};
+  app.on('window-all-closed', keepAlive);
+  try {
+    const result = await runFlow(scenario, fixture);
+    emitFlowReport(result);
+    assert.equal(result.ok, true, JSON.stringify(result));
+    console.log(`application page checks passed (${layout.runtime})`);
+  } finally {
+    fixture.close();
+    app.off('window-all-closed', keepAlive);
   }
-  const accountPath = path.join(path.dirname(sidebarPath), 'account-center.html');
-  await window.loadFile(accountPath);
-  const accountPanel = await window.webContents.executeJavaScript(`(() => {
-    const panel = document.getElementById('account-center-panel');
-    const card = document.getElementById('sidebar-account-session');
-    return {
-      active: !!panel && panel.classList.contains('active'),
-      sameColumn: document.getElementById('announcement-bar')?.parentElement === card,
-      legacyFooterRemoved: !document.querySelector('.personal-footer')
-        && !document.getElementById('tutorial-link')
-        && !document.getElementById('app-version'),
-      woolResourceBelowRedeem: document.querySelector('.sidebar-quota-redeem')?.nextElementSibling
-        === document.querySelector('.account-wool-resource'),
-      dialogShellRemoved: !document.getElementById('account-center-dialog')
-        && !document.querySelector('.account-center-dialog-panel'),
-    };
-  })()`);
-  if (Object.values(accountPanel).some((value) => value !== true)) {
-    throw new Error(`打包后的个人中心栏目结构异常: ${JSON.stringify(accountPanel)}`);
-  }
-  await window.loadFile(appShellPath);
-  const shellControls = await window.webContents.executeJavaScript(`(() => {
-    const appLauncher = document.getElementById('add-tab-btn');
-    const theme = document.getElementById('theme-toggle-btn');
-    const version = document.getElementById('shell-app-version');
-    const updateWidget = document.getElementById('update-widget');
-    const createButton = document.getElementById('new-browser-window-btn');
-    return {
-      avatarRemoved: !document.getElementById('account-center-btn'),
-      controlsOrdered: updateWidget?.nextElementSibling === version
-        && version?.nextElementSibling === theme
-        && theme?.nextElementSibling === document.getElementById('shell-network-magic')
-        && document.getElementById('shell-network-magic')?.nextElementSibling === appLauncher
-        && appLauncher?.nextElementSibling === document.getElementById('shell-ai-control-btn'),
-      homeButtonFirst: document.getElementById('tabs-container')?.firstElementChild?.id === 'home-tab-btn',
-      accountCenterButton: appLauncher?.tagName === 'BUTTON'
-        && appLauncher?.textContent.trim() === '个人中心'
-        && !!appLauncher?.querySelector('.shell-action-icon'),
-      networkMagicButton: document.getElementById('shell-network-magic-toggle')?.textContent.trim() === '内置代理'
-        && !!document.getElementById('shell-network-magic-toggle')?.querySelector('.shell-action-icon'),
-      aiControlButton: document.getElementById('shell-ai-control-btn')?.textContent.trim() === 'AI 控制'
-        && !!document.getElementById('shell-ai-control-btn')?.querySelector('.shell-action-icon'),
-      matchingActionIcons: !!appLauncher?.querySelector('.shell-action-icon')
-        && !!document.getElementById('shell-ai-control-btn')?.querySelector('.shell-action-icon')
-        && !!document.getElementById('shell-network-magic-toggle')?.querySelector('.shell-action-icon'),
-      modernCreateIcon: !!createButton?.querySelector('svg.new-window-icon') && createButton.textContent.trim() === '',
-      taskbarAtBottom: document.getElementById('tab-bar')?.getBoundingClientRect().bottom === window.innerHeight,
-    };
-  })()`);
-  console.log(JSON.stringify({ sidebarPath, accountPath, logos, accountPanel, appShellPath, shellControls }));
-  if (Object.values(shellControls).some((value) => value !== true)) {
-    throw new Error('主窗口底部任务栏控件顺序、图标或个人中心入口异常');
-  }
-  window.destroy();
 }
 
-app.whenReady()
-  .then(main)
-  .then(() => app.quit())
-  .catch((error) => {
-    console.error(error?.stack || error);
-    app.exit(1);
-  });
+app.whenReady().then(main).then(() => app.quit()).catch((error) => {
+  console.error(error?.stack || error);
+  app.exit(1);
+});

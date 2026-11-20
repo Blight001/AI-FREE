@@ -60,10 +60,16 @@ function resolveLegacyAiSandboxDir(app, options = {}) {
   return path.join(resolveInstallDirectory(app, options), 'AI-Workspace');
 }
 
+// Source, generated app and app.asar retain the same backend/views layout.
+function resolveRemoteBrowserPeerViewPath() {
+  return path.join(__dirname, '../views/remote-browser-peer.html');
+}
+
 module.exports = {
   resolveAiSandboxDir,
   resolveLegacyAiSandboxDir,
   resolveAutomationCardCacheDir,
   resolveChromiumResourcesPath,
   resolveInstallDirectory,
+  resolveRemoteBrowserPeerViewPath,
 };

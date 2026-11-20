@@ -6,7 +6,7 @@ AI-FREE is a multi-profile AI browser workspace for Windows. Electron provides t
 
 The canonical Windows launchers are `run.bat` for the configured default HeySure server and `run-local.bat` for `http://127.0.0.1:3000`. Their forced profiles override inherited `HEYSURE_SERVER` values and remembered HeySure addresses. Direct npm launches can still use `HEYSURE_SERVER`, which takes priority over remembered and default addresses.
 
-Current version: `2.6.38`
+The version is maintained in the root `package.json` `version` field.
 
 > This is no longer a conventional Electron webview application. Production mode requires `resources/chromium/ai-free-browser.exe` and an authenticated Runtime Bridge named-pipe handshake. It does not fall back to Electron web content or a system Chrome/Edge installation.
 
@@ -124,7 +124,7 @@ Common development environment variables:
 
 ## Bundled Extensions
 
-`packagedExtensions` currently includes `aixdownloader-9.0.58`. AI automation is provided by the authenticated Chromium Runtime Bridge and is not packaged as a browser extension.
+`packagedExtensions` currently includes `aixdownloader-9.0.58`. AI automation is provided by the main-process Browser Automation Bridge, which uses the authenticated Chromium Runtime Bridge to control managed browser profiles; it is not packaged as a browser extension.
 - `remove_watermark`: browser copy and media-processing helpers.
 - `transform`: web page, input, image, PDF, and video-subtitle translation.
 
@@ -170,10 +170,12 @@ npm run check:packaged-runtime
 
 ## Tests and Checks
 
-Run the repository-level Node tests with:
+For the main-process startup, browser-launch, and automation call paths, start with the [project path diagram](docs/architecture/project-paths.md), then use the [source layout and process boundaries](docs/architecture/directory-map.md). Runtime identifiers, configuration application, and resource ownership are covered in the [Chromium runtime guide](docs/architecture/browser-runtime.md).
+
+Run the complete Node test suite (`pretest` prepares the source first):
 
 ```powershell
-node --test "test/*.test.js"
+npm test
 ```
 
 Frequently used focused checks:
@@ -227,6 +229,7 @@ Electron acceptance scripts that exercise real windows, input, or sessions may l
 ## Related Documentation
 
 - [Source layout and process boundaries](docs/architecture/directory-map.md)
+- [Main-process, browser-launch, and automation paths](docs/architecture/project-paths.md)
 - [Browser workflow modes](docs/browser-workflow-modes.md)
 - [Chromium Fork build guide](native/chromium-fork/README.md)
 - [Native browser host](native/browser-host/README.md)

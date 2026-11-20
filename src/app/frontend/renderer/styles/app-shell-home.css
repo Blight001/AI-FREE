@@ -23,10 +23,11 @@
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
+  opacity: 1;
 }
 
 html:not(.theme-light) #browser-empty-state::before {
-  filter: brightness(0.48);
+  filter: brightness(0.76);
 }
 
 #browser-empty-state[hidden] {
@@ -40,11 +41,129 @@ html:not(.theme-light) #browser-empty-state::before {
   width: 100%;
   height: 100%;
   min-height: 0;
-  overflow: auto;
+  display: grid;
+  grid-template-columns: clamp(102px, 24%, 168px) minmax(0, 1fr);
+  overflow: hidden;
+  padding: 0;
   box-sizing: border-box;
   background: transparent;
+  color: var(--shell-text);
 }
 
 html.sidebar-collapsed #browser-empty-state {
   width: calc(100% / var(--ui-scale, 1));
+}
+
+#ai-free-settings-form { display: contents; }
+
+.shell-home-rail, .shell-home-content {
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--shell-scrollbar) transparent;
+}
+
+.shell-home-rail {
+  padding: 14px 8px;
+  border-inline-end: 1px solid var(--shell-border);
+  background: color-mix(in srgb, var(--shell-bg) 91%, transparent);
+}
+
+.shell-home-brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 4px 14px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.shell-home-brand img { width: 24px; height: 24px; object-fit: contain; }
+.shell-home-tabs { display: grid; gap: 3px; }
+
+.shell-home-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 5px 4px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--shell-text);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  text-align: start;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.shell-home-tabs button:hover { background: var(--shell-tab-bg); }
+.shell-home-tabs button[aria-selected="true"] {
+  border-color: var(--shell-tab-active-border);
+  color: var(--shell-tab-active-text);
+  background: var(--shell-tab-active-bg);
+  font-weight: 700;
+}
+
+.shell-home-tabs button svg, .shell-home-heading button svg {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.shell-home-content {
+  container: shell-home / inline-size;
+  padding: 14px clamp(8px, 2%, 22px);
+}
+.shell-home-content [role="tabpanel"][hidden] { display: none; }
+.shell-home-heading, .shell-home-content .extension-manager-heading, .shell-home-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.shell-home-heading, .shell-home-content .extension-manager-heading {
+  justify-content: space-between;
+  padding: 8px;
+  margin: 0 0 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--shell-panel) 88%, transparent);
+}
+.shell-home-heading h1, .shell-home-content .extension-manager-heading h2 {
+  margin: 0;
+  color: var(--shell-text);
+  font-size: 17px;
+}
+.shell-home-content .extension-manager-inline { margin: 0; padding: 0; border: 0; }
+.shell-home-content .shell-home-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--shell-tab-active-text);
+  background: var(--shell-panel);
+  border-color: var(--shell-accent);
+}
+.shell-home-content .shell-home-primary:hover { box-shadow: 0 0 0 2px var(--shell-tab-active-border); }
+.shell-home-primary:disabled { opacity: .65; cursor: wait; }
+.shell-home-content .browser-history-heading { flex-wrap: wrap; }
+
+.shell-home-record-list { display: grid; gap: 5px; }
+.shell-home-record-row, .shell-home-record-empty {
+  padding: 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--shell-panel) 88%, transparent);
+}
+.shell-home-record-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.shell-home-record-label { flex: 1 1 110px; min-width: 0; overflow-wrap: anywhere; }
+.shell-home-record-label strong, .shell-home-record-label small { display: block; }
+.shell-home-record-label small { color: var(--shell-muted); }
+
+@container shell-home (max-width: 320px) {
+  .shell-home-content .browser-history-item { grid-template-columns: minmax(0, 1fr); }
 }

@@ -155,6 +155,15 @@ app.whenReady().then(async () => {
   await win.loadFile(path.join(__dirname, '../../../src/app/frontend/views/app-shell.html'));
   await new Promise((resolve) => setTimeout(resolve, 120));
   const firstSidebarReadyMs = Number(process.hrtime.bigint() - performanceProbeStartedAt) / 1e6;
+  const homeButtonIsSquare = await win.webContents.executeJavaScript(`(() => {
+    const homeButton = document.getElementById('home-tab-btn');
+    if (!homeButton) return false;
+    const { width, height } = homeButton.getBoundingClientRect();
+    const radius = getComputedStyle(homeButton).borderTopLeftRadius;
+    const radiusPx = parseFloat(radius) * (radius.endsWith('%') ? width / 100 : 1);
+    return width > 0 && width === height && radiusPx < width / 4;
+  })()`);
+  if (!homeButtonIsSquare) throw new Error('Expected a square taskbar home button');
   const result = await win.webContents.executeJavaScript(`(async () => {
     const initialDefault = {
       settingsActive: document.getElementById('ai-free-settings-panel')?.classList.contains('active') === true,
