@@ -62,10 +62,10 @@ function resolveExtensionsRoot(appOutDir) {
   return candidates.find((candidate) => fs.existsSync(candidate)) || null;
 }
 
-exports.default = async function obfuscatePackagedExtensions(context) {
+async function obfuscatePackagedExtensions(context, extensions = packagedExtensions) {
   const extensionsRoot = resolveExtensionsRoot(context.appOutDir);
   if (!extensionsRoot) {
-    if (Array.isArray(packagedExtensions) && packagedExtensions.length === 0) {
+    if (Array.isArray(extensions) && extensions.length === 0) {
       console.log('[extensions-protection] 未配置打包插件，跳过混淆');
       return;
     }
@@ -84,6 +84,8 @@ exports.default = async function obfuscatePackagedExtensions(context) {
   }
 
   console.log(`[extensions-protection] 插件 JavaScript 混淆完成: ${extensionsRoot}`);
-};
+}
 
+exports.default = (context) => obfuscatePackagedExtensions(context);
+exports.obfuscatePackagedExtensions = obfuscatePackagedExtensions;
 exports.buildObfuscationOptions = buildObfuscationOptions;

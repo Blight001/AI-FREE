@@ -1,7 +1,13 @@
 const { createAppConsoleBridge } = require('../runtime/app-console');
 const { appContext } = require('../runtime/app-context');
 
-// 创建/初始化：createUiBridge的具体业务逻辑。
+function sendToWindow(window, channel, args) {
+  const contents = window?.webContents;
+  if (!contents || contents.isDestroyed()) return false;
+  contents.send(channel, ...args);
+  return true;
+}
+
 function createUiBridge({
   getMainWindow,
   getSideView,
@@ -51,28 +57,15 @@ function createUiBridge({
 // 处理：sendToSide的具体业务逻辑。
   function sendToSide(channel, ...args) {
     try {
-      let delivered = false;
       sideView = getSideView();
       mainWindow = typeof getMainWindow === 'function' ? getMainWindow() : null;
       controlPanelWindow = typeof getControlPanelWindow === 'function' ? getControlPanelWindow() : null;
-      if (sideView && sideView.webContents && !sideView.webContents.isDestroyed()) {
-        sideView.webContents.send(channel, ...args);
-        delivered = true;
-      }
-      if (mainWindow?.webContents && !mainWindow.webContents.isDestroyed()) {
-        mainWindow.webContents.send(channel, ...args);
-        delivered = true;
-      }
-      if (controlPanelWindow && controlPanelWindow.webContents && !controlPanelWindow.webContents.isDestroyed()) {
-        controlPanelWindow.webContents.send(channel, ...args);
-        delivered = true;
-      }
+      const sentToSide = sendToWindow(sideView, channel, args);
+      const sentToMain = sendToWindow(mainWindow, channel, args);
+      const sentToControl = sendToWindow(controlPanelWindow, channel, args);
       const popupWindow = typeof getNetworkMagicPopupWindow === 'function' ? getNetworkMagicPopupWindow() : null;
-      if (popupWindow?.webContents && !popupWindow.webContents.isDestroyed()) {
-        popupWindow.webContents.send(channel, ...args);
-        delivered = true;
-      }
-      return delivered;
+      const sentToPopup = sendToWindow(popupWindow, channel, args);
+      return sentToSide || sentToMain || sentToControl || sentToPopup;
     } catch (_) {
       return false;
     }

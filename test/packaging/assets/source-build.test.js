@@ -7,7 +7,7 @@ const path = require('node:path');
 const os = require('node:os');
 const vm = require('node:vm');
 
-const { buildRoot, buildSource, moduleKindFor, stampExtensionServiceWorkers, withPackagedSource } = require('../../../scripts/build-source');
+const { buildRoot, moduleKindFor, stampExtensionServiceWorkers, withPackagedSource } = require('../../../scripts/build-source');
 
 test('内置 AIX 更新时不打开网页，并保留下载栏设置', (t) => {
   const extension = 'aixdownloader-9.0.58';
@@ -52,18 +52,18 @@ test('统一源码构建按 Electron 进程边界选择模块格式', () => {
   assert.equal(moduleKindFor('app/frontend/renderer/index.ts'), 'esmodule');
 });
 
-test('统一源码构建生成可加载主进程模块和可追踪 manifest', () => {
-  const manifest = buildSource();
-  const manifestPath = path.join(buildRoot, 'build-manifest.json');
-  assert.equal(fs.existsSync(manifestPath), true);
-  assert.equal(manifest.mainFormat, 'commonjs');
-  assert.equal(manifest.rendererFormat, 'esmodule');
-  assert.match(manifest.sourceHash, /^[a-f0-9]{64}$/);
-  assert.equal(manifest.extensionServiceWorkers.some((entry) => entry.extension === 'browser_automation'), false);
-  const registryPath = path.join(buildRoot, 'src/app/backend/features/ai-chat/chat-run-registry.js');
-  delete require.cache[require.resolve(registryPath)];
-  assert.equal(typeof require(registryPath).createChatRunRegistry, 'function');
-  assertEnvironmentAssets(buildRoot);
+test('统一源码构建生成可加载主进程模块和可追踪 manifest', async () => {
+  await withPackagedSource((root) => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(root, 'build-manifest.json'), 'utf8'));
+    assert.equal(manifest.mainFormat, 'commonjs');
+    assert.equal(manifest.rendererFormat, 'esmodule');
+    assert.match(manifest.sourceHash, /^[a-f0-9]{64}$/);
+    assert.equal(manifest.extensionServiceWorkers.some((entry) => entry.extension === 'browser_automation'), false);
+    const registryPath = path.join(root, 'src/app/backend/features/ai-chat/chat-run-registry.js');
+    delete require.cache[require.resolve(registryPath)];
+    assert.equal(typeof require(registryPath).createChatRunRegistry, 'function');
+    assertEnvironmentAssets(root);
+  });
 });
 
 function assertEnvironmentAssets(root) {
@@ -77,7 +77,7 @@ function assertEnvironmentAssets(root) {
   assert.equal(context.navigator.userAgentData.platform, 'macOS');
 }
 
-test('重建开发源码不影响预打包输入，打包成功或失败后均清理临时目录', async () => {
+test('独立构建不影响已有预打包输入，打包成功或失败后均清理临时目录', async () => {
   const readme = path.join('src', 'app', 'README.md');
   let packagedRoot;
   await withPackagedSource(async (root) => {
@@ -85,9 +85,11 @@ test('重建开发源码不影响预打包输入，打包成功或失败后均�
     assert.notEqual(root, buildRoot);
     assertEnvironmentAssets(root);
     const before = fs.readFileSync(path.join(root, readme));
-    buildSource();
+    await withPackagedSource((otherRoot) => {
+      assert.notEqual(otherRoot, root);
+      assert.deepEqual(fs.readFileSync(path.join(otherRoot, readme)), before);
+    });
     assert.deepEqual(fs.readFileSync(path.join(root, readme)), before);
-    assert.deepEqual(fs.readFileSync(path.join(buildRoot, readme)), before);
   });
   assert.equal(fs.existsSync(packagedRoot), false);
 

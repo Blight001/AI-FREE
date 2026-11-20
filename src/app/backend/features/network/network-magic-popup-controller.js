@@ -75,6 +75,7 @@ function notifyToggle(ui, open) {
   try { ui.sendToSide?.('network-magic-panel-toggle', { open: open === true }); } catch (_) {}
 }
 
+/** @param {{ui?: {getMainWindow?: () => import("electron").BrowserWindow | null, getSideView?: () => import("electron").WebContentsView | null, sendToSide?: (channel: string, payload: {open: boolean}) => unknown}}} [options] */
 function createNetworkMagicPopupController({ ui } = {}) {
   const close = () => {
     const popup = currentPopup;
@@ -86,6 +87,7 @@ function createNetworkMagicPopupController({ ui } = {}) {
     notifyToggle(ui, false);
   };
 
+  /** @param {{expanded?: boolean, anchor?: unknown}} [options] */
   const show = ({ expanded = false, anchor } = {}) => {
     const mainWindow = typeof ui.getMainWindow === 'function' ? ui.getMainWindow() : null;
     if (!mainWindow || mainWindow.isDestroyed?.()) return false;
@@ -138,6 +140,7 @@ function createNetworkMagicPopupController({ ui } = {}) {
     return true;
   };
 
+  /** @param {{open?: boolean, expanded?: boolean, anchor?: unknown}} [payload] */
   const toggle = (payload = {}) => {
     if (payload?.open !== true) {
       close();

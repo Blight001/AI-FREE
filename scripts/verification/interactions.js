@@ -2,6 +2,10 @@
 
 // This inventory covers real interactive acceptance entrypoints. Mocked unit and
 // integration interactions remain in the ordinary tests suite.
+/** @typedef {{id: string, file: string, scope: string, timeoutMs?: number, args?: string[],
+ * node?: boolean, manual?: boolean, reason?: string, packaged?: boolean, runtime?: string,
+ * configurable?: boolean, scenario?: string, domain?: string}} Interaction */
+/** @type {Interaction[]} */
 const interactions = [
   { id: 'embed-smoke', file: 'smoke-chromium-embed.js', scope: 'native-window' },
   { id: 'chromium-phase2', file: 'accept-chromium-phase2.js', scope: 'native-window', timeoutMs: 10800000 },
@@ -12,6 +16,13 @@ const interactions = [
   { id: 'native-workflow', file: 'accept-native-browser-codex-alignment.js', scope: 'browser-workflow',
     args: ['--workflow-only'], scenario: 'test/acceptance/flows/native-workflow.json', configurable: true, domain: 'native-browser' },
   { id: 'browser-settings-ui', file: 'check-browser-settings-ui.js', scope: 'electron-ui' },
+  ...['home-workspace', 'account-preferences'].flatMap((domain) =>
+    ['source', 'generated', 'packaged'].map((runtime) => ({
+    id: `${domain}-${runtime}`, file: 'check-browser-settings-ui.js',
+    scope: runtime === 'packaged' ? 'packaged-ui' : 'electron-ui', packaged: runtime === 'packaged',
+    args: [domain === 'home-workspace' ? '--home-only' : '--account-only', '--runtime', runtime],
+    runtime, configurable: true, scenario: `test/acceptance/flows/${domain}.json`, domain,
+  }))),
   { id: 'remote-browser-peer', file: 'check-remote-browser-peer.js', scope: 'electron-ui', runtime: 'source', configurable: true,
     scenario: 'test/acceptance/flows/remote-browser-peer.json', domain: 'remote-peer' },
   { id: 'remote-browser-peer-generated', file: 'check-remote-browser-peer.js', scope: 'electron-ui',

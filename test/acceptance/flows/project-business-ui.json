@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "project-business-ui",
+  "checks": [
+    { "id": "home-workspace-source" },
+    { "id": "account-preferences-source" },
+    { "id": "home-workspace-generated" },
+    { "id": "account-preferences-generated" }
+  ]
+}

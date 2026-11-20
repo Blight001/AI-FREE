@@ -357,23 +357,7 @@ function registerExternalCodexIPC(ipc, ctx) {
   });
 }
 
-function registerUiUtilityIPC(ipc, ctx) {
-  const { ui } = ctx;
-  ipc.handle('set-sidebar-width', async (event, payload = {}) => {
-    const sideView = ui.getSideView?.();
-    const sideContents = sideView?.webContents;
-    if (payload.width === undefined) {
-      return { ok: true, width: readSidebarWidth(sideView) };
-    }
-    if (!sideContents || sideContents.isDestroyed?.() || sideContents.id !== event.sender?.id) {
-      return { ok: false, message: '当前页面不是内嵌侧边栏' };
-    }
-    const width = ui.setSidebarWidth?.(payload.width) || 0;
-    return width > 0 ? { ok: true, width } : { ok: false, message: '侧边栏当前不可调整' };
-  });
-  ipc.on('set-ui-scale', (_event, payload = {}) => {
-    ui.setUiScale?.(payload.scale);
-  });
+function registerWindowPreferencesIPC(ipc, ctx) {
   ipc.handle('get-window-close-behavior', async () => ({
     ok: true,
     data: { behavior: readWindowCloseBehavior(ctx.readStoreConfigSafe) },
@@ -400,6 +384,26 @@ function registerUiUtilityIPC(ipc, ctx) {
     return saved;
   });
   registerStartupPreferenceIPC(ipc, ctx);
+}
+
+function registerUiUtilityIPC(ipc, ctx) {
+  const { ui } = ctx;
+  ipc.handle('set-sidebar-width', async (event, payload = {}) => {
+    const sideView = ui.getSideView?.();
+    const sideContents = sideView?.webContents;
+    if (payload.width === undefined) {
+      return { ok: true, width: readSidebarWidth(sideView) };
+    }
+    if (!sideContents || sideContents.isDestroyed?.() || sideContents.id !== event.sender?.id) {
+      return { ok: false, message: '当前页面不是内嵌侧边栏' };
+    }
+    const width = ui.setSidebarWidth?.(payload.width) || 0;
+    return width > 0 ? { ok: true, width } : { ok: false, message: '侧边栏当前不可调整' };
+  });
+  ipc.on('set-ui-scale', (_event, payload = {}) => {
+    ui.setUiScale?.(payload.scale);
+  });
+  registerWindowPreferencesIPC(ipc, ctx);
   registerExternalCodexIPC(ipc, ctx);
   registerSidebarNavigationIPC(ipc, ui);
   const networkMagicPopup = createNetworkMagicPopupController({ ui });

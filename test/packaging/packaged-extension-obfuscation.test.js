@@ -11,7 +11,7 @@ const JavaScriptObfuscator = require('javascript-obfuscator');
 const {
   buildObfuscationOptions,
 } = require('../../scripts/obfuscate-packaged-extensions');
-const obfuscatePackagedExtensions = require('../../scripts/obfuscate-packaged-extensions').default;
+const { obfuscatePackagedExtensions } = require('../../scripts/obfuscate-packaged-extensions');
 
 test('executeScript host files keep serialized page functions self-contained', async () => {
   const source = `
@@ -52,5 +52,6 @@ test('executeScript host files keep serialized page functions self-contained', a
 test('packaging without configured extensions accepts an absent extension directory', async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-no-packaged-extensions-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  await assert.doesNotReject(obfuscatePackagedExtensions({ appOutDir: root }));
+  await assert.doesNotReject(obfuscatePackagedExtensions({ appOutDir: root }, []));
+  await assert.rejects(obfuscatePackagedExtensions({ appOutDir: root }, ['fixture-extension']), /extensions/);
 });

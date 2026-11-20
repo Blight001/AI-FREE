@@ -19,6 +19,7 @@ function buildCodexMcpConfig({ executablePath, entryPath, descriptorPath }) {
   ].join('\n');
 }
 
+/** @param {{executablePath?: string, entryPath?: string, descriptorPath?: string}} [paths] */
 function buildCodexCopyText({ executablePath, entryPath, descriptorPath } = {}) {
   const command = JSON.stringify(String(executablePath || ''));
   const entry = JSON.stringify(String(entryPath || ''));

@@ -1,11 +1,16 @@
 diff --git a/chrome/browser/ui/views/frame/ai_free_page_automation.cc b/chrome/browser/ui/views/frame/ai_free_page_automation.cc
-index bcb7674..16a8046 100644
+index 0b9f1b7f..92030d64 100644
 --- a/chrome/browser/ui/views/frame/ai_free_page_automation.cc
 +++ b/chrome/browser/ui/views/frame/ai_free_page_automation.cc
-@@ -33,6 +33,7 @@
+@@ -38,6 +38,7 @@
+ #include "content/public/browser/render_widget_host_view.h"
+ #include "content/public/browser/storage_partition.h"
  #include "content/public/browser/web_contents.h"
 +#include "content/public/common/isolated_world_ids.h"
-@@ -438,7 +438,7 @@ void OnMouseDispatched(AiFreeAutomationSuccess success,
+ #include "net/cookies/canonical_cookie.h"
+ #include "net/cookies/cookie_options.h"
+ #include "net/cookies/cookie_partition_key_collection.h"
+@@ -478,7 +479,7 @@ void OnMouseDispatched(AiFreeAutomationSuccess success,
  bool IsReadOnlyAutomationCommand(const base::DictValue& command) {
    const std::string* type = command.FindString("type");
    if (!type) return true;
@@ -14,7 +19,7 @@ index bcb7674..16a8046 100644
        *type == "get-session-data" || *type == "automation-takeover") {
      return true;
    }
-@@ -716,6 +716,46 @@ std::string InspectPageStateScript(const base::DictValue& command) {
+@@ -839,6 +840,45 @@ std::string InspectPageStateScript(const base::DictValue& command) {
  } catch(error) {return {success:false,errorCode:'PAGE_STATE_FAILED',error:String(error.message).slice(0,256)};} })())JS"});
  }
  
@@ -60,7 +65,7 @@ index bcb7674..16a8046 100644
  }  // namespace
  
  bool HandleAiFreePageAutomationCommand(Browser* browser,
-@@ -730,7 +759,7 @@ bool HandleAiFreePageAutomationCommand(Browser* browser,
+@@ -853,7 +893,7 @@ bool HandleAiFreePageAutomationCommand(Browser* browser,
    // Session/profile commands belong to the authenticated Runtime Bridge.
    // Do not consume them through the page-only takeover guard.
    if (*type != "automation-takeover" && *type != "observe-page" &&
@@ -69,7 +74,7 @@ index bcb7674..16a8046 100644
        *type != "perform-action" && *type != "get-session-data" &&
        *type != "capture-screenshot") {
      return false;
-@@ -776,6 +805,16 @@ bool HandleAiFreePageAutomationCommand(Browser* browser,
+@@ -899,6 +939,16 @@ bool HandleAiFreePageAutomationCommand(Browser* browser,
                         }, std::move(success), std::move(failure)));
      return true;
    }

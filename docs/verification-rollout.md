@@ -93,3 +93,7 @@ build:win 前两次继续在清理旧 win-unpacked 时遇到 EPERM。对 app.asa
 持续记录增加场景需要修改的文件/脚本行数、无业务改动时的偶发失败率、定位耗时、失败/超时后的残留资源数。资源作用域与领域声明仅提供机制，不能自动证明判定独立或安全并行；并行前还需隔离构建产物、桌面焦点和原生 Host。先依据实际维护数据决定是否增加依赖和基础设施。
 
 用法及职责真源见 [项目验证接口](project-verification.md) 和 [交互验证流程](interactive-verification.md)。
+
+## 首页与个人中心偏好
+
+`node scripts/verify-project.js --flow test/acceptance/flows/project-business-ui.json` 使用相同流程验证源码和生成态。首页场景覆盖键盘切换、Cookie 编辑框焦点和个人中心打开请求。偏好场景覆盖登录表单切换、保存到隔离夹具和重新加载后的状态。重新打包后可用 `interactions --only home-workspace-packaged,account-preferences-packaged` 在同一入口验证 ASAR。

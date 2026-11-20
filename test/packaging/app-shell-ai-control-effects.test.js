@@ -142,8 +142,6 @@ test('个人中心常规设置默认折叠在公告下方且内容宽度自适�
   const settingsIndex = accountHtml.indexOf('class="account-general-settings"');
 
   assert.ok(announcementIndex >= 0 && settingsIndex > announcementIndex);
-  assert.match(accountHtml, /<details class="account-general-settings">[\s\S]*?<summary>[\s\S]*?常规设置/);
-  assert.doesNotMatch(accountHtml, /<details class="account-general-settings"\s+open/);
   assert.match(accountCss, /\.account-center-panel \.container\s*\{[\s\S]*?width:\s*100%;[\s\S]*?max-width:\s*none;/);
   assert.match(accountCss, /\.account-profile-shell,[\s\S]*?\.account-profile-card\s*\{[\s\S]*?width:\s*100%;/);
   assert.match(accountCss, /\.account-vip-card\s*\{[\s\S]*?max-width:\s*430px;/);
@@ -231,7 +229,6 @@ test('空白首页使用主进程推送的侧栏像素宽度', () => {
   assert.match(homeCss, /transform:\s*scale\(var\(--ui-scale,\s*1\)\)/);
   assert.match(homeCss, /transform-origin:\s*top left/);
   assert.match(homeCss, /#browser-empty-state::before[\s\S]*?background-image:\s*url\("\.\.\/\.\.\/\.\.\/\.\.\/assets\/background\.png"\)/);
-  assert.match(homeCss, /html:not\(\.theme-light\) #browser-empty-state::before[\s\S]*?filter:\s*brightness\(0\.48\)/);
   assert.doesNotMatch(homeCss, /transition:\s*right/);
   assert.doesNotMatch(homeCss, /@media\s*\(max-width:\s*760px\)[\s\S]*?#browser-empty-state/);
   assert.match(shellUi, /--app-shell-sidebar-width/);

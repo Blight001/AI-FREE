@@ -17,6 +17,15 @@ const domains = {
     requireOracle: true,
     operations: { start: 'action', frame: 'action', waitEvent: 'oracle' },
   },
+  'account-preferences': {
+    requireOracle: true,
+    operations: { click: 'action', reload: 'action', inspect: 'oracle', inspectSaved: 'oracle' },
+  },
+  'home-workspace': {
+    requireOracle: true,
+    operations: { click: 'action', key: 'action', inspect: 'oracle',
+      inspectBackground: 'oracle', inspectAccountRequests: 'oracle' },
+  },
   'electron-pages': {
     requireOracle: true,
     operations: { open: 'action', load: 'action', inspect: 'oracle', close: 'action', inspectWindow: 'oracle' },

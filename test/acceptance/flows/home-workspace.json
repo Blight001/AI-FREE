@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "home-workspace",
+  "domain": "home-workspace",
+  "steps": [
+    {"id":"initial","use":"inspect","args":{"ready":{"reservedSidebarWidth":280}},"expect":[{"path":"selected","op":"equals","value":["home-browsers-tab"]},{"path":"panels","op":"equals","value":["home-browsers"]},{"path":"labels","op":"equals","value":["账号管理","cookie管理","浏览器管理","个人中心","插件管理"]},{"path":"menuLeftOfContent","op":"equals","value":true},{"path":"reservedSidebarWidth","op":"equals","value":280}]},
+    {"id":"background","use":"inspectBackground","args":{},"expect":[{"path":"visible","op":"equals","value":true}]},
+    {"id":"noAccountRequest","use":"inspectAccountRequests","args":{"count":0},"expect":[{"path":"count","op":"equals","value":0}]},
+    {"id":"selectAccounts","use":"click","args":{"target":"accounts"},"expect":[{"path":"sent","op":"equals","value":true}]},
+    {"id":"accounts","use":"inspect","args":{"ready":{"accountVisible":true}},"expect":[{"path":"selected","op":"equals","value":["home-accounts-tab"]},{"path":"panels","op":"equals","value":["home-accounts"]},{"path":"accountVisible","op":"equals","value":true}]},
+    {"id":"navigateDown","use":"key","args":{"target":"accounts","key":"ArrowDown"},"expect":[{"path":"sent","op":"equals","value":true}]},
+    {"id":"cookies","use":"inspect","args":{"ready":{}},"expect":[{"path":"selected","op":"equals","value":["home-cookies-tab"]},{"path":"panels","op":"equals","value":["home-cookies"]},{"path":"focused","op":"equals","value":"home-cookies-tab"}]},
+    {"id":"editCookies","use":"click","args":{"target":"editCookies"},"expect":[{"path":"sent","op":"equals","value":true}]},
+    {"id":"editorOpen","use":"inspect","args":{"ready":{"focused":"browser-cookies"}},"expect":[{"path":"selected","op":"equals","value":["home-cookies-tab"]},{"path":"panels","op":"equals","value":["home-cookies"]},{"path":"editorVisible","op":"equals","value":true},{"path":"editorHasRecord","op":"equals","value":true},{"path":"focused","op":"equals","value":"browser-cookies"}]},
+    {"id":"closeEditor","use":"click","args":{"target":"closeEditor"},"expect":[{"path":"sent","op":"equals","value":true}]},
+    {"id":"editorClosed","use":"inspect","args":{"ready":{}},"expect":[{"path":"selected","op":"equals","value":["home-cookies-tab"]},{"path":"panels","op":"equals","value":["home-cookies"]},{"path":"editorVisible","op":"equals","value":false},{"path":"cookieButtonFocused","op":"equals","value":true}]},
+    {"id":"selectPersonal","use":"click","args":{"target":"personal"},"expect":[{"path":"sent","op":"equals","value":true}]},
+    {"id":"personal","use":"inspect","args":{"ready":{}},"expect":[{"path":"selected","op":"equals","value":["home-personal-tab"]},{"path":"panels","op":"equals","value":["home-personal"]}]},
+    {"id":"openAccount","use":"click","args":{"target":"openAccount"},"expect":[{"path":"sent","op":"equals","value":true}]},
+    {"id":"accountRequest","use":"inspectAccountRequests","args":{"count":1},"expect":[{"path":"count","op":"equals","value":1}]},
+    {"id":"selectPlugins","use":"click","args":{"target":"plugins"},"expect":[{"path":"sent","op":"equals","value":true}]},
+    {"id":"plugins","use":"inspect","args":{"ready":{}},"expect":[{"path":"selected","op":"equals","value":["home-plugins-tab"]},{"path":"panels","op":"equals","value":["home-plugins"]},{"path":"pluginsVisible","op":"equals","value":true},{"path":"menuLeftOfContent","op":"equals","value":true}]},
+    {"id":"returnBrowsers","use":"click","args":{"target":"browsers"},"expect":[{"path":"sent","op":"equals","value":true}]},
+    {"id":"returned","use":"inspect","args":{"ready":{}},"expect":[{"path":"selected","op":"equals","value":["home-browsers-tab"]},{"path":"panels","op":"equals","value":["home-browsers"]}]}
+  ]
+}

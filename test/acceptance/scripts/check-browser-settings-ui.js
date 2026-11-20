@@ -1,6 +1,12 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const fs = require('fs');
 const path = require('path');
+const { applicationLayout, runtimeArgument } = require('../../helpers/flows/app-layout');
+const { accountPreferencesDrivers } = require('../../helpers/flows/account-preferences');
+const { homeWorkspaceDrivers } = require('../../helpers/flows/home-workspace');
+const { runFlow } = require('../../helpers/flows/runner');
+const { emitFlowReport } = require('../../../scripts/verification/flow-reports');
+const layout = applicationLayout(runtimeArgument(process.argv, 'source'));
 const { attachContextMenu } = require('../../../src/app/backend/utils/removeWatermark');
 const performanceProbeStartedAt = process.hrtime.bigint();
 
@@ -130,6 +136,7 @@ for (const [channel, response] of /** @type {Array<[string, any]>} */ ([
       { name: 'browser_action', description: '页面操作' },
     ],
   }],
+  ['ai-control-workspace-list', { ok: true, rootName: 'AI-Workspace', files: [], truncated: false }],
   ['ai-control-get-automation-cards', { ok: true, cards: [], selectedId: '' }],
   ['ai-control-history-list', { ok: true, sessions: [] }],
   ['ai-control-get-models', { ok: true, models: [], quota: null }],
@@ -145,16 +152,47 @@ for (const [channel, response] of /** @type {Array<[string, any]>} */ ([
   ['focus-sidebar-input', { ok: true }],
 ])) ipcMain.handle(channel, () => response);
 
+async function checkScenario(defaultScenario, fixture) {
+  const index = process.argv.indexOf('--scenario');
+  const scenario = index < 0 ? defaultScenario : JSON.parse(fs.readFileSync(process.argv[index + 1], 'utf8'));
+  const result = await runFlow(scenario, fixture);
+  emitFlowReport(result);
+  if (!result.ok) throw new Error(`${scenario.id}: ${JSON.stringify(result.data.steps.at(-1))}`);
+}
+
+function checkAccountPreferences(win) {
+  return checkScenario(require('../flows/account-preferences.json'), accountPreferencesDrivers(win, layout.pages.account,
+    () => ({ closeBehavior: windowCloseBehavior, ...startupSettings })));
+}
+
 app.whenReady().then(async () => {
   const win = new BrowserWindow({
     width: 805,
     height: 1200,
     show: !!process.env.AI_FREE_UI_CAPTURE,
-    webPreferences: { contextIsolation: true, preload: path.join(__dirname, '../../../src/app/backend/preload.js') },
+    webPreferences: { contextIsolation: true, preload: path.join(layout.root, 'src/app/backend/preload.js') },
   });
+  if (process.argv.includes('--account-only')) {
+    try {
+      await win.loadFile(layout.pages.account);
+      await checkAccountPreferences(win);
+    } finally {
+      win.destroy();
+    }
+    app.quit();
+    return;
+  }
   attachContextMenu(win.webContents);
-  await win.loadFile(path.join(__dirname, '../../../src/app/frontend/views/app-shell.html'));
+  await win.loadFile(layout.pages.shell);
   await new Promise((resolve) => setTimeout(resolve, 120));
+  await checkScenario(require('../flows/home-workspace.json'),
+    homeWorkspaceDrivers(win.webContents, () => ({ count: accountCenterRequests })));
+  accountCenterRequests = 0;
+  if (process.argv.includes('--home-only')) {
+    win.destroy();
+    app.quit();
+    return;
+  }
   const firstSidebarReadyMs = Number(process.hrtime.bigint() - performanceProbeStartedAt) / 1e6;
   const homeButtonIsSquare = await win.webContents.executeJavaScript(`(() => {
     const homeButton = document.getElementById('home-tab-btn');
@@ -229,6 +267,7 @@ app.whenReady().then(async () => {
     if (nodeToggle) nodeToggle.disabled = nodeToggleWasDisabled;
     const magicMenuClosedAfterNode = !magicMenu || magicMenu.hidden === true;
     await new Promise((resolve) => setTimeout(resolve, 20));
+    document.getElementById('home-plugins-tab').click();
     const extensionList = document.getElementById('extension-plugin-list');
     const extensionReadyStartedAt = Date.now();
     while (extensionList?.textContent.includes('正在读取统一插件') && Date.now() - extensionReadyStartedAt < 1000) {
@@ -236,6 +275,7 @@ app.whenReady().then(async () => {
     }
     const extensionItems = Array.from(document.querySelectorAll('.extension-plugin-item'));
     const extensionListStyle = extensionList ? getComputedStyle(extensionList) : null;
+    const extensionListBox = extensionList?.getBoundingClientRect();
     const firstExtensionBox = extensionItems[0]?.getBoundingClientRect();
     const secondExtensionBox = extensionItems[1]?.getBoundingClientRect();
     const firstExtensionWidth = firstExtensionBox?.width || 0;
@@ -248,6 +288,7 @@ app.whenReady().then(async () => {
     detailsBtn?.click();
     const detailsOpened = detailsBody?.hidden === false
       && (detailsBody?.textContent || '').includes('把网页内容翻译成中文');
+    document.getElementById('home-browsers-tab').click();
     const automationWorkbenchRemoved = !document.getElementById('automation-workbench-dialog')
       && !document.getElementById('automation-workbench')
       && !document.getElementById('automation-workbench-open')
@@ -257,14 +298,8 @@ app.whenReady().then(async () => {
       active: panel.classList.contains('active'),
       dedicatedSettingsPage: document.documentElement.classList.contains('browser-settings-page'),
       sidebarNavigationRemoved: !document.querySelector('.tab-nav'),
-      configHomeLogoVisible: !!document.querySelector('.browser-settings-home img[data-app-logo]')?.src,
       configHomeCreateVisible: document.getElementById('browser-settings-create-browser')
         ?.getBoundingClientRect().width > 0,
-      prominentStackedHome: document.querySelector('.browser-settings-home-logo')?.getBoundingClientRect().width >= 120
-        && document.getElementById('browser-settings-create-browser')?.getBoundingClientRect().top
-          > document.querySelector('.browser-settings-home-logo')?.getBoundingClientRect().bottom,
-      networkToolsUnboxed: getComputedStyle(document.querySelector('.settings-network-tools')).borderTopWidth === '0px'
-        && getComputedStyle(document.querySelector('.settings-network-tools')).boxShadow === 'none',
       vpnAutoStartBusyAppearance,
       proxyModes: Array.from(document.querySelectorAll('input[name="network-magic-proxy-mode"]')).map((input) => ({
         value: input.value, checked: input.checked,
@@ -307,10 +342,12 @@ app.whenReady().then(async () => {
         && !!document.getElementById('import-extension-plugin'),
       unifiedExtensionHintRemoved: !document.querySelector('#extension-manager-title')?.parentElement?.querySelector('p')
         && !(document.querySelector('.extension-manager-inline')?.textContent || '').includes('这里启用的插件会安装到全部'),
-      unifiedExtensionWraps: extensionListStyle?.flexWrap === 'wrap' && extensionsShareRow,
+      unifiedExtensionWraps: extensionListStyle?.flexWrap === 'wrap' && (extensionsShareRow
+        || (secondExtensionBox?.top >= firstExtensionBox?.bottom
+          && secondExtensionBox?.right <= extensionListBox?.right + 1)),
       unifiedExtensionCardCapped: extensionItems.length >= 2
         && firstExtensionWidth > 0
-        && firstExtensionWidth <= 230,
+        && firstExtensionBox.right <= extensionListBox.right + 1,
       unifiedExtensionDetailsInline: !!detailsBtn
         && detailsBtn.previousElementSibling?.classList.contains('extension-plugin-summary'),
       unifiedExtensionDetailsOpened: detailsHiddenBefore && detailsOpened,
@@ -330,10 +367,7 @@ app.whenReady().then(async () => {
     !result.active
     || !result.dedicatedSettingsPage
     || !result.sidebarNavigationRemoved
-    || !result.configHomeLogoVisible
     || !result.configHomeCreateVisible
-    || !result.prominentStackedHome
-    || !result.networkToolsUnboxed
     || !result.vpnAutoStartBusyAppearance
     || !result.automationWorkbenchRemoved
     || !result.woolResourceMovedOut
@@ -553,50 +587,7 @@ app.whenReady().then(async () => {
       const emptyStatusSpaceCollapsed = getComputedStyle(
         panel.querySelector('#sidebar-auth-status'),
       ).display === 'none';
-      const modeSwitch = panel.querySelector('#sidebar-auth-mode-switch');
-      const modeLabel = panel.querySelector('#sidebar-auth-mode-label');
-      modeSwitch?.click();
-      const registerModeWorks = panel.querySelector('#sidebar-auth-confirm-group')?.hidden === false
-        && panel.querySelector('#sidebar-auth-submit')?.textContent === '注册并登录'
-        && modeLabel?.textContent === '去登录';
-      modeSwitch?.click();
-      const loginModeWorks = panel.querySelector('#sidebar-auth-confirm-group')?.hidden === true
-        && panel.querySelector('#sidebar-auth-submit')?.textContent === '登录'
-        && modeLabel?.textContent === '去注册'
-        && panel.querySelector('.sidebar-auth-mode-arrow')?.textContent === '→';
-      const closeBehaviorAsk = panel.querySelector('input[name="window-close-behavior"][value="ask"]');
-      const closeBehaviorHide = panel.querySelector('input[name="window-close-behavior"][value="hide"]');
-      const startupEnabled = panel.querySelector('#app-startup-enabled');
-      const generalSettings = panel.querySelector('.account-general-settings');
-      const settingsBelowAnnouncement = panel.querySelector('#announcement-bar')?.nextElementSibling === generalSettings;
-      const generalSettingsCollapsed = generalSettings?.open === false
-        && generalSettings.querySelector('summary')?.textContent.includes('常规设置');
-      generalSettings.open = true;
-      const closeBehaviorLabels = Array.from(panel.querySelectorAll('.account-close-behavior-options label'));
-      const compactCloseBehaviorUi = closeBehaviorLabels.length === 3
-        && new Set(closeBehaviorLabels.map((label) => Math.round(label.getBoundingClientRect().top))).size === 1
-        && !panel.querySelector('.account-close-behavior-options small');
-      const closeBehaviorLoaded = closeBehaviorAsk?.checked === true;
-      const startupLoaded = startupEnabled?.checked === false;
       const nativeSelectRemoved = !panel.querySelector('select#window-close-behavior');
-      closeBehaviorHide.click();
-      await new Promise((done) => setTimeout(done, 30));
-      const persistedCloseBehavior = await window.aiFree?.ui?.getWindowCloseBehavior?.();
-      if (startupEnabled) {
-        startupEnabled.checked = true;
-        startupEnabled.dispatchEvent(new Event('change', { bubbles: true }));
-      }
-      await new Promise((done) => setTimeout(done, 30));
-      const persistedStartupSettings = await window.aiFree?.ui?.getStartupSettings?.();
-      const closeBehaviorSaved = closeBehaviorHide.checked === true
-        && panel.querySelector('#window-close-behavior-status')?.textContent === '已保存';
-      const closeBehaviorPersisted = persistedCloseBehavior?.ok === true
-        && persistedCloseBehavior.data?.behavior === 'hide';
-      const startupSaved = startupEnabled?.checked === true
-        && panel.querySelector('#app-startup-status')?.textContent === '已保存';
-      const startupPersisted = persistedStartupSettings?.ok === true
-        && persistedStartupSettings.data?.openAtLogin === true
-        && persistedStartupSettings.data?.startMinimized === true;
       const externalCodexMovedOut = !panel.querySelector('#external-codex-status')
         && !panel.querySelector('#copy-external-codex-config')
         && !panel.querySelector('.account-codex-bridge');
@@ -611,18 +602,7 @@ app.whenReady().then(async () => {
         dialogShellRemoved,
         inlineAuthVisible,
         emptyStatusSpaceCollapsed,
-        registerModeWorks,
-        loginModeWorks,
-        closeBehaviorLoaded,
-        settingsBelowAnnouncement,
-        generalSettingsCollapsed,
-        compactCloseBehaviorUi,
         nativeSelectRemoved,
-        closeBehaviorSaved,
-        closeBehaviorPersisted,
-        startupLoaded,
-        startupSaved,
-        startupPersisted,
         externalCodexMovedOut,
       });
     }, 30);
@@ -630,6 +610,7 @@ app.whenReady().then(async () => {
   if (Object.values(accountCenterResult).some((value) => value !== true)) {
     throw new Error(`个人中心侧边栏栏目校验失败: ${JSON.stringify(accountCenterResult)}`);
   }
+  await checkAccountPreferences(win);
   if (process.env.AI_FREE_UI_CAPTURE) {
     await new Promise((resolve) => setTimeout(resolve, 150));
     const image = await win.webContents.capturePage();
@@ -644,7 +625,7 @@ app.whenReady().then(async () => {
   }
   homeSwitchRequests = 0;
   independentBrowserCreateRequests = 0;
-  await win.loadFile(path.join(__dirname, '../../../src/app/frontend/views/app-shell.html'));
+  await win.loadFile(layout.pages.shell);
   await new Promise((resolve) => setTimeout(resolve, 120));
   const shellAccountResult = await win.webContents.executeJavaScript(`(async () => {
     const updateWidget = document.getElementById('update-widget');

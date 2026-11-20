@@ -22,6 +22,7 @@ function createControllerContext(overrides = {}) {
     window: {
       addEventListener() {},
       aiFree: {},
+      aiFreeLogoAssets: { url: 'file:///test-assets/logo.png' },
       visualViewport: { addEventListener() {} },
     },
     document: {

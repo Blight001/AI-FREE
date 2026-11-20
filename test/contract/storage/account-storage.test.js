@@ -6,15 +6,21 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const originalCwd = process.cwd();
 const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-account-storage-'));
-process.chdir(fixtureRoot);
-const accountStorage = require('../../../src/app/backend/lib/account-storage');
-
-test.after(() => {
-  process.chdir(originalCwd);
-  fs.rmSync(fixtureRoot, { recursive: true, force: true });
-});
+const electronPath = require.resolve('electron');
+const originalElectron = require.cache[electronPath];
+require.cache[electronPath] = { exports: { app: { getPath: () => fixtureRoot } } };
+test.after(() => fs.rmSync(fixtureRoot, { recursive: true, force: true }));
+const accountConfig = require('../../../src/app/backend/config');
+const core = test.mock.method(accountConfig, 'getCoreDir', () => path.join(fixtureRoot, 'core'));
+let accountStorage;
+try {
+  accountStorage = require('../../../src/app/backend/lib/account-storage');
+} finally {
+  core.mock.restore();
+  if (originalElectron) require.cache[electronPath] = originalElectron;
+  else delete require.cache[electronPath];
+}
 
 test('account lifecycle preserves metadata while excluding browser credentials', () => {
   accountStorage.setLicenseCache({ getCredentials: () => ({ key: 'runtime-license' }) });

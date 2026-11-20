@@ -62,17 +62,23 @@ async function verifyState(host, connection, before, config, deadline, session) 
   return { after, difference };
 }
 
+function stabilitySignature(observation) {
+  return JSON.stringify({
+    url: observation?.url,
+    count: observation?.returnedCount ?? observation?.items?.length,
+    layout: observation?.layoutChanged,
+  });
+}
+
 async function waitForStablePage(host, connection, deadline) {
   let previous;
-  let stable = 0;
   while (Date.now() < deadline) {
     const current = await host.browserObserve(connection, { limit: 40, mark: false, include_accessibility_tree: false, include_screenshot: false });
     if (current?.success === false) return current;
-    const signature = JSON.stringify({ url: current?.url, count: current?.returnedCount ?? current?.items?.length, layout: current?.layoutChanged });
+    const signature = stabilitySignature(current);
     if (current?.returnedCount === undefined && current?.layoutChanged === undefined) return current;
-    stable = signature === previous && current?.layoutChanged !== true ? stable + 1 : 0;
+    if (signature === previous && current?.layoutChanged !== true) return current;
     previous = signature;
-    if (stable >= 1) return current;
     await wait(Math.min(100, Math.max(0, deadline - Date.now())));
   }
   return { success: false, errorCode: 'PAGE_STABILITY_TIMEOUT', error: '页面在限定时间内未达到稳定状态' };
@@ -144,12 +150,51 @@ async function executeStep(host, connection, session, prepared, config, deadline
   return { ...prepared, result, executed, after, difference };
 }
 
+function readStepDiagnostics(session, before, after) {
+  let pageDiagnostics = pageDiagnosticsDelta(before?.pageDiagnostics, after?.pageDiagnostics);
+  if (before?.pageDiagnostics?.available) {
+    const cursor = session.pageDiagnosticsCursor || 0;
+    const between = before.pageDiagnostics.events.filter((entry) => entry.sequence > cursor);
+    if (between.length) {
+      const merged = [...new Map([...between, ...(pageDiagnostics.events || [])].map((entry) => [entry.sequence, entry])).values()]
+        .sort((a, b) => a.sequence - b.sequence);
+      pageDiagnostics = classifyDiagnostics(merged);
+    }
+  }
+  for (const snapshot of [before, after]) {
+    const diagnostics = snapshot?.pageDiagnostics;
+    if (diagnostics?.available) session.pageDiagnosticsCursor = Math.max(session.pageDiagnosticsCursor || 0, diagnostics.cursor || 0);
+  }
+  return pageDiagnostics;
+}
+
+function stepStatus(result, executed, diagnostics, config, difference, pageChanged) {
+  if (result.success === false) {
+    if (executed === 'unknown') return 'unknown';
+    return diagnostics.hasFailures ? 'business_failed' : 'pending';
+  }
+  if (config.checks.length) return difference?.passed ? 'business_verified' : 'business_failed';
+  return pageChanged ? 'page_changed' : 'action_dispatched';
+}
+
+function stepOutcome({ before, after, result, executed, config, difference, pageDiagnostics, reportId, args, mode }) {
+  const located = executed !== false;
+  const pageChanged = Boolean(before?.url !== after?.url || JSON.stringify(before?.values || {}) !== JSON.stringify(after?.values || {}));
+  const status = stepStatus(result, executed, pageDiagnostics, config, difference, pageChanged);
+  return { ...result, retryable: false, actionExecuted: executed, report_id: reportId, mode,
+    observationSuccess: !after.snapshotError,
+    status, located, pageChanged,
+    businessVerification: config.checks.length ? difference : { status: 'not_configured' },
+    pageDiagnostics: diagnosticsSummary(pageDiagnostics),
+    effective_configuration: config,
+    ...(args.after === 'observe' ? { observation: after } : {}) };
+}
+
 async function performStep(host, connection, session, tool, args, invoke) {
   const config = configuration(args, session);
   const started = Date.now();
   const deadline = remainingDeadline(session, started, args);
   let before; let after; let result; let difference;
-  let pageDiagnostics = { available: false, events: [] };
   /** @type {boolean|string} */
   let executed = false;
   try {
@@ -160,18 +205,7 @@ async function performStep(host, connection, session, tool, args, invoke) {
   promoteLightEvidence(before, failed);
   if (failed) session.mode = 'debug';
   after = await finalSnapshot(host, connection, config, session, after, args);
-  pageDiagnostics = pageDiagnosticsDelta(before?.pageDiagnostics, after?.pageDiagnostics);
-  if (before?.pageDiagnostics?.available) {
-    const cursor = session.pageDiagnosticsCursor || 0;
-    const between = before.pageDiagnostics.events.filter((entry) => entry.sequence > cursor);
-    if (between.length) {
-      const merged = [...new Map([...between, ...(pageDiagnostics.events || [])].map((entry) => [entry.sequence, entry])).values()]
-        .sort((a, b) => a.sequence - b.sequence);
-      pageDiagnostics = classifyDiagnostics(merged);
-    }
-    session.pageDiagnosticsCursor = Math.max(session.pageDiagnosticsCursor || 0, before.pageDiagnostics.cursor || 0);
-  }
-  if (after?.pageDiagnostics?.available) session.pageDiagnosticsCursor = Math.max(session.pageDiagnosticsCursor || 0, after.pageDiagnostics.cursor || 0);
+  let pageDiagnostics = readStepDiagnostics(session, before, after);
   if (!failed && pageDiagnostics.hasFailures) {
     failed = true;
     promoteLightEvidence(before, true);
@@ -198,17 +232,7 @@ async function performStep(host, connection, session, tool, args, invoke) {
   });
   session.lastReportId = reportId;
   session.lastStep = { before, config, actionExecuted: executed, args, tool, result };
-  const located = executed !== false;
-  const pageChanged = Boolean(before?.url !== after?.url || JSON.stringify(before?.values || {}) !== JSON.stringify(after?.values || {}));
-  const status = result.success === false ? (executed === 'unknown' ? 'unknown' : (pageDiagnostics.hasFailures ? 'business_failed' : 'pending'))
-    : (config.checks.length ? (difference?.passed ? 'business_verified' : 'business_failed') : (pageChanged ? 'page_changed' : 'action_dispatched'));
-  return { ...result, retryable: false, actionExecuted: executed, report_id: reportId, mode: session.mode,
-    observationSuccess: !after.snapshotError,
-    status, located, pageChanged,
-    businessVerification: config.checks.length ? difference : { status: 'not_configured' },
-    pageDiagnostics: diagnosticsSummary(pageDiagnostics),
-    effective_configuration: config,
-    ...(args.after === 'observe' ? { observation: after } : {}) };
+  return stepOutcome({ before, after, result, executed, config, difference, pageDiagnostics, reportId, args, mode: session.mode });
 }
 
 module.exports = { performStep, verifyState, configuration };

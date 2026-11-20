@@ -5,15 +5,19 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
+const fs = require('node:fs');
+const os = require('node:os');
 const { execFileSync } = require('node:child_process');
 
 const root = path.join(__dirname, '..', '..', '..');
 
-test('侧边栏页面在真实 Electron 中加载并应用主题', { timeout: 60000 }, () => {
+test('侧边栏页面在真实 Electron 中加载并应用主题', { timeout: 60000 }, (t) => {
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-sidebar-probe-'));
+  t.after(() => fs.rmSync(profile, { recursive: true, force: true }));
   const out = execFileSync(process.execPath, [
     path.join(root, 'scripts', 'run-electron.js'),
     path.join(root, 'test', 'helpers', 'electron', 'sidebar-probe.js'),
-  ], { cwd: root, encoding: 'utf8', timeout: 55000 });
+  ], { cwd: root, encoding: 'utf8', timeout: 55000, env: { ...process.env, AI_FREE_SIDEBAR_PROBE_PROFILE: profile } });
 
   const line = out.split(/\r?\n/).find((l) => l.startsWith('PROBE_RESULT '));
   assert.ok(line, `探针未输出结果。输出片段: ${out.slice(-500)}`);
@@ -22,10 +26,9 @@ test('侧边栏页面在真实 Electron 中加载并应用主题', { timeout: 60
   assert.equal(result.loaded, true, `页面加载失败: ${result.error || ''}`);
   assert.ok(['dark', 'light', 'gold'].includes(result.theme), `主题未应用: ${result.theme}`);
   assert.equal(result.hasControlShell, true, '缺少 .control-shell 容器');
-  assert.equal(result.tabButtons, 2, 'AI 控制/个人中心两个 tab 按钮应存在');
-  assert.equal(result.devTabButtons, 3, '开发模式应显示三个侧边栏栏目');
-  assert.equal(result.devConsoleVisible, true, '开发模式调试控制台入口应可见');
-  assert.equal(result.devConsolePageIntegrated, true, '调试控制台应保持侧边栏三栏导航');
+  assert.equal(result.page, 'ai-control.html', '兼容入口应导航到 AI 控制页');
+  assert.equal(result.devModeApplied, true, '开发模式参数应生效');
+  assert.equal(result.devConsoleLoaded, true, '独立调试控制台应显示日志面板');
   assert.equal(result.chatStructure.userTag, 'ARTICLE', '用户气泡应是独立消息节点');
   assert.equal(result.chatStructure.assistantTag, 'ARTICLE', 'AI 回合应是独立消息节点');
   assert.equal(result.chatStructure.assistantCount, 1, '重启后模型工具协议消息不应重复渲染为 AI 气泡');

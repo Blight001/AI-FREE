@@ -66,6 +66,28 @@ function appendOptionalWorkflows(workflow, available) {
   }
 }
 
+function isLocalWebTest(messages, url) {
+  return LOCAL_WEB_TEST_INTENT.test(messages.map((message) => message?.content || '').join('\n'))
+    || /^(https?:\/\/)?(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?\//i.test(url);
+}
+
+function describeBrowserWorkflow(available, controlled, initialMessages) {
+  const workflow = [];
+  if (available.has('browser_tab')) workflow.push('使用 browser_tab 确认、切换或导航标签页');
+  if (available.has('browser_observe') && available.has('browser_action')) {
+    workflow.push('网页操作前先用 browser_observe 获取当前状态，再用 browser_action 操作；导航、切换标签页或页面明显变化后重新 observe，禁止跨浏览器或跨页面复用旧 ref');
+  } else if (available.has('browser_observe')) workflow.push('用 browser_observe 读取当前页面，不虚构未返回的元素');
+  const controlledUrl = String(controlled?.url || controlled?.tabUrl || controlled?.currentUrl || '');
+  if (available.has('browser_workflow') && isLocalWebTest(initialMessages, controlledUrl)) {
+    workflow.push('本地 Web 测试、回归、验收或重复操作默认使用 browser_control acquire 后的 browser_workflow automation；每步配置稳定 locator、业务 probes/expect，失败自动暂停并转 debug。只有用户明确要求单步低层操作时才直接使用 browser_action');
+  }
+  if (available.has('browser_wait')) workflow.push('仅在页面确实需要加载或等待元素时使用 browser_wait');
+  appendOptionalWorkflows(workflow, available);
+  return workflow.length
+    ? `${workflow.join('；')}。操作失败时根据错误调整策略，不要原样盲目重试。`
+    : '';
+}
+
 function createMcpContext(tools, connections, resolver, controlledConnectionId, initialMessages = []) {
   if (!tools.length) return null;
   const availableNames = tools.map((tool) => String(tool?.name || '').trim()).filter(Boolean);
@@ -77,21 +99,7 @@ function createMcpContext(tools, connections, resolver, controlledConnectionId, 
     : (connections.length === 1
       ? `当前唯一可用浏览器为 ${resolver.describeConnections()}；无需传 change_browser，除非之后出现新的可用连接。用户不会在设置中指定目标浏览器。`
       : '当前没有可用的浏览器自动化连接，不要调用或虚构浏览器工具。需要浏览器时用 windows_tab 打开或创建栏目，等待 mcp_connected=true 后再操作页面。');
-  const workflow = [];
-  if (available.has('browser_tab')) workflow.push('使用 browser_tab 确认、切换或导航标签页');
-  if (available.has('browser_observe') && available.has('browser_action')) {
-    workflow.push('网页操作前先用 browser_observe 获取当前状态，再用 browser_action 操作；导航、切换标签页或页面明显变化后重新 observe，禁止跨浏览器或跨页面复用旧 ref');
-  } else if (available.has('browser_observe')) workflow.push('用 browser_observe 读取当前页面，不虚构未返回的元素');
-  const controlledUrl = String(controlled?.url || controlled?.tabUrl || controlled?.currentUrl || '');
-  if (available.has('browser_workflow') && (LOCAL_WEB_TEST_INTENT.test(initialMessages.map((message) => message?.content || '').join('\n'))
-    || /^(https?:\/\/)?(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?\//i.test(controlledUrl))) {
-    workflow.push('本地 Web 测试、回归、验收或重复操作默认使用 browser_control acquire 后的 browser_workflow automation；每步配置稳定 locator、业务 probes/expect，失败自动暂停并转 debug。只有用户明确要求单步低层操作时才直接使用 browser_action');
-  }
-  if (available.has('browser_wait')) workflow.push('仅在页面确实需要加载或等待元素时使用 browser_wait');
-  appendOptionalWorkflows(workflow, available);
-  const browserWorkflow = workflow.length
-    ? `${workflow.join('；')}。操作失败时根据错误调整策略，不要原样盲目重试。`
-    : '';
+  const browserWorkflow = describeBrowserWorkflow(available, controlled, initialMessages);
   return {
     role: 'system',
     content: `你可以使用这些 AI-FREE MCP 工具：${toolNames}。${routing}${browserWorkflow}`

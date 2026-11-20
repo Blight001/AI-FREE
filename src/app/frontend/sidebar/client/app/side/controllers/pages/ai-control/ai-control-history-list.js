@@ -13,6 +13,15 @@
     syncSendState();
   }
 
+  function renderLimitedQuota(ring, valueEl, widget, multiplierTip, lastCost) {
+    const total = Math.max(0, quotaNumber(state.quota.quota));
+    const used = quotaNumber(state.quota.used);
+    const remaining = Math.max(0, Number(state.quota.remaining ?? (total - used)));
+    const percent = total > 0 ? Math.max(0, Math.min(100, (remaining / total) * 100)) : 0;
+    const title = `剩余 ${formatQuota(remaining)} / ${formatQuota(total)} 点 · 已使用 ${formatQuota(state.quota.used)}${multiplierTip}${lastCost}`;
+    return setQuotaDisplay(ring, valueEl, widget, `${percent}%`, `${Math.round(percent)}`, title);
+  }
+
   function renderQuota(quota) {
     try {
       state.quota = firstQuotaValue(window.AiFreeQuotaDisplay?.normalizeAIQuota?.(quota), quota);
@@ -39,12 +48,7 @@
         return setQuotaDisplay(ring, valueEl, widget, '100%', '∞', title);
       }
 
-      const total = Math.max(0, quotaNumber(state.quota.quota));
-      const used = quotaNumber(state.quota.used);
-      const remaining = Math.max(0, Number(state.quota.remaining ?? (total - used)));
-      const percent = total > 0 ? Math.max(0, Math.min(100, (remaining / total) * 100)) : 0;
-      const title = `剩余 ${formatQuota(remaining)} / ${formatQuota(total)} 点 · 已使用 ${formatQuota(state.quota.used)}${multiplierTip}${lastCost}`;
-      return setQuotaDisplay(ring, valueEl, widget, `${percent}%`, `${Math.round(percent)}`, title);
+      return renderLimitedQuota(ring, valueEl, widget, multiplierTip, lastCost);
     } catch (error) {
       console.warn('[AI 控制] 额度显示失败:', error?.message || error);
     }

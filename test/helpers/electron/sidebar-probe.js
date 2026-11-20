@@ -10,12 +10,13 @@ if (!process.versions.electron) {
 }
 
 const path = require('path');
-const os = require('os');
 const fs = require('fs');
 const { app, BrowserWindow } = require('electron');
 
-const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-it-'));
+const userData = process.env.AI_FREE_SIDEBAR_PROBE_PROFILE;
+if (!userData || !fs.statSync(userData).isDirectory()) throw new Error('SIDEBAR_PROBE_PROFILE_REQUIRED');
 app.setPath('userData', userData);
+app.setPath('sessionData', userData);
 
 const consoleErrors = [];
 
@@ -31,7 +32,7 @@ app.whenReady().then(async () => {
     const report = await win.webContents.executeJavaScript(`({
       theme: document.documentElement.dataset.theme || '',
       hasControlShell: !!document.querySelector('.control-shell'),
-      tabButtons: Array.from(document.querySelectorAll('.tab-button')).filter((item) => !item.hidden).length,
+      page: location.pathname.split('/').at(-1),
       chatStructure: (() => {
         const messages = document.getElementById('ai-chat-messages');
         const firstTool = {
@@ -157,29 +158,25 @@ app.whenReady().then(async () => {
     const devWin = new BrowserWindow({ show: false, webPreferences: { sandbox: false } });
     const devPage = path.join(__dirname, '..', '..', '..', 'src', 'app', 'frontend', 'sidebar', 'ai-control.html');
     await devWin.webContents.loadFile(devPage, { query: { dev: '1' } });
-    const devNavigation = await devWin.webContents.executeJavaScript(`({
-      tabButtons: Array.from(document.querySelectorAll('.tab-button')).filter((item) => !item.hidden).length,
-      consoleVisible: !document.querySelector('[data-dev-only]')?.hidden,
-    })`);
+    const devModeApplied = await devWin.webContents.executeJavaScript(
+      `document.documentElement.classList.contains('development-mode')`,
+    );
     const devConsolePage = path.join(__dirname, '..', '..', '..', 'src', 'app', 'backend', 'views', 'dev-console.html');
-    await devWin.webContents.loadFile(devConsolePage, { query: { dev: '1' } });
-    devNavigation.consolePageIntegrated = await devWin.webContents.executeJavaScript(`(
-      document.querySelectorAll('.sidebar-nav .sidebar-tab').length === 3
-      && document.querySelector('.sidebar-tab.active')?.textContent.includes('调试控制台')
+    await devWin.webContents.loadFile(devConsolePage);
+    const devConsoleLoaded = await devWin.webContents.executeJavaScript(`(
+      document.title === '调试控制台' && document.getElementById('panel-title')?.textContent === '全部信息'
     )`);
     devWin.destroy();
     result = {
       loaded: true,
       ...report,
-      devTabButtons: devNavigation.tabButtons,
-      devConsoleVisible: devNavigation.consoleVisible,
-      devConsolePageIntegrated: devNavigation.consolePageIntegrated,
+      devModeApplied,
+      devConsoleLoaded,
       consoleErrors: consoleErrors.slice(0, 5),
     };
   } catch (error) {
     result = { loaded: false, error: String((error && error.message) || error), consoleErrors: consoleErrors.slice(0, 5) };
   }
   console.log('PROBE_RESULT ' + JSON.stringify(result));
-  try { fs.rmSync(userData, { recursive: true, force: true }); } catch (_) {}
   app.exit(result.loaded ? 0 : 1);
 });
