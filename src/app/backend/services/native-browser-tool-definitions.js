@@ -18,7 +18,7 @@ const NATIVE_BROWSER_TOOL_DEFINITIONS = Object.freeze([
   },
   {
     name: 'manage_card',
-    description: '管理并运行原生 Chromium 自动化卡片。用户不会在 AI 控制设置中指定卡片，必须先根据系统卡片目录或 action=list 自行按名称/网站/说明筛选，再对匹配的 id 或唯一 card_name 调用 get/run。rules/list/get 可在只读模式使用；写入或 run 前必须先调用 browser_control action=acquire 接管当前活动页面，完成后允许 AI 调用 action=release 停止接管。切换或新开标签页后需要重新接管。支持 rules/list/get/write/patch_step/insert_step/delete_step/move_step/delete/run。',
+    description: '管理并运行原生 Chromium 自动化卡片。用户不会在 AI 控制设置中指定卡片，必须先根据系统卡片目录或 action=list 自行按名称/网站/说明筛选，再对匹配的 id 或唯一 card_name 调用 get/run。rules/list/get 可在只读模式使用；写入或 run 前必须先调用 browser_control action=acquire 接管当前浏览器。接管跟随同一浏览器的活动标签，完成后允许 AI 调用 action=release 停止接管。支持 rules/list/get/write/patch_step/insert_step/delete_step/move_step/delete/run。',
     input_schema: objectSchema({
       action: { type: 'string', enum: ['rules', 'list', 'get', 'write', 'patch_step', 'insert_step', 'delete_step', 'move_step', 'delete', 'restore', 'purge', 'run', 'start_run', 'list_runs', 'get_run', 'list_run_steps', 'cancel_run', 'retry_run', 'pause_run', 'resume_run', 'step_run', 'template'] },
       id: { type: 'string' }, card_name: { type: 'string' }, cardData: { type: 'object' },
@@ -111,7 +111,7 @@ const NATIVE_BROWSER_TOOL_DEFINITIONS = Object.freeze([
   },
   {
     name: 'browser_action', destructive: true,
-    description: '通过 Chromium 原生输入执行点击、拖拽选文、整段输入、光标/选区定位、局部插入、滚动或组合按键。必须先调用 browser_control action=acquire 接管当前活动页面；接管期间页面显示紫色发光边框，任何来源触发的文件选择器或阻塞式浏览器模态弹窗都会被阻止。ref 只属于最近一次 browser_observe，连续 observe 后必须使用最后一次返回的 ref；accessibilityFallback 元素会自动使用 clickX/clickY，无需 selector。切换或新开标签页后需要重新接管；完成后 AI 可以调用 browser_control action=release 停止接管。文件上传改用 browser_file action=upload 并附带 path/paths 与 selector/ref。',
+    description: '通过 Chromium 原生输入执行点击、拖拽选文、整段输入、光标/选区定位、局部插入、滚动或组合按键。必须先调用 browser_control action=acquire 接管当前浏览器；接管期间活动页面页面显示紫色发光边框，任何来源触发的文件选择器或阻塞式浏览器模态弹窗都会被阻止。ref 只属于最近一次 browser_observe，连续 observe 后必须使用最后一次返回的 ref；accessibilityFallback 元素会自动使用 clickX/clickY，无需 selector。导航或切换标签后应重新观察并使用当前页面的 ref；完成后 AI 可以调用 browser_control action=release 停止接管。文件上传改用 browser_file action=upload 并附带 path/paths 与 selector/ref。',
     input_schema: objectSchema({
       surface: { type: 'string', enum: ['page', 'shell', 'sidebar', 'chromium', 'chromium_popup', 'dialog'], description: '默认 page。shell/sidebar 使用同界面的 ref。chromium、chromium_popup、dialog 仅限内置 AI，必须使用同界面最新的 observation_id，x/y 是窗口左上角起算的物理像素。' },
       action: { type: 'string', enum: ['click', 'double_click', 'right_click', 'drag', 'scroll', 'type', 'insert_text', 'set_selection', 'press_key', 'select_option', 'set_checked'] },

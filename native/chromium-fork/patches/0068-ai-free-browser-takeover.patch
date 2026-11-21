@@ -1,0 +1,201 @@
+diff --git a/chrome/browser/ui/views/frame/ai_free_takeover_guard.h b/chrome/browser/ui/views/frame/ai_free_takeover_guard.h
+--- a/chrome/browser/ui/views/frame/ai_free_takeover_guard.h
++++ b/chrome/browser/ui/views/frame/ai_free_takeover_guard.h
+@@ -5,12 +5,13 @@
+ 
+ #include "base/values.h"
+ 
++class Browser;
++
+ namespace content {
+ class WebContents;
+ }
+ 
+-base::DictValue SetAiFreeTakeover(content::WebContents* web_contents,
+-                                  bool active);
++base::DictValue SetAiFreeBrowserTakeover(Browser* browser, bool active);
+ base::DictValue GetAiFreeTakeoverStatus(content::WebContents* web_contents);
+ bool IsAiFreeTakeoverActive(content::WebContents* web_contents);
+ 
+diff --git a/chrome/browser/ui/views/frame/ai_free_takeover_guard.cc b/chrome/browser/ui/views/frame/ai_free_takeover_guard.cc
+--- a/chrome/browser/ui/views/frame/ai_free_takeover_guard.cc
++++ b/chrome/browser/ui/views/frame/ai_free_takeover_guard.cc
+@@ -9,7 +9,10 @@
+ #include "base/timer/timer.h"
+ #include "cc/paint/paint_flags.h"
+ #include "chrome/browser/ai_free_file_selection.h"
++#include "chrome/browser/ui/browser.h"
+ #include "chrome/browser/ui/browser_finder.h"
++#include "chrome/browser/ui/tabs/tab_strip_model.h"
++#include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
+ #include "chrome/browser/ui/views/frame/ai_free_automation_pointer.h"
+ #include "chrome/browser/ui/views/frame/browser_view.h"
+ #include "chrome/browser/ui/views/frame/contents_web_view.h"
+@@ -17,7 +20,7 @@
+ #include "content/public/browser/web_contents.h"
+ #include "content/public/browser/web_contents_observer.h"
+ #include "content/public/browser/web_contents_user_data.h"
+-#include "content/public/browser/visibility.h"
++#include "ui/base/class_property.h"
+ #include "ui/compositor/layer.h"
+ #include "ui/gfx/canvas.h"
+ #include "ui/views/view.h"
+@@ -61,7 +64,8 @@
+     DetachBorder();
+   }
+ 
+-  bool SetActive(bool active) {
++  void SetActive(bool active) {
++    if (active_ == active) return;
+     active_ = active;
+     AiFreeFileSelection::CreateForWebContents(web_contents());
+     AiFreeFileSelection::FromWebContents(web_contents())
+@@ -76,18 +80,12 @@
+       DetachBorder();
+     }
+     SetAiFreePointerVisible(web_contents(), active);
+-    return active_;
+   }
+   bool active() const { return active_; }
+   int blocked_dialogs() const { return blocked_dialogs_; }
+ 
+  private:
+   friend class content::WebContentsUserData<TakeoverSession>;
+-  void OnVisibilityChanged(content::Visibility visibility) override {
+-    if (active_ && visibility != content::Visibility::VISIBLE) {
+-      SetActive(false);
+-    }
+-  }
+   void Guard() {
+     if (!active_) return;
+     auto* dialogs =
+@@ -130,6 +128,14 @@
+ 
+ WEB_CONTENTS_USER_DATA_KEY_IMPL(TakeoverSession);
+ 
++void SetPageTakeover(content::WebContents* contents, bool active) {
++  if (!contents) return;
++  if (active) TakeoverSession::CreateForWebContents(contents);
++  if (auto* session = TakeoverSession::FromWebContents(contents)) {
++    session->SetActive(active);
++  }
++}
++
+ base::DictValue Status(content::WebContents* web_contents,
+                        TakeoverSession* session,
+                        std::string action) {
+@@ -137,7 +143,8 @@
+   result.Set("success", true);
+   result.Set("action", std::move(action));
+   result.Set("takeoverActive", session && session->active());
+-  result.Set("pointerVisible", IsAiFreePointerVisible(web_contents));
++  result.Set("pointerVisible",
++             web_contents && IsAiFreePointerVisible(web_contents));
+   result.Set("readOnly", !session || !session->active());
+   result.Set("modalGuardActive", session && session->active());
+   result.Set("blockedDialogCount", session ? session->blocked_dialogs() : 0);
+@@ -147,16 +154,49 @@
+ 
+ }  // namespace
+ 
+-base::DictValue SetAiFreeTakeover(content::WebContents* web_contents,
+-                                  bool active) {
+-  TakeoverSession::CreateForWebContents(web_contents);
+-  TakeoverSession* session = TakeoverSession::FromWebContents(web_contents);
+-  session->SetActive(active);
+-  return Status(web_contents, session, active ? "acquire" : "release");
++// The window owns the observer for the duration of an explicit acquire.
++// Native input and the modal guard are still enabled only on the active tab.
++class AiFreeTakeoverTabs : public TabStripModelObserver {
++ public:
++  explicit AiFreeTakeoverTabs(TabStripModel* tabs) { tabs->AddObserver(this); }
++
++ private:
++  void OnTabStripModelChanged(
++      TabStripModel*, const TabStripModelChange&,
++      const TabStripSelectionChange& selection) override {
++    if (!selection.active_tab_changed()) return;
++    SetPageTakeover(selection.old_contents, false);
++    SetPageTakeover(selection.new_contents, true);
++  }
++};
++
++DEFINE_UI_CLASS_PROPERTY_TYPE(AiFreeTakeoverTabs*)
++
++namespace {
++DEFINE_OWNED_UI_CLASS_PROPERTY_KEY(AiFreeTakeoverTabs, kAiFreeTakeoverTabs)
++}  // namespace
++
++base::DictValue SetAiFreeBrowserTakeover(Browser* browser, bool active) {
++  auto* view = BrowserView::GetBrowserViewForBrowser(browser);
++  auto* tabs = browser->tab_strip_model();
++  auto* contents = tabs->GetActiveWebContents();
++  if (!view) return Status(contents, nullptr, active ? "acquire" : "release");
++  if (active && !view->GetProperty(kAiFreeTakeoverTabs)) {
++    view->SetProperty(kAiFreeTakeoverTabs,
++                      std::make_unique<AiFreeTakeoverTabs>(tabs));
++  } else if (!active) {
++    view->ClearProperty(kAiFreeTakeoverTabs);
++  }
++  SetPageTakeover(contents, active);
++  return Status(contents, contents ? TakeoverSession::FromWebContents(contents)
++                                  : nullptr,
++                active ? "acquire" : "release");
+ }
+ 
+ base::DictValue GetAiFreeTakeoverStatus(content::WebContents* web_contents) {
+-  return Status(web_contents, TakeoverSession::FromWebContents(web_contents),
++  return Status(web_contents,
++                web_contents ? TakeoverSession::FromWebContents(web_contents)
++                             : nullptr,
+                 "status");
+ }
+ 
+diff --git a/chrome/browser/ui/views/frame/ai_free_page_automation.cc b/chrome/browser/ui/views/frame/ai_free_page_automation.cc
+--- a/chrome/browser/ui/views/frame/ai_free_page_automation.cc
++++ b/chrome/browser/ui/views/frame/ai_free_page_automation.cc
+@@ -1080,7 +1080,7 @@
+     }
+     if (action == "acquire" || action == "release") {
+       std::move(success).Run(
+-          SetAiFreeTakeover(web_contents, action == "acquire"));
++          SetAiFreeBrowserTakeover(browser, action == "acquire"));
+       return true;
+     }
+     Fail(std::move(failure), "AUTOMATION_TAKEOVER_ACTION_INVALID",
+diff --git a/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc b/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
+--- a/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
++++ b/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
+@@ -905,6 +905,7 @@
+ void HandleCommandOnUi(scoped_refptr<BridgeConnection> connection,
+                        base::DictValue command) {
+   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
++  if (!connection->connected()) return;
+   const std::string* type = command.FindString("type");
+   const std::string* request_id = command.FindString("requestId");
+   std::string command_name = type ? *type : std::string();
+@@ -948,7 +949,9 @@
+     input.Set("type", command_name);
+     command = std::move(input);
+   }
+-  if (!web_contents && command_name != "close-browser") {
++  const bool control_without_tab = command_name == "automation-takeover" &&
++      command.FindString("action") && *command.FindString("action") != "acquire";
++  if (!web_contents && command_name != "close-browser" && !control_without_tab) {
+     return connection->SendErrorAsync(request, command_name,
+                                       "WEB_CONTENTS_UNAVAILABLE",
+                                       "活动页面不可用");
+@@ -1424,12 +1427,7 @@
+       FROM_HERE, base::BindOnce(
+                      [](scoped_refptr<BridgeConnection> connection) {
+                        Browser* browser = connection->browser().get();
+-                       auto* active = browser ? browser->tab_strip_model()
+-                                                    ->GetActiveWebContents()
+-                                              : nullptr;
+-                       if (active && IsAiFreeTakeoverActive(active)) {
+-                         SetAiFreeTakeover(active, false);
+-                       }
++                       if (browser) SetAiFreeBrowserTakeover(browser, false);
+                      },
+                      connection));
+ }

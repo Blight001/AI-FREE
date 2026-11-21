@@ -58,7 +58,7 @@ test('未登录用户可配置并使用自定义模型，内置模型仍要求�
   assert.match(builtin.message, /登录/);
   assert.equal(provider.mock.callCount(), 1);
   assert.equal(provider.mock.calls[0].arguments[1].model, 'local-model');
-  assert.equal(provider.mock.calls[0].arguments[1].stream, false);
+  assert.equal(provider.mock.calls[0].arguments[1].stream, true);
 
   assert.equal(settings.setCustomApi({ clear: true }).ok, true);
   assert.equal((await models.getModels()).ok, false);

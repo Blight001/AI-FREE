@@ -10,7 +10,7 @@ const { app, BrowserWindow } = require('electron');
 const { createBrowserRuntimeManager } = require('../../../src/app/backend/browser-runtime');
 const { MAX_MESSAGE_BYTES, PROTOCOL_VERSION } = require('../../../src/app/backend/browser-runtime/chromium-command-client');
 const { acceptPageBinding } = require('../../helpers/flows/chromium-page-binding-cases');
-const { verifyTakeoverPointer } = require('../../helpers/flows/chromium-takeover-pointer');
+const { verifySidebarReload, verifyTakeoverPointer } = require('../../helpers/flows/chromium-takeover-pointer');
 const { acceptChromiumRobustness } = require('../../helpers/flows/chromium-runtime-robustness');
 const { resolveTestResources } = require('../../helpers/flows/chromium-candidate-resources');
 
@@ -433,6 +433,7 @@ app.whenReady().then(async () => {
   }
   const a = await launchProfile('phase3_a', `${origin}/page?profile=a`);
   await verifyTakeoverPointer({ manager, pid: a.state.pid, profileId: 'phase3_a', url: `${origin}/page?profile=a` });
+  await verifySidebarReload({ manager, profileId: 'phase3_a', origin, waitForRequest });
   if (process.argv.includes('--takeover-pointer-only')) {
     await stopAndAssertReleased('phase3_a', a.state.pid);
     return shutdown(0);

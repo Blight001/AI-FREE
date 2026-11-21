@@ -48,9 +48,10 @@ test('local chat chooses a connection with no manual binding and retains the pag
   assert.equal((await dispatchPluginTool(turn, 'browser_observe', {})).success, true);
   tabs.b = 'b-reloaded';
   assert.equal((await dispatchPluginTool(turn, 'browser_action', { action: 'click' })).errorCode, 'BROWSER_TARGET_CHANGED');
-  assert.equal((await dispatchPluginTool(makeTurn(), 'browser_observe', { change_browser: 'b' })).success, true);
+  assert.equal((await dispatchPluginTool(turn, 'browser_observe', {})).success, true);
+  assert.equal((await dispatchPluginTool(turn, 'browser_action', { action: 'click' })).success, true);
   assert.deepEqual(pageCalls.map(({ id, expectedPageToken }) => [id, expectedPageToken]), [
-    ['b', 'b-original'], ['b', 'b-original'], ['b', 'b-reloaded'],
+    ['b', 'b-original'], ['b', 'b-original'], ['b', 'b-reloaded'], ['b', 'b-reloaded'],
   ]);
 });
 
@@ -74,6 +75,48 @@ test('an explicit tab switch allows the next page, while an unexpected tab chang
   active = { url: 'https://local.test/b', pageToken: 'b-page' };
   assert.equal((await dispatchPluginTool(context, 'browser_observe', {})).success, true);
   assert.deepEqual(pageCalls, ['a-page', 'b-page']);
+});
+
+test('the sidebar can take over a browser showing a new tab without a webpage token', async () => {
+  const { dispatchPluginTool } = require('../../../src/app/backend/features/ai-chat/chat-tool-executor');
+  const browser = { id: 'a' };
+  const context = { localInteraction: true, browserTargets: new Map(), connections: [browser],
+    describeConnections: () => browser.id, waitForAbort: async (value) => value,
+    bridge: { getConnection: () => browser, async dispatch(_id, tool, args, options) {
+      if (tool === 'browser_tab') return { activeTab: { url: 'chrome://new-tab-page/' } };
+      assert.equal(tool, 'browser_control');
+      assert.equal(args.action, 'acquire');
+      assert.equal(options.expectedPageToken, undefined);
+      return { success: true, takeoverActive: true };
+    } },
+  };
+  assert.equal((await dispatchPluginTool(context, 'browser_control', { action: 'acquire' })).takeoverActive, true);
+});
+
+test('the local sidebar reloads a selected tab and binds input to the new document', async () => {
+  const { dispatchPluginTool } = require('../../../src/app/backend/features/ai-chat/chat-tool-executor');
+  const browser = { id: 'a', name: '浏览器功能测试' };
+  const url = 'https://local.test/a';
+  let pageToken = 'before-reload';
+  const context = { localInteraction: true, browserTargets: new Map(), connections: [browser],
+    describeConnections: () => browser.name, waitForAbort: async (value) => value,
+    bridge: { getConnection: () => browser, async dispatch(_id, tool, args, options) {
+      if (tool === 'browser_tab' && args.action === 'list') return { activeTab: { url, pageToken } };
+      if (tool === 'browser_tab' && args.action === 'reload') {
+        assert.equal(args.tab_id, 1);
+        pageToken = 'after-reload';
+        return { success: true, url };
+      }
+      assert.equal(options.expectedPageToken, pageToken);
+      return { success: true };
+    } },
+  };
+  assert.equal((await dispatchPluginTool(context, 'browser_observe', {})).success, true);
+  assert.equal((await dispatchPluginTool(context, 'browser_tab', {
+    action: 'reload', tab_id: 1, change_browser: browser.name,
+  })).success, true);
+  assert.equal((await dispatchPluginTool(context, 'browser_observe', {})).success, true);
+  assert.equal((await dispatchPluginTool(context, 'browser_action', { action: 'click', selector: '#go' })).success, true);
 });
 
 test('approval belongs to one request and renderer and cannot be replayed', async () => {

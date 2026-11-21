@@ -10,6 +10,14 @@
   }
 
   function bindAiHeaderEvents() {
+    const streamToggle = el('ai-chat-stream-output');
+    if (streamToggle) {
+      streamToggle.checked = state.streamOutput;
+      streamToggle.addEventListener('change', () => {
+        state.streamOutput = streamToggle.checked;
+        try { localStorage.setItem('ai-free.ai-chat-stream-output.v1', String(state.streamOutput)); } catch (_) {}
+      });
+    }
     el('ai-chat-redeem-gift')?.addEventListener('click', redeemGiftCode);
     el('ai-chat-gift-code')?.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {

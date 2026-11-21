@@ -29,6 +29,12 @@ test('额度边界和旧多选输入被归一化为单一控制浏览器', () =>
   assert.equal(options.mentions[0].reference, 'notes.md');
 });
 
+test('流式文字默认开启，显式关闭时仍保留对话事件通道', () => {
+  assert.equal(normalizeChatOptions({ stream: true }).streamOutput, true);
+  assert.equal(normalizeChatOptions({ stream: true, streamOutput: false }).streamOutput, false);
+  assert.equal(normalizeChatOptions({ stream: true }).useStream, true);
+});
+
 test('内置模型要求登录和服务可用，自定义模型要求完整配置', () => {
   const base = { readStoreConfigSafe: () => ({}), getGlobalHttpClient: () => null };
   assert.match(resolveChatAccess(base, { modelId: 'builtin' }).error.message, /登录/);

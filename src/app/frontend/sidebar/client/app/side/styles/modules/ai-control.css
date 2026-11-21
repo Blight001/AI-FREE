@@ -21,11 +21,20 @@
 .ai-chat-history-field {
   position: relative;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 6px;
   min-width: 0;
 }
+.ai-chat-stream-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #9eabc0;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.ai-chat-stream-toggle input { accent-color: #56a8f5; }
 .ai-chat-history-field > label {
   color: #8a9bb5;
   font-size: 18px;

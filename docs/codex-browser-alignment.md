@@ -22,13 +22,13 @@
 
 - 补齐实际 Chromium checkout 缺失的 0038、0041–0043 补丁，避免应用目录有功能而安装内核没有功能。
 - 新增 0044–0048 补丁，修复标签操作、AX 快照、密码观察/等待结果、历史完成事件和会话命令路由。
-- 会话管理走认证 Runtime Bridge；页面操作继续要求 browser_control acquire。业务失败不能被协议 ok 包装成成功。
+- 会话管理走认证 Runtime Bridge；页面操作要求先对所选浏览器执行 browser_control acquire。业务失败不能被协议 ok 包装成成功。
 - 验收入口：`npm run verify`、`npm run test:acceptance`、`npm run accept:codex-browser`、`npm run accept:chromium-phase3`。
 - 最后打包、安装，并通过 AI-FREE MCP 对本地独立测试页面验证；安装与最终验收已完成，见下方记录。
 
 ## 调用约定
 
-导航或标签切换后重新 acquire 并观察，不跨页面复用旧引用。`BROWSER_RUNTIME_UPDATE_REQUIRED` 表示旧内核缺能力；`ACCESSIBILITY_TREE_NOT_READY` 表示本次页面结构暂未就绪，可等待后重试。普通页面数据和 AX 数据来自两个读取过程，动态图页应按结果再次确认；截图与结构不是事务式原子快照。
+一次 acquire 覆盖同一浏览器的活动标签，直到 release 或连接断开。侧栏支持 browser_tab 的刷新、前进、后退、关闭、导航和指定标签切换。页面变化后先重新 observe，再使用当前页面的引用。`BROWSER_RUNTIME_UPDATE_REQUIRED` 表示旧内核缺能力；`ACCESSIBILITY_TREE_NOT_READY` 表示本次页面结构暂未就绪，可等待后重试。普通页面数据和 AX 数据来自两个读取过程，动态图页应按结果再次确认；截图与结构不是事务式原子快照。
 
 ## 验收记录（2026-09-16）
 

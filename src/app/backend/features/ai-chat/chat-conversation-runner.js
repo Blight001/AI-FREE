@@ -92,18 +92,25 @@ function resetStreamedRound(state) {
   state.streamedRoundReasoning = '';
 }
 
-function receiveStreamEvent(state, round, event) {
+function receiveStreamEvent(state, round, event, forward = true) {
   let visibleEvent = event;
   if (event?.type === 'content_delta') visibleEvent = receiveContentDelta(state, event);
   if (event?.type === 'reasoning_delta') state.streamedRoundReasoning += String(event.delta || '');
-  if (visibleEvent && !['result', 'error'].includes(visibleEvent?.type)) state.emit({ ...visibleEvent, round });
+  if (forward && visibleEvent && !['result', 'error'].includes(visibleEvent?.type)) {
+    state.emit({ ...visibleEvent, round });
+  }
 }
 
 function sendModelRound(state, round, messages, transport) {
   const tools = state.toolContext.tools;
   const signal = state.run?.controller.signal;
   if (transport === 'custom-api') {
-    return sendCustomAIControlMessage(state.customApi, messages, { tools, signal });
+    return sendCustomAIControlMessage(state.customApi, messages, {
+      tools,
+      signal,
+      onEvent: state.useStream && state.streamOutput
+        ? (event) => receiveStreamEvent(state, round, event) : undefined,
+    });
   }
   if (transport === 'builtin-stream') {
     return state.httpClient.streamAIControlMessage(
@@ -112,7 +119,7 @@ function sendModelRound(state, round, messages, transport) {
       state.modelId,
       messages,
       { tools, runId: state.runId, signal },
-      (event) => receiveStreamEvent(state, round, event),
+      (event) => receiveStreamEvent(state, round, event, state.streamOutput),
     );
   }
   return state.httpClient.sendAIControlMessage(

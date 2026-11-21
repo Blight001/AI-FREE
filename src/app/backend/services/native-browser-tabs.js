@@ -13,7 +13,6 @@ function tabTarget(args) {
 }
 
 function clearPageState(service, connection) {
-  service.takeoverConnections.delete(connection.id);
   service.observeTargets.delete(connection.id);
   service.observationHistory.delete(connection.id);
 }

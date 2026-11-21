@@ -95,7 +95,7 @@ function takeoverRequired(tool, args) {
   return {
     success: false,
     errorCode: 'BROWSER_TAKEOVER_REQUIRED',
-    error: '浏览器当前为只读模式。请先调用 browser_control action=acquire 正式接管页面；完成后调用 action=release。',
+    error: '浏览器当前为只读模式。请先调用 browser_control action=acquire 正式接管浏览器；完成后调用 action=release。',
     requestedTool: tool,
     requestedAction: text(args.action).toLowerCase(),
     takeoverActive: false,

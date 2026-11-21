@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { StringDecoder } = require('node:string_decoder');
 const { normalizeCustomAiApiConfig } = require('../utils/ai-control-settings');
 const { normalizeToolCallMessage } = require('../lib/ai-tool-call-normalizer');
 
@@ -126,7 +127,7 @@ function buildCustomAiRequest(normalized, messages, options) {
   const payload = {
     model: normalized.model,
     messages: normalizeMessages(messages, { customProtocol: normalized.customProtocol }),
-    stream: false,
+    stream: options.stream === true,
   };
   if (normalized.maxOutputTokens) payload.max_tokens = normalized.maxOutputTokens;
   const tools = normalizeOpenAiTools(options.tools);
@@ -136,6 +137,88 @@ function buildCustomAiRequest(normalized, messages, options) {
 
 function getCustomAiResponseData(response) {
   return response && response.data && typeof response.data === 'object' ? response.data : {};
+}
+
+function mergeFunctionDelta(previous = {}, delta = {}) {
+  return {
+    ...previous,
+    ...(delta.name ? { name: `${previous.name || ''}${delta.name}` } : {}),
+    ...(delta.arguments ? { arguments: `${previous.arguments || ''}${delta.arguments}` } : {}),
+  };
+}
+
+function mergeToolCallDelta(toolCalls, delta) {
+  const index = Number(delta?.index) || 0;
+  const previous = toolCalls[index] || { function: { arguments: '' } };
+  toolCalls[index] = {
+    ...previous,
+    ...(delta?.id ? { id: `${previous.id || ''}${delta.id}` } : {}),
+    ...(delta?.type ? { type: delta.type } : {}),
+    function: mergeFunctionDelta(previous.function, delta?.function),
+  };
+}
+
+function parseCustomAiEvent(block) {
+  const data = block.split(/\r?\n/).filter((line) => line.startsWith('data:'))
+    .map((line) => line.slice(5).trimStart()).join('\n');
+  if (!data || data === '[DONE]') return null;
+  try { return JSON.parse(data); } catch (_) { return null; }
+}
+
+function appendStreamContent(state, delta, onEvent) {
+  if (typeof delta !== 'string' || !delta) return;
+  state.message.content += delta;
+  onEvent?.({ type: 'content_delta', delta });
+}
+
+function appendStreamReasoning(state, delta, onEvent) {
+  if (typeof delta !== 'string' || !delta) return;
+  state.message.reasoning_content = (state.message.reasoning_content || '') + delta;
+  onEvent?.({ type: 'reasoning_delta', delta });
+}
+
+function applyCustomAiEvent(block, state, onEvent, supportsReasoning) {
+  const payload = parseCustomAiEvent(block);
+  if (!payload) return;
+  if (payload.error) { state.error = payload.error.message || payload.error; return; }
+  state.usage = payload.usage || state.usage;
+  const delta = payload.choices?.[0]?.delta || {};
+  appendStreamContent(state, delta.content, onEvent);
+  if (supportsReasoning) appendStreamReasoning(state, delta.reasoning_content ?? delta.reasoning, onEvent);
+  (delta.tool_calls || []).forEach((toolCall) => mergeToolCallDelta(state.toolCalls, toolCall));
+}
+
+async function readCustomAiEventStream(response, onEvent, supportsReasoning) {
+  if (typeof response.data?.[Symbol.asyncIterator] !== 'function') {
+    return normalizeCustomAiSuccess(getCustomAiResponseData(response), supportsReasoning);
+  }
+  const chunks = [];
+  const state = { message: { role: 'assistant', content: '' }, toolCalls: [], usage: null, error: null };
+  let buffer = '';
+  const decoder = new StringDecoder('utf8');
+  for await (const chunk of response.data) {
+    const bytes = Buffer.from(chunk);
+    chunks.push(bytes);
+    buffer += decoder.write(bytes);
+    let boundary = buffer.search(/\r?\n\r?\n/);
+    while (boundary >= 0) {
+      const separator = /^\r?\n\r?\n/.exec(buffer.slice(boundary))[0];
+      applyCustomAiEvent(buffer.slice(0, boundary), state, onEvent, supportsReasoning);
+      buffer = buffer.slice(boundary + separator.length);
+      boundary = buffer.search(/\r?\n\r?\n/);
+    }
+  }
+  buffer += decoder.end();
+  if (buffer.trim()) applyCustomAiEvent(buffer, state, onEvent, supportsReasoning);
+  if (state.error) return { ok: false, message: String(state.error) };
+  const raw = Buffer.concat(chunks).toString('utf8');
+  if (!response.headers?.['content-type']?.toLowerCase().includes('text/event-stream')) {
+    try { return normalizeCustomAiSuccess(JSON.parse(raw), supportsReasoning); } catch (_) {
+      return { ok: false, message: '自定义 API 返回格式无效：无法解析流式响应' };
+    }
+  }
+  if (state.toolCalls.length) state.message.tool_calls = state.toolCalls;
+  return normalizeCustomAiSuccess({ choices: [{ message: state.message }], usage: state.usage }, supportsReasoning);
 }
 
 function getCustomAiErrorDetail(data, status) {
@@ -163,21 +246,29 @@ function normalizeCustomAiSuccess(data, supportsReasoning) {
   };
 }
 
-async function sendCustomAIControlMessage(config, messages, options = {}) {
+function validateCustomAiChat(config, messages) {
   const normalized = normalizeCustomAiApiConfig(config);
   if (!normalized.enabled || !normalized.baseUrl || !normalized.model) {
-    return { ok: false, message: '自定义 API 尚未配置完整' };
+    return { error: { ok: false, message: '自定义 API 尚未配置完整' } };
   }
   if (messagesHaveImageInput(messages) && !normalized.supportsImageInput) {
-    return {
-      ok: false,
+    return { error: {
       message: `当前模型“${normalized.name}”未启用图片输入，无法读取 browser_screenshot 截图。请在自定义 API 配置中开启“支持图片输入”，或切换到视觉模型。`,
       errorCode: 'MODEL_IMAGE_INPUT_UNSUPPORTED',
-    };
+      ok: false,
+    } };
   }
+  return { normalized };
+}
+
+async function sendCustomAIControlMessage(config, messages, options = {}) {
+  const validation = validateCustomAiChat(config, messages);
+  if (validation.error) return validation.error;
+  const normalized = validation.normalized;
   if (!normalized.supportsTools) options = { ...options, tools: [] };
 
-  const { headers, payload } = buildCustomAiRequest(normalized, messages, options);
+  const streaming = typeof options.onEvent === 'function';
+  const { headers, payload } = buildCustomAiRequest(normalized, messages, { ...options, stream: streaming });
 
   try {
     const response = await axios.post(resolveChatCompletionsUrl(normalized.baseUrl), payload, {
@@ -187,7 +278,11 @@ async function sendCustomAIControlMessage(config, messages, options = {}) {
       maxContentLength: 20 * 1024 * 1024,
       maxBodyLength: 20 * 1024 * 1024,
       validateStatus: () => true,
+      ...(streaming ? { responseType: 'stream' } : {}),
     });
+    if (streaming && response.status >= 200 && response.status < 300) {
+      return await readCustomAiEventStream(response, options.onEvent, normalized.supportsReasoning);
+    }
     const data = getCustomAiResponseData(response);
     if (response.status < 200 || response.status >= 300) {
       const detail = getCustomAiErrorDetail(data, response.status);

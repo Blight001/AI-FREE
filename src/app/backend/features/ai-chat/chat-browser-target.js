@@ -1,9 +1,12 @@
 'use strict';
 
 const { randomUUID } = require('node:crypto');
+const { setTimeout: delay } = require('node:timers/promises');
 
 const PAGE_TOOLS = new Set(['browser_action', 'browser_observe', 'browser_wait',
   'browser_screenshot', 'browser_file', 'browser_media']);
+const TAB_MUTATIONS = new Set(['navigate', 'replace', 'reload', 'close', 'back', 'forward']);
+const CONTROL_ACTIONS = new Set(['overview', 'status', 'acquire', 'release']);
 const text = (value) => String(value ?? '').trim();
 
 function chatError(code, message) {
@@ -33,10 +36,10 @@ function readChatTarget(connection, connectionId, tab) {
   } };
 }
 
-function browserMetadataTool(toolName, args) {
+function browserSessionTool(toolName, args) {
   const action = text(args.action).toLowerCase();
   return (toolName === 'browser_tab' && action === 'list')
-    || (toolName === 'browser_control' && ['overview', 'status', 'release'].includes(action || 'status'));
+    || (toolName === 'browser_control' && CONTROL_ACTIONS.has(action || 'status'));
 }
 
 function explicitTabChange(toolName, args) {
@@ -46,23 +49,37 @@ function explicitTabChange(toolName, args) {
     const index = args.index ?? args.tab_index ?? args.id ?? args.tab_id ?? args.tabId;
     return Boolean(text(index) || text(args.url));
   }
-  return action === 'navigate' && ![args.replace_current, args.current_tab, args.same_tab].includes(true);
+  return TAB_MUTATIONS.has(action);
 }
 
 function guardedBrowserRoute(context, toolName, args) {
-  if (!context.localInteraction || browserMetadataTool(toolName, args) || explicitTabChange(toolName, args)) return null;
-  const action = text(args.action).toLowerCase();
+  if (!context.localInteraction || browserSessionTool(toolName, args) || explicitTabChange(toolName, args)) return null;
   if (PAGE_TOOLS.has(toolName) && (!args.surface || args.surface === 'page')) return null;
-  if (toolName === 'browser_control' && action === 'acquire') return null;
-  return routeFailure('BROWSER_TARGET_TOOL_UNSUPPORTED', '侧栏只支持受校验的页面操作、指定标签切换和新标签导航');
+  return routeFailure('BROWSER_TARGET_TOOL_UNSUPPORTED', '侧栏只支持受校验的页面操作和 browser_tab 标签管理');
 }
 
-async function resolvePageGuard(context, connection) {
+function freshPageObservation(toolName, args) {
+  return toolName === 'browser_observe' && !args.region_ref && !args.regionRef
+    && !args.region_layout_hash && !args.regionLayoutHash;
+}
+
+async function waitForChatTarget(context, id) {
+  const deadline = Date.now() + 1000;
+  while (true) {
+    context.signal?.throwIfAborted();
+    const target = await captureChatTarget(context.bridge, id);
+    if (target.ok || target.error.code !== 'BROWSER_TARGET_UNAVAILABLE' || Date.now() >= deadline) return target;
+    await delay(50, undefined, { signal: context.signal });
+  }
+}
+
+async function resolvePageGuard(context, connection, toolName, args) {
+  const refresh = freshPageObservation(toolName, args);
   const cached = context.browserTargets.get(connection.id);
-  if (cached?.pageToken) return { ok: true, data: cached };
-  const target = await captureChatTarget(context.bridge, connection.id);
+  if (!refresh && cached?.pageToken) return { ok: true, data: cached };
+  const target = await waitForChatTarget(context, connection.id);
   if (!target.ok) return target;
-  if (cached?.url && cached.url !== target.data.url) {
+  if (!refresh && cached?.url && cached.url !== target.data.url) {
     return chatError('BROWSER_TARGET_CHANGED', '活动标签已变化，请先列出标签并核对目标');
   }
   context.browserTargets.set(connection.id, target.data);
@@ -83,7 +100,7 @@ function recordChatTabResult(context, connection, args, result) {
     const target = readChatTarget(connection, id, result);
     const url = text(result.url);
     if (target.ok) context.browserTargets.set(id, target.data);
-    else if (url) context.browserTargets.set(id, { url });
+    else if (url && text(args.action).toLowerCase() === 'switch') context.browserTargets.set(id, { url });
     else context.browserTargets.delete(id);
     return withoutPageToken(result);
   }
@@ -134,6 +151,6 @@ async function confirmBrowserUpload(context, files) {
 }
 
 module.exports = {
-  browserMetadataTool, captureChatTarget, chatError, confirmBrowserUpload, createChatApproval,
+  browserSessionTool, captureChatTarget, chatError, confirmBrowserUpload, createChatApproval,
   guardedBrowserRoute, recordChatTabResult, resolvePageGuard, routeFailure,
 };

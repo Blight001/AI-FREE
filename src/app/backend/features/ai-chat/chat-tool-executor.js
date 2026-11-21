@@ -1,7 +1,7 @@
 'use strict';
 
 const { collectConnectionTools } = require('./chat-tool-context');
-const { browserMetadataTool, guardedBrowserRoute, recordChatTabResult, resolvePageGuard, routeFailure } = require('./chat-browser-target');
+const { browserSessionTool, guardedBrowserRoute, recordChatTabResult, resolvePageGuard, routeFailure } = require('./chat-browser-target');
 const { PAGE_BATCH_TOOL, executeChatPageBatch } = require('./chat-page-batch');
 const { dispatchChatUpload } = require('./chat-browser-upload');
 const { recoverChatUpload } = require('./chat-upload-recovery');
@@ -66,8 +66,8 @@ async function dispatchPluginTool(context, toolName, args) {
 
 async function dispatchSelectedBrowser(context, connection, toolName, args, timeoutMs) {
   const local = context.localInteraction;
-  const guardRequired = local && toolName !== 'browser_tab' && !browserMetadataTool(toolName, args);
-  const target = guardRequired ? await context.waitForAbort(resolvePageGuard(context, connection)) : null;
+  const guardRequired = local && toolName !== 'browser_tab' && !browserSessionTool(toolName, args);
+  const target = guardRequired ? await context.waitForAbort(resolvePageGuard(context, connection, toolName, args)) : null;
   if (target && !target.ok) return routeFailure(target.error.code, target.error.message);
   const guard = target?.data;
   const dispatch = (input, name = toolName) => context.bridge.dispatch(connection.id, name, input, {

@@ -224,7 +224,7 @@ const IPC_PAYLOAD_SCHEMAS = Object.freeze({
     stringListField(channel, input, 'attachmentPaths');
     validateArtifactReferences(channel, input.artifactReferences);
     validateChatMentions(channel, input.mentions);
-    for (const key of ['disableTools', 'stream', 'localInteraction']) booleanField(channel, input, key);
+    for (const key of ['disableTools', 'stream', 'streamOutput', 'localInteraction']) booleanField(channel, input, key);
     if (input.quota !== undefined && input.quota !== null && !isPlainObject(input.quota)) {
       fail(channel, 'quota', '必须是对象或 null');
     }

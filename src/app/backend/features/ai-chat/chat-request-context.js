@@ -92,6 +92,7 @@ function normalizeChatOptions(input) {
     localInteraction: input.localInteraction === true,
     mentions: Array.isArray(input.mentions) ? input.mentions : [],
     requestId: String(input.requestId || '').trim(),
+    streamOutput: input.streamOutput !== false,
     useStream: input.stream === true,
   };
 }
