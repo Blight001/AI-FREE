@@ -617,7 +617,7 @@ try {
   const tutorialTabs = new Map();
   let tutorialActiveTabId = null;
   const tutorialLaunches = [];
-  const tutorialNavigations = [];
+  const foregroundPages = [];
   let tutorialFocusCalls = 0;
   let tutorialSideFocused = false;
   let tutorialSideFocusCalls = 0;
@@ -634,7 +634,7 @@ try {
       tutorialLaunches.push(profile);
       return { status: 'ready' };
     },
-    async navigate(profileId, _type, url) { tutorialNavigations.push({ profileId, url }); },
+    async openForegroundTab(profileId, _type, url, previousUrl) { foregroundPages.push({ profileId, url, previousUrl }); },
     async show() {},
     async hide() {},
     async focus() { tutorialFocusCalls += 1; },
@@ -678,8 +678,8 @@ try {
   assert.equal(tutorialTabs.size, 1);
   assert.equal(tutorialLaunches.length, 1);
   assert.equal(tutorialLaunches[0].profileId, 'browser-tab-tutorial-history');
-  assert.equal(tutorialLaunches[0].initialUrl, 'https://server.example.com/tutorial');
-  assert.equal(tutorialLaunches[0].restoreLastSession, false);
+  assert.equal(tutorialLaunches[0].restoreLastSession, true);
+  assert.equal(tutorialLaunches[0].restoreFallbackUrl, 'https://server.example.com/tutorial');
   assert.equal(tutorialTabs.get(firstTutorialId).browserHistoryId, 'tutorial-history');
   assert.equal(tutorialTabs.get(firstTutorialId).isTutorialTab, true);
   assert.equal(tutorialFocusCalls, 0);
@@ -689,9 +689,10 @@ try {
     { focusBrowser: false },
   );
   assert.equal(reopenedTutorialId, firstTutorialId);
-  assert.deepEqual(tutorialNavigations.at(-1), {
+  assert.deepEqual(foregroundPages.at(-1), {
     profileId: firstTutorialId,
     url: 'https://server.example.com/tutorial-v2',
+    previousUrl: 'https://server.example.com/tutorial',
   });
   assert.equal(tutorialFocusCalls, 0);
   tutorialTabManager.switchTab(firstTutorialId);
@@ -700,6 +701,34 @@ try {
   tutorialTabManager.switchTab(firstTutorialId, { focusBrowser: true });
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(tutorialFocusCalls, 1);
+
+  const shopUrl = 'https://wzyp.cn/shop/8Y3DD5YR';
+  const [shopId, repeatedShopId] = await Promise.all([
+    tutorialTabManager.openTutorialTab('', { destination: 'shop', focusBrowser: true }),
+    tutorialTabManager.openTutorialTab('', { destination: 'shop', focusBrowser: true }),
+  ]);
+  assert.equal(shopId, firstTutorialId);
+  assert.equal(repeatedShopId, firstTutorialId);
+  assert.equal(tutorialTabs.size, 1);
+  assert.equal(tutorialLaunches.length, 1);
+  assert.equal(tutorialTabs.get(shopId).fixedTitle, '使用教程和商城');
+  assert.deepEqual(foregroundPages.slice(-2), [
+    { profileId: shopId, url: shopUrl, previousUrl: '' }, { profileId: shopId, url: shopUrl, previousUrl: '' },
+  ]);
+  assert.equal(tutorialTabs.get(shopId).requestedUrl, 'https://server.example.com/tutorial-v2');
+  const guideUrl = 'https://server.example.com/tutorial-v3';
+  await tutorialTabManager.openTutorialTab(guideUrl);
+  assert.deepEqual(foregroundPages.at(-1), {
+    profileId: shopId, url: guideUrl, previousUrl: 'https://server.example.com/tutorial-v2',
+  });
+  await tutorialTabManager.closeTab(shopId);
+  assert.equal(await tutorialTabManager.openTutorialTab('', { destination: 'shop' }), firstTutorialId);
+  assert.equal(tutorialTabs.get(shopId).requestedUrl, 'https://history.example.com/tutorial');
+  assert.equal(tutorialLaunches.at(-1).restoreFallbackUrl, shopUrl);
+  await tutorialTabManager.openTutorialTab(guideUrl);
+  assert.deepEqual(foregroundPages.at(-1), {
+    profileId: shopId, url: guideUrl, previousUrl: 'https://history.example.com/tutorial',
+  });
 
   const minimumTabs = new Map([['last-browser', {
     id: 'last-browser',

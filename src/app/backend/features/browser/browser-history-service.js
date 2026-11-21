@@ -13,6 +13,7 @@ const {
 } = require('../../ipc/register/store-utils');
 const { normalizeAiFreeBrowserSettings } = require('../../utils/ai-free-browser-settings');
 const { callOptional, firstText } = require('../../../shared/safe-values');
+const { TUTORIAL_BROWSER_TITLE, LEGACY_TUTORIAL_BROWSER_TITLE, isTutorialBrowserName } = require('./tutorial-browser-identity');
 
 const DEFAULT_BROWSER_WINDOW_NAME = '新建窗口';
 const DEFAULT_BROWSER_WINDOW_URL = 'chrome://newtab/';
@@ -32,10 +33,12 @@ function normalizeBrowserHistoryItem(value) {
   const item = value && typeof value === 'object' ? value : {};
   const partition = text(item.partition);
   const accountId = text(item.accountId);
+  const name = text(item.name, DEFAULT_BROWSER_WINDOW_NAME) || DEFAULT_BROWSER_WINDOW_NAME;
   return {
     ...item,
     id: text(item.id),
-    name: text(item.name, DEFAULT_BROWSER_WINDOW_NAME) || DEFAULT_BROWSER_WINDOW_NAME,
+    name: name === LEGACY_TUTORIAL_BROWSER_TITLE ? TUTORIAL_BROWSER_TITLE : name,
+    ...(isTutorialBrowserName(name) ? { kind: 'tutorial' } : {}),
     url: text(item.url),
     profileId: text(item.profileId),
     accountId,
@@ -90,6 +93,7 @@ function readBrowserHistorySafe() {
   const history = source.map(normalizeBrowserHistoryItem).filter((item) => item.id);
   let changed = source.some((item) => (
     text(item && item.runtimeType) !== 'chromium'
+    || text(item?.name) === LEGACY_TUTORIAL_BROWSER_TITLE
     || (text(item && item.accountId)
       && !Object.prototype.hasOwnProperty.call(item, 'hideToolbar')
       && !Object.prototype.hasOwnProperty.call(item, 'hideBrowserToolbar'))
@@ -180,7 +184,7 @@ function createHistoryRecord(history, tab, match) {
     id: historyId,
     name: makeUniqueBrowserName(title || DEFAULT_BROWSER_WINDOW_NAME, history),
     kind: tab && tab.isTutorialTab === true ? 'tutorial' : '',
-    url: getManagedTabUrl(tab),
+    url: getHistoryTabUrl(tab),
     profileId: match.profileId,
     accountId: match.accountId,
     runtimeType: 'chromium',
@@ -193,9 +197,13 @@ function createHistoryRecord(history, tab, match) {
   tab.browserHistoryId = historyId;
 }
 
+function getHistoryTabUrl(tab) {
+  return (tab?.isTutorialTab === true && text(tab.requestedUrl)) || getManagedTabUrl(tab);
+}
+
 function updateHistoryRecord(tab, match) {
   const record = match.record;
-  const liveUrl = getManagedTabUrl(tab);
+  const liveUrl = getHistoryTabUrl(tab);
   const iconUrl = resolveTabIconUrl(tab);
   const updates = {
     profileId: match.profileId,
@@ -313,6 +321,7 @@ async function openBrowserHistoryRecord(ui, historyIdInput) {
       tabId,
       accountId: record.accountId,
       fixedTitle: record.name,
+      isTutorialTab: record.kind === 'tutorial',
       browserHistoryId: record.id,
       runtimeType: 'chromium',
       browserSettings: record.settings,

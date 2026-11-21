@@ -49,6 +49,85 @@ test('state queries are immediate and do not change the stored state', () => {
   assert.equal(state.status, RUNTIME_STATUS.HIDDEN);
 });
 
+test('已运行的 Chromium 异常退出记录脱敏诊断且只重启一次', async () => {
+  const { instance, runtime } = createRuntime(RUNTIME_STATUS.HIDDEN);
+  const errors = [];
+  runtime.logger = { error: (_message, details) => errors.push(details) };
+  runtime.windowBridge = { hideHostWindow() {} };
+  instance.diagnostics = createChromiumLaunchDiagnostics({ logFilePath: 'runtime.log' });
+  instance.diagnostics.record('stderr', 'runtime failure token=synthetic-secret');
+  const restarts = [];
+  runtime.restartNow = async (_id, options) => { restarts.push(options); };
+  runtime.bindInstance('slow-profile', instance);
+  instance.child.exitCode = 3;
+  instance.child.emit('exit', 3, null);
+  runtime.markCrashed('slow-profile', { code: 'CHROMIUM_WINDOW_LOST' });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(restarts.length, 1);
+  assert.equal(restarts[0].recovery.visible, false);
+  assert.equal(errors[0].code, 'CHROMIUM_PROCESS_EXITED');
+  assert.equal(errors[0].exitCode, 3);
+  assert.equal(errors[0].pid, 1234);
+  assert.match(errors[0].stack, /Chromium 运行中意外退出/);
+  assert.match(errors[0].diagnostic, /runtime failure/);
+  assert.equal(errors[0].logFilePath, 'runtime.log');
+  assert.doesNotMatch(JSON.stringify(errors), /synthetic-secret/);
+});
+
+test('健康故障结束未完成的命令，但刚恢复的 Profile 不会循环重启', async () => {
+  const { runtime, instance } = createRuntime(RUNTIME_STATUS.READY);
+  runtime.windowBridge = { hideHostWindow() {} };
+  runtime.restartNow = async () => assert.fail('repeated crash must not restart');
+  instance.autoRecoveredAt = Date.now();
+  const failures = [];
+  instance.commandClient.rejectPending = (error) => failures.push(error);
+  runtime.markCrashed('slow-profile', { code: 'CHROMIUM_HEARTBEAT_TIMEOUT', message: '心跳超时' });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(failures[0].code, 'CHROMIUM_HEARTBEAT_TIMEOUT');
+  assert.equal(runtime.getState('slow-profile').status, RUNTIME_STATUS.CRASHED);
+  assert.equal(runtime.crashRecoveryAttempts.size, 0);
+});
+
+test('手动停止取消排队中的自动重启', async () => {
+  const { runtime, instance } = createRuntime(RUNTIME_STATUS.READY);
+  runtime.store = { releaseLock() {} };
+  runtime.windowBridge = { hideHostWindow() {} };
+  let restarts = 0;
+  runtime.restartNow = async () => { restarts += 1; };
+  let releaseOperation;
+  const pending = runtime.enqueueProfileOperation('slow-profile', () => new Promise((resolve) => {
+    releaseOperation = resolve;
+  }));
+  await new Promise((resolve) => setImmediate(resolve));
+  runtime.bindInstance('slow-profile', instance);
+  instance.child.exitCode = 1;
+  instance.child.emit('exit', 1, null);
+  await runtime.stop('slow-profile', { preserveSession: false });
+  releaseOperation();
+  await pending;
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(restarts, 0);
+  assert.equal(runtime.getState('slow-profile').status, RUNTIME_STATUS.STOPPED);
+  assert.equal(runtime.crashRecoveryAttempts.size, 0);
+});
+
+test('正常关闭 Chromium 不发布崩溃事件', async () => {
+  const { runtime, instance } = createRuntime(RUNTIME_STATUS.READY);
+  runtime.store = { releaseLock() {} };
+  instance.commandClient.send = async (command) => {
+    assert.equal(command, 'close-browser');
+    instance.child.exitCode = 0;
+    instance.child.emit('exit', 0, null);
+  };
+  runtime.bindInstance('slow-profile', instance);
+  const crashes = [];
+  runtime.on('crashed', (state) => crashes.push(state));
+  await runtime.stop('slow-profile', { preserveSession: false });
+  assert.deepEqual(crashes, []);
+  assert.equal(runtime.getState('slow-profile').status, RUNTIME_STATUS.STOPPED);
+});
+
 test('停止中的 Profile 会立即取消尚在等待的 Chromium 握手', async () => {
   const { instance, runtime, state } = createRuntime();
   state.status = RUNTIME_STATUS.STOPPING;

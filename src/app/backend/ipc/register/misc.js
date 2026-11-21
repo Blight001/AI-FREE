@@ -4,7 +4,7 @@ const { createHttpClient } = require('../../lib/http-client');
 const { getStorePath } = require('../../config');
 const { summarizeUpdatePayload } = require('../../utils/update-payload');
 
-const DEFAULT_TUTORIAL_URL = 'https://www.yuque.com/kelingaishipindian/tx5gwq/xbsl692ls9xope0e?singleDoc#';
+const { DEFAULT_TUTORIAL_URL } = require('../../features/browser/tutorial-browser-identity');
 
 // 监听/绑定：registerMiscIPC的具体业务逻辑。
 function registerMiscIPC(ctx) {
@@ -106,24 +106,23 @@ function getWoolPlatforms(licenseCache) {
   }
 }
 
-async function getTutorialUrl({ httpClient, licenseCache, ui }) {
+async function getTutorialUrl({ httpClient, licenseCache }) {
   try {
-    const remoteUrl = await fetchRemoteTutorialUrl(httpClient, licenseCache, ui);
+    const remoteUrl = await fetchRemoteTutorialUrl(httpClient, licenseCache);
     if (remoteUrl) return remoteUrl;
     return getRuntimeConfig(licenseCache).tutorialUrl || DEFAULT_TUTORIAL_URL;
   } catch (error) {
     console.error('[IPC] 获取教程链接失败:', error);
-    return DEFAULT_TUTORIAL_URL;
+    return getRuntimeConfig(licenseCache).tutorialUrl || DEFAULT_TUTORIAL_URL;
   }
 }
 
-async function fetchRemoteTutorialUrl(httpClient, licenseCache, ui) {
+async function fetchRemoteTutorialUrl(httpClient, licenseCache) {
   if (typeof httpClient?.getTutorialUrl !== 'function') return '';
   const response = await httpClient.getTutorialUrl();
   const tutorialUrl = String(response?.tutorialUrl || response?.tutorial_url || '').trim();
   if (response?.ok !== true || !tutorialUrl) return '';
   licenseCache?.setRuntimeConfig?.({ tutorialUrl });
-  if (typeof ui?.syncTutorialTabUrl === 'function') await ui.syncTutorialTabUrl(tutorialUrl);
   return tutorialUrl;
 }
 

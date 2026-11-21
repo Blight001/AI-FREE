@@ -81,7 +81,7 @@ class AutomationCardMcpRouter {
     if (BLOCKED_CARD_TOOLS.has(toolName)) throw new Error(`自动化卡片禁止递归调用 ${toolName}`);
     const args = rawArgs && typeof rawArgs === 'object' && !Array.isArray(rawArgs) ? { ...rawArgs } : {};
     const windowTools = this.getWindowTools();
-    if (windowTools?.has?.(toolName)) return windowTools.execute(toolName, args);
+    if (windowTools?.has?.(toolName)) return windowTools.execute(toolName, args, options);
 
     const connections = this.listConnections();
     const resolved = resolveBrowserConnection(connections, args, defaultConnectionId);

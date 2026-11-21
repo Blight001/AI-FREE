@@ -90,6 +90,10 @@ test('sidebar logos use the runtime asset resolver in source and packaged apps',
   assert.doesNotMatch(aiControlPage, /id="home-console/);
   assert.match(appShell, /id="home-console-tab"[^>]*hidden/);
   assert.match(appShell, /id="home-mcp-tab"[^>]*hidden/);
+  for (const id of ['home-model-settings', 'ai-server-device-form', 'copy-external-mcp-config']) {
+    assert.ok(appShell.includes(`id="${id}"`));
+    assert.equal(aiControlPage.includes(`id="${id}"`), false);
+  }
   assert.doesNotMatch(aiControlPage, /id="(?:home-mcp|ai-chat-browser(?:-trigger)?|ai-chat-target|ai-prompt-diagnostics-dialog)/);
   for (const file of ['styles/app-shell-console.css', 'controllers/pages/app-shell/shell-home-console.js',
     'styles/app-shell-flow-studio.css', 'controllers/pages/app-shell/automation-canvas.js',
@@ -97,7 +101,9 @@ test('sidebar logos use the runtime asset resolver in source and packaged apps',
     'controllers/pages/app-shell/site-preference-transfer.js',
     'styles/app-shell-site-data.css', 'controllers/pages/app-shell/site-data.js',
     'controllers/pages/app-shell/home-dialogs.js',
-    'styles/app-shell-mcp.css', 'controllers/pages/app-shell/shell-home-mcp.js']) {
+    'styles/app-shell-mcp.css', 'controllers/pages/app-shell/shell-home-mcp.js',
+    'styles/app-shell-model-settings.css', 'controllers/pages/app-shell/shell-home-models.js',
+    'controllers/pages/app-shell/shell-home-model-integrations.js']) {
     const relative = `../renderer/${file}`;
     assert.ok(appShell.includes(`"${relative}"`));
     assert.ok(fs.statSync(path.resolve(sidebarRoot, relative)).size > 0);

@@ -25,7 +25,6 @@ function createBootstrapUiDeps(deps) {
   return {
     addTab: deps.resolveAddTab(),
     openTutorialTab: deps.resolveOpenTutorialTab(),
-    syncTutorialTabUrl: deps.resolveSyncTutorialTabUrl(),
     switchTab: deps.resolveSwitchTab(),
     closeTab: deps.resolveCloseTab(),
     renameTab: deps.resolveRenameTab(),
@@ -74,6 +73,7 @@ function registerBootstrapIPC(deps) {
       http: { postJson: deps.postJson, getJson: deps.getJson, httpGetUniversal: deps.httpGetUniversal },
       httpClient: deps.resolveGlobalHttpClient(),
       extensionManager: deps.extensionManager,
+      providerAccountVault: deps.providerAccountVault,
       browserAutomationBridge: deps.browserAutomationBridge,
       externalCodexLink: deps.externalCodexLink,
       loadTranslateExtension: deps.loadTranslateExtension,

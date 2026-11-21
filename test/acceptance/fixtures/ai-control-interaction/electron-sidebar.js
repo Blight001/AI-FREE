@@ -176,8 +176,10 @@ async function approval(ui, doubles, title, message, answer) {
 }
 
 async function reopen(ui, doubles) {
+  await ui.visible('button[aria-label="新建对话"]');
   await ui.click('#ai-chat-history-trigger');
   await ui.visible('#ai-chat-history-menu button', DOWNLOAD_PROMPT);
+  await checkHistoryLayout(ui);
   await ui.click('#ai-chat-history-menu button', DOWNLOAD_PROMPT);
   await ui.visible('.ai-chat-answer', DOWNLOAD_ANSWER);
   await ui.visible(ARTIFACT, RED_PATH);
@@ -215,6 +217,36 @@ async function reopen(ui, doubles) {
   await ui.visible('.ai-chat-answer', '上传结果待核验');
   assert.equal(doubles.uploads.length, 2);
   assert.equal(doubles.modelRequests(), priorRequests + 1);
+
+  await ui.click('#ai-chat-history-trigger');
+  await ui.visible('#ai-chat-history-menu button', DOWNLOAD_PROMPT);
+  await ui.click('button[aria-label="新建对话"]');
+  await ui.visible('#ai-chat-history-value', '新对话');
+  assert.equal(await ui.has('#ai-chat-history-menu'), false);
+  assert.equal(await ui.has('.ai-chat-answer'), false);
+}
+
+async function checkHistoryLayout(ui) {
+  const layout = await ui.evaluate((title) => {
+    const trigger = document.querySelector('#ai-chat-history-trigger');
+    const label = document.querySelector(`label[for="${trigger.id}"]`);
+    const menu = document.querySelector('#ai-chat-history-menu');
+    const entry = [...menu.querySelectorAll('[aria-selected]')].find((item) => item.innerText.includes(title));
+    const time = [...entry.querySelectorAll('span')].find((item) => /^(刚刚|\d+ 分钟前)$/.test(item.textContent));
+    const edit = entry.querySelector('button[aria-label="重命名对话"]');
+    const create = document.querySelector('button[aria-label="新建对话"]');
+    return {
+      labelSize: getComputedStyle(label).fontSize,
+      maxHeight: getComputedStyle(menu).maxHeight,
+      showsCount: /\d+\s*条/.test(entry.innerText),
+      timeBesideEdit: time?.getBoundingClientRect().right <= edit.getBoundingClientRect().left
+        && Math.abs(time.getBoundingClientRect().top - edit.getBoundingClientRect().top) < 11,
+      createBesideHistory: !menu.contains(create) && create.getBoundingClientRect().left >= trigger.getBoundingClientRect().right,
+    };
+  }, DOWNLOAD_PROMPT);
+  assert.deepEqual(layout, {
+    labelSize: '18px', maxHeight: '440px', showsCount: false, timeBesideEdit: true, createBesideHistory: true,
+  });
 }
 
 async function exerciseRealSidebar(ui, history) {

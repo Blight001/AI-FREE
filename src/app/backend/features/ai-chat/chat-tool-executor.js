@@ -1,7 +1,8 @@
 'use strict';
 
-const { withBrowserRouteParam } = require('./chat-tool-context');
+const { collectConnectionTools } = require('./chat-tool-context');
 const { browserMetadataTool, guardedBrowserRoute, recordChatTabResult, resolvePageGuard, routeFailure } = require('./chat-browser-target');
+const { PAGE_BATCH_TOOL, executeChatPageBatch } = require('./chat-page-batch');
 const { dispatchChatUpload } = require('./chat-browser-upload');
 const { recoverChatUpload } = require('./chat-upload-recovery');
 const { commandMetadata, executeLocalCommand, isLocalCommand, visibleCommandOutput } = require('./chat-local-command');
@@ -52,7 +53,9 @@ async function dispatchPluginTool(context, toolName, args) {
     return { success: false, error: target.error, errorCode: 'BROWSER_ROUTE_NOT_FOUND', phase: 'tool_route', tool: toolName };
   }
   const dispatchArgs = /** @type {Record<string, any>} */ (sanitizeBrowserRoutingArgs(args));
-  const blocked = guardedBrowserRoute(context, toolName, dispatchArgs);
+  const pageBatch = toolName === PAGE_BATCH_TOOL.name;
+  if (pageBatch && !context.localInteraction) return routeFailure('BROWSER_TARGET_TOOL_UNSUPPORTED', '页面批处理仅在 AI 控制侧栏可用');
+  const blocked = pageBatch ? null : guardedBrowserRoute(context, toolName, dispatchArgs);
   if (blocked) return blocked;
   if (context.browserControl && context.browserControl.connectionId !== target.connection.id) {
     context.browserControl.connectionId = target.connection.id;
@@ -67,10 +70,13 @@ async function dispatchSelectedBrowser(context, connection, toolName, args, time
   const target = guardRequired ? await context.waitForAbort(resolvePageGuard(context, connection)) : null;
   if (target && !target.ok) return routeFailure(target.error.code, target.error.message);
   const guard = target?.data;
-  const dispatch = (input) => context.bridge.dispatch(connection.id, toolName, input, {
+  const dispatch = (input, name = toolName) => context.bridge.dispatch(connection.id, name, input, {
     timeoutMs, allowAppSurface: !local, signal: context.signal,
     ...(guard ? { expectedPageToken: guard.pageToken } : {}),
   });
+  if (toolName === PAGE_BATCH_TOOL.name) {
+    return executeChatPageBatch(context, connection, args, dispatch);
+  }
   if (local && toolName === 'browser_file' && String(args.action).trim().toLowerCase() === 'upload') {
     const result = await dispatchChatUpload({ ...context, boundTarget: guard }, connection.id, args, dispatch);
     return recoverChatUpload(context, guard, result);
@@ -136,12 +142,8 @@ function nextWindowControl(context, action, resultName) {
 function appendReadyConnectionTools(context, connection) {
   if (!Array.isArray(context.toolDefinitions)) return;
   const known = new Set(context.toolDefinitions.map((tool) => String(tool?.name || '')));
-  for (const tool of (Array.isArray(connection.tools) ? connection.tools : [])) {
-    const name = String(tool?.name || '').trim();
-    if (!name || known.has(name) || context.windowTools?.has?.(name)) continue;
-    context.toolDefinitions.push(withBrowserRouteParam(tool));
-    known.add(name);
-  }
+  const ready = collectConnectionTools([connection], context.windowTools, context.localInteraction);
+  context.toolDefinitions.push(...ready.filter((tool) => !known.has(tool.name)));
 }
 
 function readyWindowConnection(context, toolResult) {
@@ -183,6 +185,7 @@ function buildToolImageMessage(toolName, toolCallId, urls) {
       ...urls.map((url) => ({ type: 'image_url', image_url: { url } })),
     ],
     ai_free_transient_image: true,
+    ai_free_tool_call_id: toolCallId,
   };
 }
 
@@ -225,9 +228,15 @@ function appendPendingImage(context, imageMessage) {
 }
 
 function executeChatTool(context, activity, args) {
+  if (activity.name === PAGE_BATCH_TOOL.name) {
+    const reportBatchProgress = (progress) => context.emit({
+      type: 'tool_progress', tool: { id: activity.id, name: activity.name, progress }, round: context.round,
+    });
+    return dispatchPluginTool({ ...context, reportBatchProgress }, activity.name, args);
+  }
   if (!context.windowTools?.has(activity.name)) return dispatchPluginTool(context, activity.name, args);
   if (isLocalCommand(activity.name)) return executeLocalCommand(context, activity, args);
-  return context.waitForAbort(context.windowTools.execute(activity.name, args));
+  return context.waitForAbort(context.windowTools.execute(activity.name, args, { signal: context.signal }));
 }
 
 function publishCompletedActivity(context, activity, result, startedAt, failed) {
@@ -265,7 +274,9 @@ async function executeSingleTool(context, call) {
   context.traceEvents.push({ type: 'tool', round: context.round, tool: activity });
   context.emit({ type: 'tool_start', tool: { ...activity }, round: context.round });
   let toolResult;
-  if (context.uploadState?.unverified) {
+  if (context.blockedAfterBatch) {
+    toolResult = routeFailure('BROWSER_PAGE_BATCH_INTERRUPTED', '同轮页面计划已中断，未执行本调用');
+  } else if (context.uploadState?.unverified) {
     toolResult = routeFailure('UPLOAD_OUTCOME_UNVERIFIED', '上一次上传结果待核验，未执行此操作');
   } else if (parsedArguments.error) {
     toolResult = normalizeToolFailure({
@@ -299,12 +310,16 @@ async function executeSingleTool(context, call) {
 async function executeToolCalls(context) {
   let unresolvedToolFailure = '';
   const pendingImageMessages = [];
-  const executionContext = { ...context, pendingImageMessages };
+  const executionContext = { ...context, pendingImageMessages, blockedAfterBatch: false };
   for (const call of context.toolCalls) {
     if (context.signal?.aborted) return { stopped: true, unresolvedToolFailure };
     const result = await executeSingleTool(executionContext, call);
     if (result.stopped) return { stopped: true, unresolvedToolFailure };
+    if (executionContext.blockedAfterBatch) continue;
     if (result.failure) unresolvedToolFailure = result.failure;
+    if (call?.function?.name === PAGE_BATCH_TOOL.name) {
+      executionContext.blockedAfterBatch = Boolean(result.failure || context.hasInsertedMessages?.());
+    }
   }
   context.modelMessages.push(...pendingImageMessages);
   return { stopped: false, unresolvedToolFailure };

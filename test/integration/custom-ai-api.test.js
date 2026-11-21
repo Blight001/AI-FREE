@@ -12,12 +12,15 @@ const {
   getCustomAiApiConfig,
   isCustomAiApiConfigured,
   isCustomAiModelId,
+  getCustomAiApiConfigById,
   toPublicCustomAiApiConfig,
 } = require('../../src/app/backend/utils/ai-control-settings');
 const {
   normalizeMessages,
   normalizeOpenAiTools,
   resolveChatCompletionsUrl,
+  resolveModelsUrl,
+  fetchCustomAiModels,
   sendCustomAIControlMessage,
 } = require('../../src/app/backend/services/custom-ai-api');
 
@@ -41,14 +44,21 @@ test('未登录用户可配置并使用自定义模型，内置模型仍要求�
   assert.equal(listed.models[0].id, CUSTOM_AI_MODEL_ID);
   const messages = [{ role: 'user', content: '你好' }];
   const quota = { remaining: 0 };
-  const reply = await chat.chat({}, { modelId: listed.models[0].id, messages, quota, disableTools: true });
-  assert.equal(reply.ok, true);
+  const events = [];
+  const event = { sender: { id: 1, isDestroyed: () => false, send: (_channel, payload) => events.push(payload) } };
+  const reply = await chat.chat(event, {
+    modelId: listed.models[0].id, messages, quota, disableTools: true,
+    localInteraction: true, stream: true, requestId: 'custom-sidebar',
+  });
+  assert.equal(reply.ok, true, reply.ok ? undefined : reply.message);
   assert.equal(reply.message.content, '本地模型回复');
+  assert.equal(events.at(-1).type, 'done');
   const builtin = await chat.chat({}, { modelId: 'builtin', messages });
   assert.equal(builtin.ok, false);
   assert.match(builtin.message, /登录/);
   assert.equal(provider.mock.callCount(), 1);
   assert.equal(provider.mock.calls[0].arguments[1].model, 'local-model');
+  assert.equal(provider.mock.calls[0].arguments[1].stream, false);
 
   assert.equal(settings.setCustomApi({ clear: true }).ok, true);
   assert.equal((await models.getModels()).ok, false);
@@ -77,8 +87,55 @@ test('自定义 API 配置可识别且公开配置不会泄露 API Key', () => {
     baseUrl: 'http://127.0.0.1:11434/v1',
     model: 'qwen3',
     supportsImageInput: false,
+    supportsTools: true,
+    supportsReasoning: true,
+    customProtocol: false,
+    contextWindow: 0,
+    maxOutputTokens: 0,
+    id: CUSTOM_AI_MODEL_ID,
     hasApiKey: true,
   });
+});
+
+test('聊天根据稳定模型 ID 选择对应的 API 地址、Key 和模型名', async (t) => {
+  const calls = [];
+  t.mock.method(axios, 'post', async (url, payload, options) => {
+    calls.push({ url, payload, options });
+    return { status: 200, data: { choices: [{ message: { content: 'second' } }] } };
+  });
+  const store = { aiControlSettings: { customApis: [
+    { id: `${CUSTOM_AI_MODEL_ID}:first`, enabled: true, baseUrl: 'https://first.example/v1', apiKey: 'key-one', model: 'model-one' },
+    { id: `${CUSTOM_AI_MODEL_ID}:second`, enabled: true, baseUrl: 'https://second.example/v1', apiKey: 'key-two', model: 'model-two' },
+  ] } };
+  const modelId = `${CUSTOM_AI_MODEL_ID}:second`;
+  const config = getCustomAiApiConfigById(store, modelId);
+  const reply = await createAiChatService({ readStoreConfigSafe: () => store }).chat({}, {
+    modelId, messages: [{ role: 'user', content: 'hello' }], disableTools: true,
+  });
+  assert.equal(config.model, 'model-two');
+  assert.equal(reply.message.content, 'second');
+  assert.equal(calls[0].url, 'https://second.example/v1/chat/completions');
+  assert.equal(calls[0].payload.model, 'model-two');
+  assert.equal(calls[0].options.headers.Authorization, 'Bearer key-two');
+});
+
+test('模型列表 URL 兼容 Base URL 与完整 Chat Completions URL', () => {
+  assert.equal(resolveModelsUrl('https://api.openai.com/v1'), 'https://api.openai.com/v1/models');
+  assert.equal(resolveModelsUrl('https://example.com/api/v2/chat/completions'), 'https://example.com/api/v2/models');
+  assert.equal(resolveModelsUrl('http://127.0.0.1:11434'), 'http://127.0.0.1:11434/v1/models');
+  assert.throws(() => resolveModelsUrl('file:///tmp/models'), /仅支持 HTTP/);
+});
+
+test('模型发现携带认证、限制跳转并过滤畸形目录项', async (t) => {
+  const axiosGet = t.mock.method(axios, 'get', async (url, options) => {
+    assert.equal(url, 'https://api.example.test/v1/models');
+    assert.equal(options.headers.Authorization, 'Bearer test-key');
+    assert.equal(options.maxRedirects, 0);
+    return { status: 200, data: { data: [{ id: 'gpt-a' }, { id: 'gpt-b', name: 'GPT B' }, { name: 'invalid' }] } };
+  });
+  const result = await fetchCustomAiModels({ baseUrl: 'https://api.example.test/v1', apiKey: 'test-key' });
+  assert.deepEqual(result, [{ id: 'gpt-a', name: 'gpt-a' }, { id: 'gpt-b', name: 'GPT B' }]);
+  assert.equal(axiosGet.mock.callCount(), 1);
 });
 
 test('自定义 API 地址兼容 Base URL 与完整 Chat Completions URL', () => {
@@ -111,6 +168,14 @@ test('自定义 API 消息归一化保留工具协议并剔除私有字段', () 
     { role: 'assistant', content: '', tool_calls: [{ id: 'call' }] },
     { role: 'tool', content: 42, tool_call_id: '9', name: 'lookup' },
     { role: 'tool', content: '', tool_call_id: '' },
+  ]);
+});
+
+test('自定义协议按选项保留推理字段，默认 OpenAI 消息不发送', () => {
+  const message = { role: 'assistant', content: 'answer', reasoning: 'thought' };
+  assert.deepEqual(normalizeMessages([message]), [{ role: 'assistant', content: 'answer' }]);
+  assert.deepEqual(normalizeMessages([message], { customProtocol: true }), [
+    { role: 'assistant', content: 'answer', reasoning_content: 'thought' },
   ]);
 });
 

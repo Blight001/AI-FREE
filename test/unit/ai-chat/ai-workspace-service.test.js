@@ -9,6 +9,7 @@ const test = require('node:test');
 
 const {
   buildAttachmentMessages,
+  buildInlineAttachmentMessages,
   createAiWorkspaceService,
   createDownloadArtifact,
   inspectWorkspaceFileSync,
@@ -48,6 +49,32 @@ test('工作区服务导入、列出并预览文本文件', async (t) => {
   assert.equal(preview.file.kind, 'text');
   assert.equal(preview.file.content, 'fixture content');
   assert.throws(() => service.read({ path: '../outside.txt' }), /超出 AI 工作区|不存在/);
+});
+
+test('粘贴文件导入工作区并在正文标记处内联图片或文本内容', (t) => {
+  const { root } = fixture(t);
+  const service = createAiWorkspaceService({ workspaceDir: root });
+  const imageBytes = Buffer.from('89504e470d0a1a0a', 'hex');
+  const imported = service.importPastedFiles([
+    { name: 'clipboard.png', data: imageBytes.toString('base64') },
+    { name: 'notes.txt', data: Buffer.from('文本文件内容').toString('base64') },
+  ]);
+  assert.equal(imported.files.length, 2);
+  const message = {
+    role: 'user',
+    content: '把这个图片【图片：clipboard.png】，放到这个文件里面【文件：notes.txt】',
+    inlineAttachments: [
+      { path: imported.files[0].path, marker: '【图片：clipboard.png】' },
+      { path: imported.files[1].path, marker: '【文件：notes.txt】' },
+    ],
+  };
+  const [built] = buildInlineAttachmentMessages(root, [message]);
+  assert.equal(built.content[0].text, '把这个图片');
+  assert.equal(built.content[1].type, 'image_url');
+  assert.equal(built.content[2].text, '，放到这个文件里面');
+  assert.match(built.content[3].text, /文本文件内容/);
+  assert.throws(() => service.importPastedFiles([{ name: '../escape.txt', data: 'not-base64!' }]), /内容无效/);
+  assert.equal(fs.existsSync(path.join(root, 'escape.txt')), false);
 });
 
 test('附件上下文包含文本、图片和 MCP 引用且使用临时标记', (t) => {

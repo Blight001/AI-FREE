@@ -125,12 +125,10 @@ class TabManagerRuntime {
       restoreSideViewFocus: () => this.restoreSideViewFocus(),
       setActiveTabId: this.deps.setActiveTabId,
       switchTab: (...args) => this.switchTab(...args),
-      updateTabs: this.deps.updateTabs,
     });
     this.ensureMinimumBrowserTab = controller.ensureMinimumBrowserTab;
     this.openTutorialTab = controller.openTutorialTab;
     this.resolveDefaultTabUrl = controller.resolveDefaultTabUrl;
-    this.syncTutorialTabUrl = controller.syncTutorialTabUrl;
   }
 
   initializeNetworkController() {
@@ -506,7 +504,6 @@ class TabManagerRuntime {
     return {
       addTab: (...args) => this.addTab(...args),
       openTutorialTab: (...args) => this.openTutorialTab(...args),
-      syncTutorialTabUrl: (...args) => this.syncTutorialTabUrl(...args),
       applyClashMiniBrowserProxy: (...args) => this.applyClashMiniBrowserProxy(...args),
       setTabBrowserSettings: (...args) => this.setTabBrowserSettings(...args),
       refreshBrowsersAfterExtensionChange: (...args) => this.refreshBrowsersAfterExtensionChange(...args),

@@ -57,24 +57,34 @@ export class ProviderAccountDialog {
     homeDialogs.close(this.dialog);
   }
 
-  open(panel, { name, custom }, account = null) {
+  open(panel, { name, custom }, account = null, editCredentials = false) {
     if (this.busy || this.dialog.open) return;
     this.clear();
     this.hidePassword();
     this.account = account;
+    this.editCredentials = editCredentials;
     this.panel = panel;
-    const editing = !!account;
-    this.title.textContent = editing ? '编辑备注' : `添加 ${name} 账号`;
-    this.email.hidden = !editing;
-    this.importSection.hidden = editing;
+    const title = editCredentials ? '更换账号或密码' : (account ? '编辑备注' : `添加 ${name} 账号`);
+    this.configureFields({ account, custom, editCredentials, title });
+    this.importer.open(panel, custom);
+    homeDialogs.open(this.dialog, { focus: account && !editCredentials ? this.note : this.login, onClose: () => this.clear() });
+  }
+
+  configureFields({ account, custom, editCredentials, title }) {
+    const editingNote = Boolean(account) && !editCredentials;
+    this.title.textContent = title;
+    this.email.hidden = !editingNote;
+    this.importSection.hidden = Boolean(account);
     this.email.textContent = account?.email || '';
     this.note.value = account?.note || '';
     this.login.type = custom ? 'text' : 'email';
+    this.login.value = editCredentials ? account.email : '';
+    const password = this.form.elements.namedItem('password');
+    password.required = !editCredentials;
+    password.placeholder = editCredentials ? '留空保留当前密码' : '';
     this.loginLabel.textContent = custom ? '账号' : '邮箱';
-    for (const label of this.credentials) label.hidden = label.querySelector('input').disabled = editing;
-    this.submit.textContent = editing ? '保存备注' : '保存账号';
-    this.importer.open(panel, custom);
-    homeDialogs.open(this.dialog, { focus: editing ? this.note : undefined, onClose: () => this.clear() });
+    for (const label of this.credentials) label.hidden = label.querySelector('input').disabled = editingNote;
+    this.submit.textContent = editingNote ? '保存备注' : '保存账号';
   }
 
   async save() {
@@ -83,12 +93,14 @@ export class ProviderAccountDialog {
     const input = { provider: panel.dataset.provider, note: this.note.value };
     const fields = new FormData(this.form);
     const api = window.aiFree.account;
+    const credentials = { ...input, email: fields.get('email'), password: fields.get('password') };
     this.submit.disabled = this.cancel.disabled = this.importer.previewButton.disabled = true;
     this.setStatus('正在保存…');
     try {
-      const result = account
-        ? await api.updateProviderAccountNote({ ...input, id: account.id })
-        : await api.saveProviderAccount({ ...input, email: fields.get('email'), password: fields.get('password') });
+      let result;
+      if (this.editCredentials) result = await api.updateProviderAccountCredentials({ ...credentials, id: account.id });
+      else if (account) result = await api.updateProviderAccountNote({ ...input, id: account.id });
+      else result = await api.saveProviderAccount(credentials);
       if (!result?.ok) throw new Error(result?.error?.message || '保存失败');
       this.close();
       await this.refresh(panel);

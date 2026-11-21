@@ -45,6 +45,7 @@ function createComposerFixture(chatResult) {
   context.persisted = persisted;
   context.events = events;
   context.streamView = streamView;
+  context.takeChatAttachmentContext = () => ({ attachmentPaths: [], artifactReferences: [], mentions: [] });
   vm.runInContext(`
     const state = {
       messages: [], currentSession: null, currentBrowserIds: [], currentCardId: '',

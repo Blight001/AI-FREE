@@ -1,6 +1,92 @@
   let workspacePreviewRequestId = 0;
   const draftFileArtifacts = new Map();
+  let inlineDraftAttachments = [];
   let workspaceDraftSessionId;
+
+  function pastedFileName(file, index) {
+    const imageExtensions = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif', 'image/webp': '.webp' };
+    const sourceName = String(file.name || '');
+    if (sourceName && (pathHasExtension(sourceName) || !imageExtensions[file.type])) return sourceName;
+    const extension = imageExtensions[file.type] || '';
+    return `粘贴${file.type.startsWith('image/') ? '图片' : '文件'}${index ? `-${index + 1}` : ''}${extension}`;
+  }
+
+  function pathHasExtension(name) {
+    return /\.[^./\\]+$/.test(name);
+  }
+
+  function readPastedFile(file, index) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error(`读取 ${pastedFileName(file, index)} 失败`));
+      reader.onload = () => resolve({
+        name: pastedFileName(file, index),
+        data: String(reader.result || '').split(',')[1] || '',
+      });
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function clipboardFiles(clipboard) {
+    const files = [...(clipboard.files || [])];
+    if (!files.length) {
+      for (const item of clipboard.items || []) {
+        const file = item.kind === 'file' ? item.getAsFile?.() : null;
+        if (file) files.push(file);
+      }
+    }
+    return files;
+  }
+
+  function insertInlineMarkers(input, files, imported, selectionStart, selectionEnd) {
+    const markerRows = imported.map((file, index) => ({
+      path: file.path,
+      marker: `【${fileKindLabel(files[index])}：${file.name}】`,
+    }));
+    if (markerRows.length !== files.length) throw new Error('粘贴文件导入结果不完整');
+    const text = markerRows.map((item) => item.marker).join(' ');
+    input.value = `${input.value.slice(0, selectionStart)}${text}${input.value.slice(selectionEnd)}`;
+    const cursor = selectionStart + text.length;
+    input.setSelectionRange(cursor, cursor);
+    inlineDraftAttachments.push(...markerRows);
+    resizeInput();
+    syncSendState();
+    void loadWorkspaceFiles();
+    input.focus();
+  }
+
+  function canPasteInlineFiles(files) {
+    if (files.length + inlineDraftAttachments.length <= 16) return true;
+    setStatus('每条消息最多内联 16 个文件', 'warning');
+    return false;
+  }
+
+  async function importInlineFiles(input, files, selectionStart, selectionEnd) {
+    try {
+      const payload = await Promise.all(files.map(readPastedFile));
+      const result = await window.aiFree?.ai?.workspaceImportPasted?.({ files: payload });
+      if (!result?.ok) throw new Error(result?.message || '粘贴文件导入失败');
+      insertInlineMarkers(input, files, Array.isArray(result.files) ? result.files : [], selectionStart, selectionEnd);
+    } catch (error) {
+      setStatus(error?.message || String(error), 'warning');
+    }
+  }
+
+  async function pasteInlineFiles(event) {
+    const input = el('ai-chat-input');
+    const files = event.clipboardData ? clipboardFiles(event.clipboardData) : [];
+    if (!input || !files.length) return;
+    event.preventDefault();
+    if (!canPasteInlineFiles(files)) return;
+    const selectionStart = input.selectionStart;
+    const selectionEnd = input.selectionEnd;
+    await importInlineFiles(input, files, selectionStart, selectionEnd);
+  }
+
+  function fileKindLabel(file) {
+    return file?.type?.startsWith('image/') || String(file?.name || '').match(/\.(png|jpe?g|gif|webp)$/i)
+      ? '图片' : '文件';
+  }
 
   function formatWorkspaceFileSize(value) {
     const bytes = Math.max(0, Number(value) || 0);
@@ -58,6 +144,7 @@
     if (workspaceDraftSessionId !== undefined && workspaceDraftSessionId !== id) {
       state.attachmentPaths = [];
       state.chatMentions = [];
+      inlineDraftAttachments = [];
       draftFileArtifacts.clear();
       closeWorkspacePreview();
       renderAttachmentChips();
@@ -343,9 +430,12 @@
     const activeMentions = state.chatMentions.filter((item) => item.type !== 'file' && text.includes(`@${item.label}`));
     const attachmentPaths = [...state.attachmentPaths];
     const artifactReferences = attachmentPaths.map((filePath) => draftFileArtifacts.get(filePath)).filter(Boolean);
+    const inlineAttachments = inlineDraftAttachments.filter((item) => text.includes(item.marker));
     const result = { attachmentPaths, artifactReferences, mentions: activeMentions };
+    if (inlineAttachments.length) result.inlineAttachments = inlineAttachments;
     state.attachmentPaths = [];
     state.chatMentions = [];
+    inlineDraftAttachments = [];
     draftFileArtifacts.clear();
     renderAttachmentChips();
     renderWorkspaceFiles();
@@ -353,6 +443,7 @@
   }
 
   function bindChatWorkspace() {
+    el('ai-chat-input')?.addEventListener('paste', (event) => { void pasteInlineFiles(event); });
     el('ai-chat-attach')?.addEventListener('click', () => {
       const panel = el('ai-chat-workspace-panel');
       panel.hidden = !panel.hidden;

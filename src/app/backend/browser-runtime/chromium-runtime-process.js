@@ -11,6 +11,7 @@ const {
 } = require('./chromium-session-recovery');
 const { RUNTIME_STATUS } = require('./runtime-types');
 const { createChromiumPerformanceSpan } = require('./chromium-performance');
+const { appContext } = require('../runtime/app-context');
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -47,7 +48,7 @@ async function waitForSettledChromiumSession(paths, timeoutMs = 3000) {
 }
 
 function waitForChildExit(child, timeoutMs) {
-  if (!child || child.exitCode !== null) return Promise.resolve(true);
+  if (hasChromiumExited(child)) return Promise.resolve(true);
   return new Promise((resolve) => {
     let settled = false;
     const finish = (exited) => {
@@ -58,9 +59,13 @@ function waitForChildExit(child, timeoutMs) {
       resolve(exited);
     };
     const onExit = () => finish(true);
-    const timer = setTimeout(() => finish(child.exitCode !== null), Math.max(100, timeoutMs));
+    const timer = setTimeout(() => finish(hasChromiumExited(child)), Math.max(100, timeoutMs));
     child.once('exit', onExit);
   });
+}
+
+function hasChromiumExited(child) {
+  return !child || child.exitCode !== null || Boolean(child.signalCode);
 }
 
 function terminateProcessTree(pid, timeoutMs = 10000) {
@@ -97,12 +102,12 @@ async function stopChromiumProfile(runtime, profileId, options = {}) {
   performanceSpan.mark('stateTransition');
   try {
     if (instance) await shutdownChromiumInstance(runtime, id, instance, options, performanceSpan);
+    await finalizeStoppedProfile(runtime, id, instance, state);
   } catch (error) {
     await markChromiumStopFailed(runtime, id, instance, state, error);
     performanceSpan.fail(error);
     throw error;
   }
-  await finalizeStoppedProfile(runtime, id, instance, state);
   performanceSpan.mark('finalize');
   performanceSpan.finish();
   return runtime.getState(id);
@@ -141,7 +146,7 @@ async function markChromiumStopFailed(runtime, id, instance, state, error) {
 
 function scheduleLateExitCleanup(runtime, id, instance) {
   if (!instance?.child) return;
-  if (instance.child.exitCode !== null) {
+  if (hasChromiumExited(instance.child)) {
     void instance.resources?.dispose({ processExited: true }).catch(() => runtime.logger?.warn?.('[ChromiumRuntime] 延迟资源释放失败'));
     return;
   }
@@ -174,7 +179,7 @@ async function cleanupFailedChromiumLaunch(runtime, profileId, context) {
 }
 
 async function terminateFailedLaunch(instance) {
-  if (!instance?.child || instance.child.exitCode !== null) return true;
+  if (hasChromiumExited(instance?.child)) return true;
   instance.expectedExit = true;
   try { await terminateProcessTree(instance.child.pid, 5000); } catch (_) {}
   return waitForChildExit(instance.child, 5000);
@@ -211,16 +216,16 @@ async function shutdownChromiumInstance(runtime, id, instance, options, performa
   // Chromium may terminate before its bridge can acknowledge close-browser.
   // Start the request, but measure the graceful-exit deadline from the user
   // action instead of serially adding the command timeout to the exit timeout.
-  const closeRequest = instance.commandClient.send('close-browser', {}, { timeoutMs: 3000 })
-    .catch(() => null);
+  const closeRequest = hasChromiumExited(instance.child) ? null
+    : instance.commandClient.send('close-browser', {}, { timeoutMs: 3000 }).catch(() => null);
   performanceSpan.mark('closeRequest');
   await waitForGracefulChromiumExit(instance, options);
   performanceSpan.mark('gracefulExit');
-  if (instance.child.exitCode === null) {
+  if (!hasChromiumExited(instance.child)) {
     await forceChromiumExit(instance, options);
     performanceSpan.mark('forceExit');
   }
-  if (instance.child.exitCode === null) throwChromiumExitTimeout(id);
+  if (!hasChromiumExited(instance.child)) throwChromiumExitTimeout(id);
   if (preserveSession) await preserveChromiumSession(runtime, id, instance, preCloseSnapshot, stableSnapshot);
   performanceSpan.mark('sessionPersist');
   performanceSpan.mark('transportClose');
@@ -229,7 +234,7 @@ async function shutdownChromiumInstance(runtime, id, instance, options, performa
 
 async function waitForGracefulChromiumExit(instance, options) {
   const deadline = Date.now() + Math.max(500, Number(options.timeoutMs) || 4000);
-  while (instance.child.exitCode === null && Date.now() < deadline) await delay(100);
+  while (!hasChromiumExited(instance.child) && Date.now() < deadline) await delay(100);
 }
 
 async function forceChromiumExit(instance, options) {
@@ -264,8 +269,13 @@ async function restartChromiumProfile(runtime, profileId, options = {}) {
     profile.restoreLastSession = true;
   }
   const bounds = { ...state.bounds };
-  await runtime.stop(id, { timeoutMs: 3000 });
-  const runtimeState = await runtime.launchProfile(profile, bounds);
+  if (options.recovery) {
+    await stopChromiumProfile(runtime, id, { timeoutMs: 3000 });
+    if (options.recovery.cancelled || appContext.isShuttingDown()) return runtime.getState(id);
+  } else {
+    await runtime.stop(id, { timeoutMs: 3000 });
+  }
+  const runtimeState = await runtime.launchProfile(profile, runtime.getState(id)?.bounds || bounds);
   const restartedInstance = runtime.instances.get(id);
   if (restartedInstance?.profile) {
     restartedInstance.profile.initialUrl = rememberedInitialUrl;
@@ -289,6 +299,7 @@ async function preserveChromiumSession(runtime, id, instance, preCloseSnapshot, 
 
 module.exports = {
   cleanupFailedChromiumLaunch,
+  hasChromiumExited,
   restartChromiumProfile,
   stopChromiumProfile,
   terminateProcessTree,

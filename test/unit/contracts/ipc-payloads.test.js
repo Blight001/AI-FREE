@@ -57,6 +57,16 @@ test('可选 AI payload 保留既有省略参数行为，数组成员仍逐项�
   );
 });
 
+test('AI 剪贴板文件导入限制文件数量与 payload 字段', () => {
+  const channel = 'ai-control-workspace-import-pasted';
+  const payload = { files: [{ name: 'image.png', data: 'aGVsbG8=' }] };
+  assert.deepEqual(validateIpcPayload(channel, payload), payload);
+  assert.throws(() => validateIpcPayload(channel, { files: [{ name: 'x', data: 1 }] }),
+    (error) => error instanceof IpcPayloadError && error.details.path === 'files[0].data');
+  assert.throws(() => validateIpcPayload(channel, { files: [] }),
+    (error) => error instanceof IpcPayloadError && error.details.path === 'files');
+});
+
 test('legacy invoke 包装在 handler 前拦截非法输入并保持旧返回形状', async () => {
   let called = false;
   const handler = wrapLegacyIpcPayload('ai-control-redeem-gift-code', async () => {

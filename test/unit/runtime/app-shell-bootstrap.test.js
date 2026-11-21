@@ -58,7 +58,6 @@ function bootstrapDeps(options = {}) {
     resolveSetZoom: () => () => {},
     resolveSideView: () => null,
     resolveSwitchTab: () => () => {},
-    resolveSyncTutorialTabUrl: () => () => {},
     resolveTabs: () => new Map(),
     restoreBrowserSession: async () => { calls.restoreBrowserSession += 1; },
     revealMainWindow() { calls.revealMainWindow += 1; },

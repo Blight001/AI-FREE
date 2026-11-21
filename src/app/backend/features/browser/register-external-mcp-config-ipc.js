@@ -1,11 +1,9 @@
 'use strict';
 
+const { isHomeSender } = require('../window/home-dev-sender');
+
 function isMcpConfigSender(event, ui) {
-  const contents = ui.getSideView?.()?.webContents;
-  if (!contents || contents.isDestroyed() || event.sender !== contents) return false;
-  const frame = event.senderFrame;
-  return frame && frame === contents.mainFrame && frame.url.startsWith('file:///')
-    && new URL(frame.url).pathname.endsWith('/frontend/sidebar/ai-control.html');
+  return isHomeSender(event, ui.getMainWindow?.()?.webContents);
 }
 
 function formatConfig({ endpoint, token }, stdio) {
@@ -34,7 +32,7 @@ function formatConfig({ endpoint, token }, stdio) {
 }
 
 function copyExternalMcpConfig(event, ctx, writeText) {
-  if (!isMcpConfigSender(event, ctx.ui)) return { ok: false, error: '请在 AI 控制侧栏复制 MCP 配置' };
+  if (!isMcpConfigSender(event, ctx.ui)) return { ok: false, error: '请在首页模型设置复制 MCP 配置' };
   const bridge = ctx.browserAutomationBridge;
   const status = bridge?.getExternalMcpStatus?.();
   if (!status?.published) return { ok: false, error: '本机 MCP 服务尚未启动' };
@@ -53,7 +51,8 @@ function copyExternalMcpConfig(event, ctx, writeText) {
 
 function registerExternalMcpConfigIpc(ipc, ctx, writeText) {
   // Keep the existing channel names for compatibility with the preload contract.
-  ipc.handle('get-external-codex-status', async () => {
+  ipc.handle('get-external-codex-status', async (event) => {
+    if (!isMcpConfigSender(event, ctx.ui)) return { ok: false, error: '请在首页模型设置查看 MCP 状态' };
     const status = ctx.browserAutomationBridge?.getExternalMcpStatus?.();
     if (!status) return { ok: false, error: '本机 MCP 服务不可用' };
     return { ok: true, data: { ...status, codex: ctx.externalCodexLink?.getStatus?.() || null } };

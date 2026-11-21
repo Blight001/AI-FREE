@@ -6,6 +6,7 @@ const {
 } = require('../../utils/ai-free-browser-settings');
 const { FREE_BROWSER_WINDOW_LIMIT, resolveVipAccess } = require('../../utils/vip-access');
 const { resolveSidebarWidth } = require('../../../shared/sidebar-layout');
+const { resolveMainWindowPageBounds } = require('../window/main-window-frame');
 const { createChromiumPerformanceSpan } = require('../../browser-runtime/chromium-performance');
 const {
   createChromiumLaunchRecovery,
@@ -243,23 +244,17 @@ class BrowserTabLauncher {
   }
 
   resolveBounds(mainWindow) {
-    const [contentWidth, contentHeight] = mainWindow.getContentSize();
+    const { y, width, height } = resolveMainWindowPageBounds(mainWindow, this.deps.getUiScale?.());
     const sideView = this.deps.resolveSideView?.();
     const sidebarWidth = resolveSidebarWidth({
-      contentWidth,
+      contentWidth: width,
       isVisible: this.deps.resolveIsSidebarVisible(),
       isMaximized: mainWindow.isMaximized?.() === true,
       currentWidth: sideView?.getBounds?.().width,
       normalWindowWidth: mainWindow.getNormalBounds?.().width,
       retainCurrentWidth: true,
     });
-    const uiScale = Math.min(1.2, Math.max(1, Number(this.deps.getUiScale?.()) || 1));
-    return {
-      x: 0,
-      y: 0,
-      width: contentWidth - sidebarWidth,
-      height: Math.max(0, contentHeight - Math.round(41 * uiScale)),
-    };
+    return { x: 0, y, width: width - sidebarWidth, height };
   }
 
   createStartingTab(id, url, options, identity, browserSettings, proxy, urls) {
@@ -271,7 +266,7 @@ class BrowserTabLauncher {
       isTutorialTab: options.isTutorialTab === true,
       fixedTitle: identity.fixedTitle,
       runtimeTitle: identity.fixedTitle || 'AI-FREE',
-      requestedUrl: String(url || '').trim(),
+      requestedUrl: String((options.isTutorialTab === true && options.tutorialEntryUrl) || url || '').trim(),
       runtimeUrl: urls.target && urls.target !== 'about:blank' ? urls.target : '',
       firstWebsiteUrl: /^https?:\/\//i.test(urls.target) ? urls.target : '',
       runtimeType: 'chromium',

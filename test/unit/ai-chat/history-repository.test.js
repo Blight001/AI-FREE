@@ -55,12 +55,12 @@ test('用户消息保留工作区附件相对路径', () => {
     messages: [{
       role: 'user', content: '查看附件',
       attachmentPaths: ['Uploads/notes.md', '', 'Uploads/image.png'],
+      inlineAttachments: [{ path: 'Uploads/image.png', marker: '【图片：image.png】' }],
     }],
   });
-  assert.deepEqual(
-    data.repository.getSession({}, 'attachments').session.messages[0].attachmentPaths,
-    ['Uploads/notes.md', 'Uploads/image.png'],
-  );
+  const [message] = data.repository.getSession({}, 'attachments').session.messages;
+  assert.deepEqual(message.attachmentPaths, ['Uploads/notes.md', 'Uploads/image.png']);
+  assert.deepEqual(message.inlineAttachments, [{ path: 'Uploads/image.png', marker: '【图片：image.png】' }]);
 });
 
 test('history restores bounded artifact metadata without absolute paths, URL or file contents', () => {

@@ -151,16 +151,6 @@ test('个人中心常规设置默认折叠在公告下方且内容宽度自适�
   assert.match(layoutCss, /\.sidebar-quota-redeem-row button\s*\{[\s\S]*?flex:\s*0 0 auto;/);
 });
 
-test('MCP 配置脚本由 AI 控制页装载，不进入主窗口', () => {
-  const aiPage = path.join(appRoot, 'frontend/sidebar/ai-control.html');
-  const aiHtml = fs.readFileSync(aiPage, 'utf8');
-  const accountHtml = fs.readFileSync(path.join(appRoot, 'frontend/views/app-shell.html'), 'utf8');
-  const scripts = [...aiHtml.matchAll(/<script src="([^"]+\/ai-control-mcp-config\.js)">/g)];
-  assert.equal(scripts.length, 1);
-  assert.ok(fs.existsSync(path.resolve(path.dirname(aiPage), scripts[0][1])));
-  assert.doesNotMatch(accountHtml, /ai-control-mcp-config\.js|id="copy-external-mcp-config"/);
-});
-
 test('底部浏览器任务项在文字前装配首个网站图标', () => {
   const renderer = fs.readFileSync(path.join(
     appShellRoot, 'controllers/pages/app-shell/tabs-renderer.js',

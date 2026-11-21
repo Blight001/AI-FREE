@@ -9,9 +9,9 @@
 }
 
 .vip-benefits-panel {
-  width: 620px;
+  width: 760px;
   overflow: auto;
-  padding: 18px;
+  padding: clamp(16px, 4%, 24px);
   border: 1px solid rgba(235, 183, 74, .52);
   border-radius: 18px;
   color: #f8ecd0;
@@ -24,34 +24,37 @@
 }
 
 .vip-benefits-header { display: flex; justify-content: space-between; gap: 12px; }
-.vip-benefits-header h2 { margin: 3px 0 4px; color: #ffe4a0; font-size: 20px; }
-.vip-benefits-header p { margin: 0; color: rgba(244, 230, 199, .68); font-size: 11px; }
-.vip-benefits-kicker { color: #d9a93e; font-size: 9px; font-weight: 900; letter-spacing: .18em; }
-.vip-benefits-close { width: 30px; height: 30px; flex: 0 0 auto; border: 1px solid rgba(255, 222, 143, .24); border-radius: 50%; color: #f7dfaa; background: rgba(255,255,255,.04); font-size: 20px; cursor: pointer; }
+.vip-benefits-header h2 { margin: 4px 0 6px; color: #ffe4a0; font-size: 24px; }
+.vip-benefits-header p { margin: 0; color: rgba(244, 230, 199, .68); font-size: 14px; }
+.vip-benefits-kicker { color: #d9a93e; font-size: 11px; font-weight: 900; }
+.vip-benefits-close { width: 34px; height: 34px; flex: 0 0 auto; border: 1px solid rgba(255, 222, 143, .24); border-radius: 50%; color: #f7dfaa; background: rgba(255,255,255,.04); font-size: 22px; cursor: pointer; }
 
 .vip-permission-table { margin-top: 14px; overflow-x: auto; border: 1px solid rgba(255, 222, 143, .16); border-radius: 10px; }
-.vip-permission-row { display: grid; grid-template-columns: 1.25fr .8fr .8fr .8fr; gap: 5px; padding: 7px 8px; border-top: 1px solid rgba(255,255,255,.055); font-size: 9px; align-items: center; }
+.vip-permission-row { display: grid; grid-template-columns: 1.25fr .8fr .8fr .8fr; gap: 6px; padding: 8px 10px; border-top: 1px solid rgba(255,255,255,.055); font-size: 13px; align-items: center; overflow-wrap: anywhere; }
 .vip-permission-row:first-child { border-top: 0; }
 .vip-permission-row > span:nth-child(2) { color: rgba(223, 226, 232, .55); }
 .vip-permission-row:not(.vip-permission-head) > strong { color: #ffd879; }
 .vip-permission-head { color: rgba(244, 230, 199, .72); background: rgba(255, 213, 116, .08); }
 
 .vip-tier-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 12px; padding: 3px; overflow-x: auto; border: 1px solid rgba(255, 222, 143, .16); border-radius: 10px; background: rgba(0,0,0,.16); }
-.vip-tier-tabs button { padding: 7px; border: 0; border-radius: 7px; color: rgba(244,230,199,.62); background: transparent; font: inherit; font-size: 10px; font-weight: 900; cursor: pointer; }
+.vip-tier-tabs button { padding: 8px; border: 0; border-radius: 7px; color: rgba(244,230,199,.62); background: transparent; font: inherit; font-size: 13px; font-weight: 900; cursor: pointer; }
 .vip-tier-tabs button.is-active { color: #2b1c04; background: linear-gradient(135deg, #ffe59a, #dca83f); }
 .vip-plan-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-top: 12px; }
 .vip-plan-empty { grid-column: 1 / -1; padding: 18px 10px; color: var(--text-muted); text-align: center; }
 .vip-permission-table[hidden], .vip-tier-tabs[hidden], .vip-plan-list[hidden] { display: none !important; }
 .vip-plan-option { position: relative; display: grid; gap: 3px; min-width: 0; padding: 11px 6px 9px; border: 1px solid rgba(255, 222, 143, .2); border-radius: 10px; color: #f7e7c0; background: rgba(255,255,255,.035); text-align: center; cursor: pointer; }
 .vip-plan-option:hover, .vip-plan-option.is-selected { border-color: rgba(255, 205, 91, .82); background: rgba(255, 196, 64, .12); transform: translateY(-1px); }
-.vip-plan-option span { font-size: 11px; font-weight: 700; }
-.vip-plan-option strong { color: #ffd36c; font-size: 18px; }
-.vip-plan-option small { color: rgba(244, 230, 199, .56); font-size: 9px; }
-.vip-plan-option em { position: absolute; top: -7px; right: 5px; padding: 2px 5px; border-radius: 8px; color: #251b08; background: #ffd36c; font-size: 8px; font-style: normal; font-weight: 900; }
-.vip-plan-status { min-height: 16px; margin: 8px 2px 0; color: rgba(244, 230, 199, .62); font-size: 10px; }
+.vip-plan-option span { font-size: 14px; font-weight: 700; overflow-wrap: anywhere; }
+.vip-plan-option strong { color: #ffd36c; font-size: 22px; overflow-wrap: anywhere; }
+.vip-plan-option small { color: rgba(244, 230, 199, .56); font-size: 12px; }
+.vip-plan-option em { position: absolute; top: -8px; right: 5px; padding: 2px 5px; border-radius: 8px; color: #251b08; background: #ffd36c; font-size: 10px; font-style: normal; font-weight: 900; }
+.vip-plan-status { min-height: 18px; margin: 10px 2px 0; color: rgba(244, 230, 199, .62); font-size: 13px; }
 .vip-benefits-actions { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 8px; }
-.vip-benefits-actions button { min-height: 34px; padding: 7px 8px; border-radius: 9px; font: inherit; font-size: 10px; font-weight: 800; cursor: pointer; }
+.vip-benefits-actions button { min-height: 42px; padding: 9px 12px; border-radius: 9px; font: inherit; font-size: 14px; font-weight: 800; cursor: pointer; }
+.vip-benefits-actions button:disabled { opacity: .65; cursor: wait; }
 .vip-use-gift-code { border: 0; color: #2a1d05; background: linear-gradient(135deg, #ffe59a, #dca83f); box-shadow: 0 7px 20px rgba(219, 161, 49, .2); }
+.vip-shop-status { margin: 0; font-size: 13px; }
+.vip-shop-status:empty { display: none; }
 
 html.theme-light .vip-benefits-panel {
   color: #3f2e12;

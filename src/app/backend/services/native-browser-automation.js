@@ -1,6 +1,7 @@
 'use strict';
 
 const { randomUUID } = require('crypto');
+const { setTimeout: delay } = require('node:timers/promises');
 const { createBrowserOverview } = require('./browser-overview-service');
 const { NATIVE_BROWSER_TOOL_DEFINITIONS } = require('./native-browser-tool-definitions');
 const {
@@ -207,9 +208,9 @@ class NativeBrowserAutomation {
     throw error;
   }
 
-  async runtimeCommand(connection, command, input = {}) {
+  async runtimeCommand(connection, command, input = {}, signal = undefined) {
     const token = expectedPageToken(connection);
-    const options = token === undefined ? [] : [{ expectedPageToken: token }];
+    const options = token === undefined && !signal ? [] : [{ expectedPageToken: token, ...(signal ? { signal } : {}) }];
     const response = await this.runtime.dispatchAutomationByProcessId(connection.browserProcessId, command, input, ...options);
     const result = response?.result || response || {};
     if (result?.errorCode === 'BROWSER_TAKEOVER_REQUIRED') void this.releasePointerSession(connection.id);
@@ -233,7 +234,7 @@ class NativeBrowserAutomation {
     return this.workflow.action(connection, args);
   }
 
-  async browserActionRaw(connection, args) {
+  async browserActionRaw(connection, args, signal = undefined) {
     if (args.surface && args.surface !== 'page') return appPointerUnavailable();
     if (args.after && !['none', 'observe'].includes(args.after)) {
       return { success: false, errorCode: 'INVALID_ACTION_FEEDBACK', error: 'after 只支持 none 或 observe' };
@@ -250,21 +251,22 @@ class NativeBrowserAutomation {
     if (text(input.action) === 'upload_file') throw new Error('文件上传请使用 browser_file action=upload');
     const blocked = fileUploadRequired(input);
     if (blocked) return blocked;
-    const result = await this.dispatchPointerAction(connection, input);
+    const result = await this.dispatchPointerAction(connection, input, signal);
     const actionResult = input.observedRefRecovered === true
       ? { ...result, refRecovered: true, recoveryStrategy: 'unique-observed-selector' }
       : result;
     return actionObservation(this, connection, actionResult, args);
   }
 
-  async dispatchPointerAction(connection, input) {
+  async dispatchPointerAction(connection, input, signal = undefined) {
     try {
       return await this.pointerScheduler.run(connection.id, PRIMARY_POINTER, connection.id, () => {
+        signal?.throwIfAborted();
         if (!this.takeoverConnections.has(connection.id)) {
           const failure = takeoverRequired('browser_action', input);
           return expectedPageToken(connection) ? { ...failure, actionExecuted: false } : failure;
         }
-        return this.runtimeCommand(connection, 'perform-action', runtimeTarget(input));
+        return this.runtimeCommand(connection, 'perform-action', runtimeTarget(input), signal);
       });
     } catch (error) {
       if (error.code !== 'BROWSER_POINTER_RELEASED') throw error;
@@ -338,7 +340,7 @@ class NativeBrowserAutomation {
     if (tool === 'browser_observe') return this.browserObserve(connection, input);
     if (tool === 'browser_screenshot') return this.runtimeCommand(connection, 'capture-screenshot', input);
     if (tool === 'browser_action') return this.browserAction(connection, input, signal);
-    if (tool === 'browser_wait') return this.browserWait(connection, input);
+    if (tool === 'browser_wait') return this.browserWait(connection, input, signal);
     if (tool === 'browser_tab') return this.browserTab(connection, input);
     if (tool === 'browser_file') return this.browserFile(connection, input);
     if (tool === 'browser_media') return browserMedia(this, connection, input);
@@ -372,7 +374,7 @@ class NativeBrowserAutomation {
     return attachScreenshot(this, connection, decorated, input);
   }
 
-  async browserWait(connection, args) {
+  async browserWait(connection, args, signal = undefined) {
     let input = this.resolveObservedTarget(connection, args);
     if (input.observedRefRecoveryCandidate) input = await this.recoverObservedTarget(connection, input);
     const mismatch = mismatchedObservationResult(input);
@@ -383,14 +385,14 @@ class NativeBrowserAutomation {
     const condition = text(input.condition).toLowerCase();
     if (selector || condition === 'url_matches') {
       return waitForBrowserCondition({
-        input, selector, condition,
-        runtimeCommand: (payload) => this.runtimeCommand(connection, 'perform-action', payload),
+        input, selector, condition, signal,
+        runtimeCommand: (payload) => this.runtimeCommand(connection, 'perform-action', payload, signal),
       });
     }
     const waitedMs = Math.min(120000, Math.max(0, Number(args.ms) || 1000));
-    await new Promise((resolve) => setTimeout(resolve, waitedMs));
+    await delay(waitedMs, undefined, { signal });
     if (expectedPageToken(connection)) {
-      const current = await this.runtimeCommand(connection, 'automation-takeover', { action: 'status' });
+      const current = await this.runtimeCommand(connection, 'automation-takeover', { action: 'status' }, signal);
       if (current.success === false) return current;
     }
     return { success: true, waitedMs, cardStep: { name: `等待 ${waitedMs}ms`, type: 'wait', timeout: waitedMs } };
@@ -404,7 +406,7 @@ class NativeBrowserAutomation {
     const connection = this.requireConnection(connectionId);
     const input = args && typeof args === 'object' ? args : {};
     const toolName = normalizeToolName(tool);
-    if (options.expectedPageToken !== undefined) return this.dispatchBound(connection, toolName, input, options.expectedPageToken);
+    if (options.expectedPageToken !== undefined) return this.dispatchBound(connection, toolName, input, options.expectedPageToken, options.signal);
     if (appSurfaceDisallowed(input, options)) return appPointerUnavailable();
     const blocked = this.workflow.blocked(connection, toolName, input);
     if (blocked) return blocked;
@@ -424,7 +426,7 @@ class NativeBrowserAutomation {
     throw new Error(`未知的 Chromium 原生自动化工具: ${text(toolName) || '(空)'}`);
   }
 
-  async dispatchBound(connection, tool, input, token) {
+  async dispatchBound(connection, tool, input, token, signal = undefined) {
     if (typeof token !== 'string' || !token.trim() || token.length > 256) {
       return bindingFailure('BROWSER_TARGET_REQUIRED', '缺少有效的页面绑定');
     }
@@ -438,7 +440,8 @@ class NativeBrowserAutomation {
     const bound = bindPage(connection, token);
     try {
       // Workflow retries and diagnostics are not part of the bound action contract.
-      return await (tool === 'browser_action' ? this.browserActionRaw(bound, input) : this.dispatchBasicTool(bound, tool, input));
+      return await (tool === 'browser_action'
+        ? this.browserActionRaw(bound, input, signal) : this.dispatchBasicTool(bound, tool, input, signal));
     } catch (error) {
       return runtimeBindingFailure(error);
     }

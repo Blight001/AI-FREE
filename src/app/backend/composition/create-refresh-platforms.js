@@ -43,12 +43,10 @@ function syncPlatformTargetUrl(deps, targetUrl) {
   }
 }
 
-async function syncPlatformTutorialUrl(deps, tutorialUrl) {
+function publishPlatformTutorialUrl(deps, tutorialUrl) {
   if (!tutorialUrl) return;
   try {
     deps.sendToSide('tutorial-url-updated', { tutorialUrl });
-    const syncTutorialTabUrl = deps.getSyncTutorialTabUrl();
-    if (typeof syncTutorialTabUrl === 'function') await syncTutorialTabUrl(tutorialUrl);
   } catch (error) {
     console.warn('[启动] 同步教程地址失败:', error?.message || error);
   }
@@ -63,13 +61,13 @@ function notifyPlatformLists(deps, config) {
   deps.sendToSide('wool-platforms-updated', { woolPlatforms: config.woolPlatforms });
 }
 
-async function performPlatformRefresh(deps) {
+function performPlatformRefresh(deps) {
   const config = readPlatformRuntimeConfig(deps);
   if (isEmptyPlatformConfig(config)) return;
   deps.appRuntime.setLatestAllowedPlatforms(config.allowedPlatforms);
   persistPlatformConfig(deps, config);
   syncPlatformTargetUrl(deps, config.targetUrl);
-  await syncPlatformTutorialUrl(deps, config.tutorialUrl);
+  publishPlatformTutorialUrl(deps, config.tutorialUrl);
   notifyPlatformLists(deps, config);
   console.log('[启动] 平台名称已刷新并通知侧边栏:', config.platformName);
 }

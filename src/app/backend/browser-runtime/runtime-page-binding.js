@@ -2,7 +2,7 @@
 
 const GUARDED_COMMANDS = new Set([
   'observe-page', 'capture-screenshot', 'perform-action', 'download-element',
-  'automation-takeover', 'select-files',
+  'automation-takeover', 'select-files', 'fill-account-field',
 ]);
 
 async function sendPageCommand(client, command, payload, options, expectedPageToken) {
@@ -17,7 +17,8 @@ async function sendPageCommand(client, command, payload, options, expectedPageTo
     // Old kernels reject the envelope instead of ignoring an optional field.
     return await client.send('page-bound-command', { expectedPageToken, command, payload }, options);
   } catch (error) {
-    if (error.code !== 'COMMAND_NOT_ALLOWED') throw error;
+    const oldAccountRuntime = command === 'fill-account-field' && error.code === 'BROWSER_TARGET_TOOL_UNSUPPORTED';
+    if (error.code !== 'COMMAND_NOT_ALLOWED' && !oldAccountRuntime) throw error;
     throw Object.assign(new Error('当前 Chromium 内核不支持原子页面绑定'), { code: 'BROWSER_RUNTIME_UPDATE_REQUIRED' });
   }
 }

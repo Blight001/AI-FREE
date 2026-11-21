@@ -130,3 +130,35 @@ test('an unrecognized encrypted vault is not silently overwritten', (t) => {
   assert.throws(() => vault.createCategory('QQ'), /file is invalid/);
   assert.equal(fs.readFileSync(filePath, 'utf8'), contents);
 });
+
+test('recycle bin persists, isolates credentials, rejects conflicts and can restore or purge', (t) => {
+  const { directory, filePath, vault } = createVault();
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const original = vault.save({ provider: 'google', email: 'old@example.test', password: 'fixture-old' });
+  vault.remove('google', original.id);
+  const reopened = new ProviderAccountVault({ fs, path, filePath, safeStorage: vault.safeStorage });
+  const [deleted] = reopened.listTrash();
+  assert.equal(deleted.email, original.email);
+  assert.equal(Object.hasOwn(deleted, 'password'), false);
+  assert.throws(() => reopened.getPassword('google', original.id), { code: 'ACCOUNT_NOT_FOUND' });
+  const replacement = reopened.save({ provider: 'google', email: original.email, password: 'fixture-new' });
+  assert.throws(() => reopened.restore(deleted.id), { code: 'ACCOUNT_ALREADY_EXISTS' });
+  reopened.remove('google', replacement.id);
+  assert.equal(reopened.restore(deleted.id).id, original.id);
+  assert.equal(reopened.getPassword('google', original.id), 'fixture-old');
+  reopened.purge(reopened.listTrash()[0].id);
+  assert.deepEqual(vault.listTrash(), []);
+  assert.equal(vault.list('google').length, 1);
+});
+
+test('deleting a custom category preserves its accounts and restores the category with its original ID', (t) => {
+  const { directory, vault } = createVault();
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const category = vault.createCategory('Example App');
+  const active = vault.save({ provider: category.id, email: 'sample-user', password: 'fixture' });
+  vault.removeCategory(category.id);
+  const [deleted] = vault.listTrash();
+  assert.equal(deleted.category, category.name);
+  assert.equal(vault.restore(deleted.id).id, active.id);
+  assert.deepEqual(vault.list(category.id), [active]);
+});

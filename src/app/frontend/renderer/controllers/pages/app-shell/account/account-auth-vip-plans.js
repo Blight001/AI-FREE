@@ -7,6 +7,11 @@ function applyVipComparisonColumns(element, tierCount) {
   element.style.gridTemplateColumns = `minmax(90px, 1.25fr) minmax(54px, .8fr) repeat(${Math.max(1, tierCount)}, minmax(64px, .8fr))`;
 }
 
+function isRemovedVipBenefit(code, name) {
+  return /(?:^|_)(?:plugins?|extensions?|custom_(?:ai_)?models?|models?_custom)(?:_|$)/.test(code.replace(/-/g, '_'))
+    || /自定义(?:浏览器)?插件|(?:导入|安装).{0,8}插件|自定义\s*(?:AI\s*)?模型/i.test(name);
+}
+
 function renderVipPermissionComparison(items = [], tiers = []) {
   const container = safeGetEl('vip-permission-rows');
   const table = safeGetEl('vip-permission-table');
@@ -15,6 +20,7 @@ function renderVipPermissionComparison(items = [], tiers = []) {
     const code = String(item?.code || '').toLowerCase();
     const name = String(item?.name || '');
     if (code.includes('gold') || name.includes('土豪金') || name.includes('专属主题')) return false;
+    if (isRemovedVipBenefit(code, name)) return false;
     return item?.code !== 'weekly_wool_quota'
       || tierList.some((tier) => Number(tier?.weekly_wool_quota || 0) > 0);
   }) : [];
@@ -176,7 +182,7 @@ function renderVipCardCopy(vip, title, description, action) {
   if (description) {
     description.textContent = vip.active
       ? (vip.permanent ? '永久有效' : `有效期至 ${vip.expiryDate}`)
-      : '无限浏览器窗口 · 自定义插件和模型';
+      : '无限浏览器窗口 · 每周会员额度';
   }
   if (action) action.textContent = vip.active ? '已解锁' : '立即开通';
 }

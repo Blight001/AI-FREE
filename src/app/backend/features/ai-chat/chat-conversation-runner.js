@@ -1,8 +1,11 @@
 'use strict';
 
+const { performance } = require('node:perf_hooks');
 const { sendCustomAIControlMessage } = require('../../services/custom-ai-api');
 const { limitAiControlMessages } = require('../../lib/ai-control-message-window');
 const { fitAiControlContext } = require('../../lib/ai-control-context-budget');
+const { omitToolImage } = require('../../lib/ai-control-tool-result-budget');
+const { writeDebugConsoleOnly } = require('../../runtime/debug-console-log');
 
 const MAX_AI_CONTROL_TOOL_CALLS_PER_ROUND = 40;
 const {
@@ -41,6 +44,7 @@ function createConversationState(request) {
     textToolContinuationPending: false,
     textToolSessionRecoveryAttempted: false,
     imageInputFallbackAttempted: false,
+    sentToolImages: false,
     browserControl: { connectionId: String(request.controlledConnectionId || '') },
     browserTargets: new Map(),
     uploadState: { unverified: false, recoveryMessage: '' },
@@ -95,14 +99,13 @@ function receiveStreamEvent(state, round, event) {
   if (visibleEvent && !['result', 'error'].includes(visibleEvent?.type)) state.emit({ ...visibleEvent, round });
 }
 
-async function requestModelRound(state, round) {
+function sendModelRound(state, round, messages, transport) {
   const tools = state.toolContext.tools;
-  const messages = fitAiControlContext(state.modelMessages, tools);
   const signal = state.run?.controller.signal;
-  if (state.useCustomApi) {
+  if (transport === 'custom-api') {
     return sendCustomAIControlMessage(state.customApi, messages, { tools, signal });
   }
-  if (state.useStream && typeof state.httpClient.streamAIControlMessage === 'function') {
+  if (transport === 'builtin-stream') {
     return state.httpClient.streamAIControlMessage(
       state.key,
       state.deviceId,
@@ -119,6 +122,23 @@ async function requestModelRound(state, round) {
     messages,
     { tools, runId: state.runId },
   );
+}
+
+async function requestModelRound(state, round) {
+  const contextStart = performance.now();
+  const messages = fitAiControlContext(
+    state.modelMessages, state.toolContext.tools, { contextWindow: state.customApi?.contextWindow },
+  );
+  state.sentToolImages = messages.some((message) => message.ai_free_transient_image === true);
+  const transport = state.useCustomApi ? 'custom-api'
+    : (state.useStream && typeof state.httpClient.streamAIControlMessage === 'function' ? 'builtin-stream' : 'builtin-json');
+  const requestStart = performance.now();
+  try {
+    return await sendModelRound(state, round, messages, transport);
+  } finally {
+    writeDebugConsoleOnly('info', '[AIControlTiming]', { round, transport,
+      contextMs: Math.round(requestStart - contextStart), modelRequestMs: Math.round(performance.now() - requestStart) });
+  }
 }
 
 function isIdentityFailure(result) {
@@ -162,37 +182,14 @@ function isImageInputUnsupported(result) {
     && (code === 'MODEL_IMAGE_INPUT_UNSUPPORTED' || IMAGE_INPUT_UNSUPPORTED_PATTERN.test(message));
 }
 
-function replaceUnsupportedImageToolResult(message, failure) {
-  if (message?.role !== 'tool') return message;
-  try {
-    const content = JSON.parse(String(message.content || ''));
-    if (content?.image_attached !== true) return message;
-    return {
-      ...message,
-      content: JSON.stringify({
-        ...content,
-        image_attached: false,
-        image_input_unsupported: true,
-        warning: failure,
-        instruction: '当前模型无法读取工具图像。使用已有的结构化结果继续用户任务；只有任务确实依赖图像时才说明限制。不要重试截图。',
-      }),
-    };
-  } catch (_) {
-    return message;
-  }
-}
-
 async function retryWithoutUnsupportedImages(state, round, result) {
   if (state.imageInputFallbackAttempted || !isImageInputUnsupported(result)) return result;
-  const hasTransientImage = state.modelMessages.some(
-    (message) => message?.ai_free_transient_image === true,
-  );
-  if (!hasTransientImage) return result;
+  if (!state.sentToolImages) return result;
   state.imageInputFallbackAttempted = true;
   const failure = String(result?.message || result?.error || '当前模型不支持图片输入');
   state.modelMessages = state.modelMessages
     .filter((message) => message?.ai_free_transient_image !== true)
-    .map((message) => replaceUnsupportedImageToolResult(message, failure));
+    .map((message) => message.role === 'tool' ? omitToolImage(message, 'model_unsupported', failure) : message);
   return requestModelRound(state, round);
 }
 
@@ -270,6 +267,7 @@ async function executeToolRound(state, result, toolCalls, round) {
     connections: state.connections,
     describeConnections: state.toolContext.describeConnections,
     emit: state.emit,
+    hasInsertedMessages: () => Boolean(state.run?.insertedMessages.length),
     isStopped: (error) => isChatStopped(state.run, error),
     localInteraction: state.localInteraction,
     modelMessages: state.modelMessages,
@@ -322,6 +320,7 @@ async function runChatRound(state, round) {
   state.emit({ type: 'round_start', round });
   state.modelMessages = limitAiControlMessages(state.modelMessages);
   const requested = await requestRoundSafely(state, round);
+  const modelReady = performance.now();
   if (requested.done) return requested;
   const failed = handleFailedModelResult(state, requested.result);
   if (failed) return { done: true, result: failed.result };
@@ -352,7 +351,10 @@ async function runChatRound(state, round) {
     state.textToolContinuationPending = true;
     state.textToolSessionRecoveryAttempted = false;
   }
+  const toolsStart = performance.now();
   const execution = await executeToolRound(state, requested.result, toolCalls, round);
+  writeDebugConsoleOnly('info', '[AIControlTiming]', { round, toolCount: toolCalls.length,
+    dispatchPrepMs: Math.round(toolsStart - modelReady), toolBatchMs: Math.round(performance.now() - toolsStart) });
   if (state.uploadState.unverified) {
     return { done: true, result: toolFailureResult(state, state.uploadState.recoveryMessage) };
   }

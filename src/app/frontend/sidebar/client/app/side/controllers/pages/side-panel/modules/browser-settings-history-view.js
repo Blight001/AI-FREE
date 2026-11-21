@@ -36,6 +36,32 @@ constructor({
     if (list) list.innerHTML = '<div class="browser-history-empty">浏览器记录读取失败</div>';
   }
 
+  getHistoryStatus(item) {
+    if (item.lastError) return '异常';
+    if (item.isActive) return '当前浏览器';
+    if (item.isOpen) return '运行中';
+    return '';
+  }
+
+  createHistoryActions(historyId, name) {
+    const actions = document.createElement('div');
+    actions.className = 'browser-history-actions';
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'browser-history-action browser-history-edit';
+    edit.textContent = '编辑';
+    edit.title = '编辑名称、参数或删除浏览器';
+    edit.addEventListener('click', () => void this.selectBrowserHistory(historyId, { openDialog: true }));
+    const sites = document.createElement('button');
+    sites.type = 'button';
+    sites.className = 'browser-history-action browser-history-sites';
+    sites.textContent = '网站数据';
+    sites.setAttribute('aria-haspopup', 'dialog');
+    sites.setAttribute('aria-label', `网站数据：${name}`);
+    actions.append(sites, edit);
+    return actions;
+  }
+
   renderBrowserHistory() {
     const list = this.el('browser-history-list');
     if (!list) return;
@@ -59,7 +85,8 @@ constructor({
       main.type = 'button';
       main.className = 'browser-history-main';
       main.title = `${item.name || '未命名浏览器'}（单击打开）`;
-      main.setAttribute('aria-label', `${item.name || '未命名浏览器'}，${item.isActive ? '当前浏览器' : (item.isOpen ? '已打开' : '已关闭')}，单击打开`);
+      const statusLabel = this.getHistoryStatus(item);
+      main.setAttribute('aria-label', `${item.name || '未命名浏览器'}，${statusLabel || '已关闭'}，单击打开`);
       const nameRow = document.createElement('span');
       nameRow.className = 'browser-history-name-row';
       const icon = document.createElement('span');
@@ -82,26 +109,17 @@ constructor({
       name.className = 'browser-history-name';
       name.textContent = item.name || '未命名浏览器';
       nameRow.append(name);
+      if (statusLabel) {
+        const status = document.createElement('span');
+        status.className = 'browser-history-status';
+        status.textContent = statusLabel;
+        nameRow.append(status);
+      }
       main.append(nameRow);
       this.appendAccountMetadata(main, item);
       main.addEventListener('click', () => void this.openBrowserHistory(item.id, main));
   
-      const actions = document.createElement('div');
-      actions.className = 'browser-history-actions';
-      const edit = document.createElement('button');
-      edit.type = 'button';
-      edit.className = 'browser-history-action browser-history-edit';
-      edit.textContent = '编辑';
-      edit.title = '编辑名称、参数或删除浏览器';
-      edit.addEventListener('click', () => void this.selectBrowserHistory(item.id, { openDialog: true }));
-      const sites = document.createElement('button');
-      sites.type = 'button';
-      sites.className = 'browser-history-action browser-history-sites';
-      sites.textContent = '网站数据';
-      sites.setAttribute('aria-haspopup', 'dialog');
-      sites.setAttribute('aria-label', `网站数据：${name.textContent}`);
-      actions.append(sites, edit);
-      row.append(main, actions);
+      row.append(main, this.createHistoryActions(item.id, name.textContent));
       list.appendChild(row);
     });
   }

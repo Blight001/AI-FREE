@@ -1,30 +1,59 @@
-diff --git a/chrome/browser/ui/views/tabs/tab_strip.cc b/chrome/browser/ui/views/tabs/tab_strip.cc
---- a/chrome/browser/ui/views/tabs/tab_strip.cc
-+++ b/chrome/browser/ui/views/tabs/tab_strip.cc
-@@ -17,6 +17,7 @@
- #include <utility>
- #include <vector>
- 
-+#include "base/command_line.h"
+diff --git a/chrome/browser/ui/views/tabs/dragging/tab_drag_controller.cc b/chrome/browser/ui/views/tabs/dragging/tab_drag_controller.cc
+index e4862f8..529d0f2 100644
+--- a/chrome/browser/ui/views/tabs/dragging/tab_drag_controller.cc
++++ b/chrome/browser/ui/views/tabs/dragging/tab_drag_controller.cc
+@@ -13,6 +13,7 @@
+
+ #include "base/auto_reset.h"
  #include "base/check.h"
- #include "base/compiler_specific.h"
++#include "base/command_line.h"
  #include "base/containers/adapters.h"
-@@ -79,5 +80,6 @@
- #include "chrome/browser/ui/web_applications/app_browser_controller.h"
- #include "chrome/browser/ui/web_applications/web_app_tabbed_utils.h"
+ #include "base/feature_list.h"
+ #include "base/functional/bind.h"
+@@ -56,6 +57,7 @@
+ #include "chrome/browser/web_applications/web_app_helpers.h"
+ #include "chrome/browser/web_applications/web_app_provider.h"
+ #include "chrome/browser/web_applications/web_app_registrar.h"
 +#include "chrome/common/chrome_switches.h"
- #include "chrome/grit/generated_resources.h"
- #include "chrome/grit/theme_resources.h"
- #include "components/crash/core/common/crash_key.h"
-@@ -1892,6 +1894,11 @@ void TabStrip::MaybeStartDrag(
- void TabStrip::MaybeStartDrag(TabSlotView* source,
-                               const ui::LocatedEvent& event,
-                               ui::ListSelectionModel original_selection) {
-+  if (base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
-+          switches::kHsEmbedMode) == "child-window") {
-+    return;
+ #include "components/tab_groups/tab_group_id.h"
+ #include "components/tabs/public/tab_group.h"
+ #include "components/tabs/public/tab_interface.h"
+@@ -111,6 +113,11 @@ static TabDragController* g_tab_drag_controller = nullptr;
+
+ namespace {
+
++bool IsAiFreeEmbeddedChildWindow() {
++  return base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
++             switches::kHsEmbedMode) == "child-window";
++}
++
+ // A dragged window is forced to be a bit smaller than maximized bounds during a
+ // drag. This prevents the dragged browser widget from getting maximized at
+ // creation and makes it easier to drag tabs out of a restored window that had
+@@ -436,6 +443,12 @@ TabDragController::Liveness TabDragController::Init(
+       views::View::ConvertPointToScreen(source_view, offset_from_source_view);
+   ref->event_source_ = event_source;
+   ref->last_point_in_screen_ = start_point_in_screen_;
++
++  // Keep dragged tabs attached to the source strip so they can still reorder.
++  if (IsAiFreeEmbeddedChildWindow()) {
++    ref->detach_behavior_ = DetachBehavior::kNotDetachable;
 +  }
 +
-   // Don't accidentally start any drag operations during animations if the
-   // mouse is down... during an animation tabs are being resized automatically,
-   // so the View system can misinterpret this easily if the mouse is down that
+   // Detachable tabs are not supported on Mac if the window is an out-of-process
+   // (remote_cocoa) window, i.e. a PWA window.
+   // TODO(crbug.com/40128833): Make detachable tabs work in PWAs on Mac.
+@@ -714,8 +727,11 @@ TabDragController::Liveness TabDragController::Drag(
+
+     StartDrag();
+
+-    if (drag_data_.num_dragging_tabs() ==
+-        source_context_->GetTabStripModel()->count()) {
++    // Dragging every tab normally moves the window itself, including when
++    // the browser has only one tab. The shell owns the embedded window bounds.
++    if (!IsAiFreeEmbeddedChildWindow() &&
++        drag_data_.num_dragging_tabs() ==
++            source_context_->GetTabStripModel()->count()) {
+       if (ShouldDragWindowUsingSystemDnD()) {
+         return StartSystemDnDSessionIfNecessary(attached_context_,
+                                                 point_in_screen);

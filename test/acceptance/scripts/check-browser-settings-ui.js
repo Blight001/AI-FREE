@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
+const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const { attachContextMenu } = require('../../../src/app/backend/utils/removeWatermark');
@@ -6,7 +7,8 @@ const { applicationLayout, runtimeArgument } = require('../../helpers/flows/app-
 const { accountPreferencesDrivers } = require('../../helpers/flows/account-preferences');
 const { homeWorkspaceDrivers, checkBrowserHistoryResize } = require('../../helpers/flows/home-workspace');
 const { checkProviderAccountDialog, bindProviderAccountFixture } = require('../../helpers/electron/provider-account-dialog');
-const { checkHomeAccountIntegration } = require('../../helpers/electron/home-account-integration');
+const { checkHomeAccountIntegration, checkVipShopOnly } = require('../../helpers/electron/home-account-integration');
+const { checkHomeTheme } = require('../../helpers/electron/home-theme');
 const { checkHomeDialogScope } = require('../../helpers/electron/home-dialog-scope');
 const { checkHomeConsole } = require('../../helpers/electron/home-console');
 const { checkHomeMcp } = require('../../helpers/electron/home-mcp');
@@ -27,6 +29,9 @@ let mcpCopyRequests = 0;
 let accountSession = { authenticated: false };
 let windowCloseBehavior = 'ask';
 let startupSettings = { openAtLogin: false, startMinimized: false };
+let customModels = [];
+let discoveredModelRequest = null;
+let savedModelPayload = null;
 require('../../helpers/electron/site-data').bindSiteDataFixture(ipcMain, () => BrowserWindow.getAllWindows()[0], layout.root);
 ipcMain.handle('open-browser-history', (_event, payload = {}) => {
   browserHistoryOpenRequests += 1;
@@ -57,6 +62,20 @@ ipcMain.handle('set-startup-settings', (_event, payload = {}) => {
     startMinimized: payload.enabled === true && windowCloseBehavior === 'hide',
   };
   return { ok: true, data: startupSettings };
+});
+ipcMain.handle('ai-control-custom-models-list', () => ({ ok: true, models: customModels }));
+ipcMain.handle('ai-control-custom-model-discover', (_event, payload) => {
+  discoveredModelRequest = payload;
+  return { ok: true, models: [{ id: 'fixture-chat', name: 'Fixture Chat' }, { id: 'fixture-reasoner', name: 'Fixture Reasoner' }] };
+});
+ipcMain.handle('ai-control-custom-model-save-many', (_event, payload) => {
+  savedModelPayload = payload;
+  customModels = payload.models.map(({ apiKey, ...model }, index) => ({
+    ...model,
+    id: `__custom_openai_api__:acceptance-${index}`,
+    hasApiKey: Boolean(apiKey),
+  }));
+  return { ok: true, models: customModels };
 });
 ipcMain.handle('get-external-codex-status', () => ({
   ok: true,
@@ -131,6 +150,9 @@ for (const [channel, response] of /** @type {Array<[string, any]>} */ ([
     }, ...Array.from({ length: 24 }, (_, index) => ({
       id: `fixture-browser-${index}`,
       name: `Fixture browser ${index + 1}`,
+      isOpen: index < 3,
+      isActive: index === 1,
+      lastError: index === 2 ? 'Fixture error' : undefined,
       lastOpenedAt: 1_800_000_000_000 - index,
     }))],
   }],
@@ -156,7 +178,17 @@ for (const [channel, response] of /** @type {Array<[string, any]>} */ ([
       serviceId: '', toolCount: 0, aiConfigId: null, message: '尚未连接 AI 服务器',
     },
   }],
-  ['get-vip-plans', { ok: true, data: { plans: [] } }],
+  ['get-vip-plans', {
+    ok: true,
+    tiers: [{ tier: 'vip', display_name: 'VIP' }],
+    plans: [{ code: 'vip_quarterly', tier: 'vip', billing_cycle: 'quarterly', name: 'VIP 包季', price_cents: 4990, duration_days: 90 }],
+    permission_comparison: [
+      { code: 'browser_limit', name: '独立浏览器窗口', free: '最多 5 个', vip: '不限数量' },
+      { code: 'extension_import', name: '自定义插件', free: '不可导入', vip: '允许导入' },
+      { code: 'legacy_feature', name: '自定义模型', free: '不可添加', vip: '允许添加' },
+      { code: 'weekly_ai_quota', name: '每周 AI 额度', free: '无赠送', vip: '200 点' },
+    ],
+  }],
   ['focus-sidebar-input', { ok: true }],
 ])) ipcMain.handle(channel, () => response);
 
@@ -234,6 +266,16 @@ async function checkTaskbarHomeButton(win) {
       return false;
     })()`);
     if (!scrolled) throw new Error('Expected overflow tabs to scroll');
+    const [activeTitle, inactiveTitle] = await contents.executeJavaScript(`(() => {
+      const readTitleStyle = (selector) => {
+        const title = document.querySelector(selector);
+        const { fontSize, fontWeight } = getComputedStyle(title);
+        return { fontSize, fontWeight: Number(fontWeight) };
+      };
+      return [readTitleStyle('.tab.active .tab-title'), readTitleStyle('.tab:not(.active) .tab-title')];
+    })()`);
+    assert.equal(activeTitle.fontSize, inactiveTitle.fontSize, 'Selecting a browser tab must not enlarge its title');
+    assert.ok(activeTitle.fontWeight > inactiveTitle.fontWeight, 'Selected browser tab titles should stay bold');
     await clickTaskbarCorner(contents, 1);
   } finally {
     contents.send('update-tabs', []);
@@ -276,14 +318,80 @@ async function checkNewWindowButtonHover(contents) {
   }
 }
 
+async function checkMainWindowFrame() {
+  if (process.platform !== 'win32') return;
+  const { mainWindowFrameOptions } = require(path.join(layout.root, 'src/app/backend/features/window/main-window-frame.js'));
+  const win = new BrowserWindow({ show: false, width: 1000, height: 700, ...mainWindowFrameOptions() });
+  const keepAlive = () => {};
+  app.on('window-all-closed', keepAlive);
+  try {
+    await win.loadFile(layout.pages.shell);
+    win.showInactive();
+    async function assertGeometry() {
+      const state = await win.webContents.executeJavaScript(`new Promise(resolve => requestAnimationFrame(() => {
+        const overlay = navigator.windowControlsOverlay;
+        const strip = document.getElementById('shell-title-bar');
+        resolve({
+          visible: overlay.visible, overlayHeight: overlay.getTitlebarAreaRect().height,
+          pageTop: document.getElementById('browser-page-module').getBoundingClientRect().top,
+          stripWidth: strip.getBoundingClientRect().width, viewportWidth: innerWidth,
+          draggable: getComputedStyle(strip).getPropertyValue('app-region'),
+          text: strip.textContent, imageCount: strip.querySelectorAll('img').length,
+        });
+      }))`);
+      assert.equal(state.visible, true, JSON.stringify(state));
+      assert.equal(state.overlayHeight, 32);
+      assert.equal(state.pageTop, state.overlayHeight);
+      assert.ok(state.stripWidth > 0 && state.stripWidth < state.viewportWidth);
+      assert.equal(state.draggable, 'drag');
+      assert.equal(state.text, '');
+      assert.equal(state.imageCount, 0);
+    }
+    await assertGeometry();
+    win.maximize();
+    await assertGeometry();
+    win.unmaximize();
+    await assertGeometry();
+  } finally {
+    win.destroy();
+    app.off('window-all-closed', keepAlive);
+  }
+  console.log(`main window title bar checks passed (${layout.runtime})`);
+}
+
 app.whenReady().then(async () => {
+  if (process.argv.includes('--title-bar-only')) {
+    await checkMainWindowFrame();
+    app.quit();
+    return;
+  }
+  const themeOnly = process.argv.includes('--theme-only');
+  const vipShopOnly = process.argv.includes('--vip-shop-only');
+  if (!themeOnly && !vipShopOnly) await checkMainWindowFrame();
   const win = new BrowserWindow({
     width: 805,
     height: 1200,
     show: !!process.env.AI_FREE_UI_CAPTURE,
     webPreferences: { contextIsolation: true, preload: path.join(layout.root, 'src/app/backend/preload.js') },
   });
-  bindProviderAccountFixture(layout, win.webContents);
+  if (vipShopOnly) {
+    ipcMain.handle('provider-categories-list', () => ({ ok: true, data: { categories: [] } }));
+    try {
+      win.setSize(760, 460);
+      await checkVipShopOnly(win, layout);
+      console.log(`VIP shop UI checks passed (${layout.runtime})`);
+    } finally {
+      ipcMain.removeHandler('provider-categories-list');
+      win.destroy();
+    }
+    app.quit();
+    return;
+  }
+  if (themeOnly) {
+    ipcMain.handle('provider-categories-list', () => ({ ok: true, data: { categories: [] } }));
+  } else {
+    bindProviderAccountFixture(layout, win.webContents);
+  }
   if (process.argv.includes('--mcp-only')) {
     try {
       await checkHomeMcp(win, layout);
@@ -316,6 +424,13 @@ app.whenReady().then(async () => {
   }
   attachContextMenu(win.webContents);
   await win.loadFile(layout.pages.shell);
+  await checkHomeTheme(win);
+  if (themeOnly) {
+    win.destroy();
+    console.log(`home appearance UI checks passed (${layout.runtime})`);
+    app.quit();
+    return;
+  }
   if (process.argv.includes('--site-data-only')) {
     const home = require('../flows/home-workspace.json');
     const start = home.steps.findIndex(step => step.id === 'openSites');
@@ -659,34 +774,15 @@ app.whenReady().then(async () => {
     || !aiWelcomeResult.welcomeStillVisible) {
     throw new Error(`AI 新对话首页校验失败: ${JSON.stringify(aiWelcomeResult)}`);
   }
-  const externalMcpResult = await win.webContents.executeJavaScript(`(async () => {
-    const dialog = document.getElementById('ai-custom-api-dialog');
-    document.getElementById('ai-chat-model-trigger')?.click();
-    const addModel = document.querySelector('.ai-model-custom-api-action');
-    addModel?.click();
-    const opensWithoutLogin = addModel?.textContent === '添加自定义模型' && dialog.hidden === false;
-    const tab = document.getElementById('ai-external-mcp-title');
-    const panel = document.getElementById('ai-external-mcp-panel');
-    const status = document.getElementById('external-mcp-status');
-    const copyButton = document.getElementById('copy-external-mcp-config');
-    const steps = panel?.textContent || '';
-    tab?.click();
-    await new Promise((done) => setTimeout(done, 30));
-    const ready = status?.textContent === '已就绪 · 0 个工具';
-    copyButton?.click();
-    await new Promise((done) => setTimeout(done, 30));
-    return {
-      opensWithoutLogin,
-      tabInCustomDialog: tab?.closest('#ai-custom-api-dialog') === dialog,
-      tabLabel: tab?.textContent === 'MCP 配置',
-      panelVisibleAfterTab: panel?.hidden === false,
-      warnsAboutConfigSecret: steps.includes('配置包含密钥'),
-      ready,
-      copied: status?.textContent === '配置已复制到剪贴板',
-    };
-  })()`);
-  if (mcpCopyRequests !== 1 || Object.values(externalMcpResult).some((value) => value !== true)) {
-    throw new Error(`AI 控制 MCP 配置栏目校验失败: ${JSON.stringify(externalMcpResult)}`);
+  const externalMcpResult = await win.webContents.executeJavaScript(`(() => ({
+    dialogRemoved: !document.getElementById('ai-custom-api-dialog'),
+    serverFormRemoved: !document.getElementById('ai-server-device-form'),
+    mcpPanelRemoved: !document.getElementById('ai-external-mcp-panel'),
+    serverTabRemoved: !document.getElementById('ai-server-device-title'),
+    mcpTabRemoved: !document.getElementById('ai-external-mcp-title'),
+  }))()`);
+  if (Object.values(externalMcpResult).some((value) => value !== true) || mcpCopyRequests !== 0) {
+    throw new Error(`AI 控制侧栏不再承载模型配置校验失败: ${JSON.stringify(externalMcpResult)}`);
   }
   if (process.env.AI_FREE_AI_WELCOME_CAPTURE) {
     win.setSize(500, 850);
@@ -697,6 +793,9 @@ app.whenReady().then(async () => {
   }
   homeSwitchRequests = 0;
   independentBrowserCreateRequests = 0;
+  customModels = [];
+  discoveredModelRequest = null;
+  savedModelPayload = null;
   await win.loadFile(layout.pages.shell);
   await new Promise((resolve) => setTimeout(resolve, 120));
   const shellAccountResult = await win.webContents.executeJavaScript(`(async () => {
@@ -747,6 +846,14 @@ app.whenReady().then(async () => {
   }
   ipcMain.removeAllListeners('request-account-center');
   await checkHomeAccountIntegration(win, layout, (session) => { accountSession = session; });
+  if (discoveredModelRequest?.baseUrl !== 'https://models.example.test/v1'
+    || discoveredModelRequest?.apiKey !== 'acceptance-key'
+    || savedModelPayload?.models?.length !== 2
+    || savedModelPayload.models.some((model) => model.apiKey !== 'acceptance-key')
+    || savedModelPayload.models.some((model) => model.contextWindow !== '131072' || model.maxOutputTokens !== '12345')
+    || Number(mcpCopyRequests) !== 1) {
+    throw new Error('首页模型发现、批量保存或 MCP 配置复用验收未完成');
+  }
   await checkAccountPreferences(win);
   win.webContents.send('app-update-activated', { version: '9.9.9', percent: 0 });
   win.webContents.send('app-update-progress', { version: '9.9.9', phase: 'downloading', percent: 64 });

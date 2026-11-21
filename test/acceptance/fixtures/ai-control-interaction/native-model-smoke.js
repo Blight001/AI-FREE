@@ -1,6 +1,8 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const { DRAW_CIRCLE } = require('./circle-fixture');
+const { EDITOR_PROMPT } = require('./page-batch-fixture');
 const path = require('node:path');
 const { setTimeout: delay } = require('node:timers/promises');
 const { startFixture } = require('./server');
@@ -14,7 +16,11 @@ async function runFixture() {
     }, { root: path.resolve(__dirname, '../../../..'), env: { ...verificationEnv(fixture.root), NO_PROXY: '127.0.0.1',
       AI_FREE_INTERACTION_FIXTURE: JSON.stringify(fixture) } });
     assert.equal(result.status, 'passed', result.output);
+    assert.match(result.output, /NATIVE_CIRCLE_SMOKE_PASSED/);
+    assert.match(result.output, /NATIVE_PAGE_BATCH_SMOKE_PASSED/);
     assert.match(result.output, /NATIVE_MODEL_SMOKE_PASSED/);
+    console.log('NATIVE_CIRCLE_SMOKE_PASSED');
+    console.log('NATIVE_PAGE_BATCH_SMOKE_PASSED');
     console.log('NATIVE_MODEL_SMOKE_PASSED');
   } finally {
     await fixture.close();
@@ -86,6 +92,34 @@ async function exerciseCandidate(fixture, manager, bridge) {
   assert.match(command.message.content, /command timed out/);
 }
 
+async function exerciseCircle(fixture, manager, bridge, profileId) {
+  await manager.importSession(profileId, { targetUrl: fixture.urls.circle });
+  const { result } = await chatClient(fixture, bridge, bridge.listConnections()[0].id)(DRAW_CIRCLE);
+  const toolMessages = result.messages.filter((message) => message.role === 'tool');
+  assert.deepEqual(toolMessages.map((message) => message.name), [
+    'browser_tab', 'browser_control', 'browser_observe', 'browser_action', 'browser_action', 'browser_observe',
+  ], JSON.stringify(toolMessages.map((message) => ({ tool: message.name, error: JSON.parse(message.content)?.errorCode }))));
+  assert.equal(result.message.content, '已画出一个直径 96 的圆。');
+  const observation = JSON.parse(toolMessages[2].content);
+  assert.equal(observation.image_attached, true, '持久历史保留原始工具结果');
+  assert.ok(toolMessages[2].content.length > 12000);
+  console.log('NATIVE_CIRCLE_SMOKE_PASSED');
+}
+
+async function exercisePageBatch(fixture, manager, bridge, profileId) {
+  await manager.importSession(profileId, { targetUrl: fixture.urls.editor });
+  const { result } = await chatClient(fixture, bridge, bridge.listConnections()[0].id)(EDITOR_PROMPT);
+  const toolMessages = result.messages.filter((message) => message.role === 'tool');
+  assert.deepEqual(toolMessages.map(({ name }) => name), [
+    'browser_tab', 'browser_control', 'browser_observe', 'browser_page_batch', 'browser_observe',
+  ], JSON.stringify(toolMessages.map(({ name, content }) => [name, JSON.parse(content).errorCode])));
+  assert.deepEqual(JSON.parse(toolMessages[3].content), { success: true, requested: 10, completed: 10, notAttempted: 0 });
+  const editor = JSON.parse(toolMessages[4].content);
+  assert.ok(editor.items?.some(({ text }) => text === 'Accepted: First draft!'));
+  assert.equal(result.message.content, 'Verified draft preview after ten page steps.');
+  console.log('NATIVE_PAGE_BATCH_SMOKE_PASSED');
+}
+
 async function electronMain() {
   const { app, BrowserWindow } = require('electron');
   const { createBrowserRuntimeManager } = require('../../../../src/app/backend/browser-runtime');
@@ -105,6 +139,8 @@ async function electronMain() {
     const runtime = await manager.launchProfile({ profileId, runtimeType: 'chromium', initialUrl: 'about:blank' },
       { x: 0, y: 0, width: 850, height: 590 });
     assert.equal(runtime.status, 'ready');
+    await exerciseCircle(fixture, manager, bridge, profileId);
+    await exercisePageBatch(fixture, manager, bridge, profileId);
     await manager.importSession(profileId, { targetUrl: fixture.urls.a });
     await exerciseCandidate(fixture, manager, bridge);
     console.log('NATIVE_MODEL_SMOKE_PASSED');

@@ -45,11 +45,76 @@ function groupValidMessages(messages = []) {
   return groups;
 }
 
-function limitAiControlMessages(messages = []) {
-  return groupValidMessages(messages).flat();
+function messageTokenEstimate(message) {
+  const countText = (value) => Math.ceil(String(value || '').length / 4);
+  let tokens = 4 + countText(message?.name);
+  if (typeof message?.content === 'string') tokens += countText(message.content);
+  if (Array.isArray(message?.content)) {
+    for (const part of message.content) {
+      if (part?.type === 'image_url') tokens += 1024;
+      else tokens += countText(part?.text || part?.content || '');
+    }
+  }
+  if (Array.isArray(message?.tool_calls)) tokens += countText(JSON.stringify(message.tool_calls));
+  return tokens;
+}
+
+function contextTurns(groups) {
+  const prefix = [];
+  const turns = [];
+  let current = null;
+  for (const group of groups) {
+    if (group.length === 1 && group[0]?.role === 'system') {
+      prefix.push(group);
+      continue;
+    }
+    const startsTurn = group[0]?.role === 'user'
+      && group[0]?.ai_free_transient_image !== true
+      && group[0]?.ai_free_attachment_context !== true;
+    if (startsTurn) {
+      current = [];
+      turns.push(current);
+    }
+    if (current) current.push(group);
+    else prefix.push(group);
+  }
+  return { prefix, turns };
+}
+
+function contextLimitError() {
+  /** @type {Error & { code?: string }} */
+  const error = new Error('当前对话超出模型输入上下文上限，且无法在保留完整工具调用的前提下继续裁剪。请缩短输入或选择更大上下文的模型。');
+  error.code = 'AI_CONTEXT_WINDOW_LIMIT';
+  return error;
+}
+
+function limitAiControlMessages(messages = [], contextWindow = 0) {
+  const groups = groupValidMessages(messages);
+  const limit = Math.floor(Number(contextWindow) || 0);
+  if (limit <= 0 || groups.flat().reduce((total, message) => total + messageTokenEstimate(message), 0) <= limit) {
+    return groups.flat();
+  }
+  const { prefix, turns } = contextTurns(groups);
+  const prefixTokens = prefix.flat().reduce((total, message) => total + messageTokenEstimate(message), 0);
+  if (prefixTokens >= limit || !turns.length) throw contextLimitError();
+  const kept = [];
+  let used = prefixTokens;
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    const turn = turns[index];
+    const size = turn.flat().reduce((total, message) => total + messageTokenEstimate(message), 0);
+    if (used + size > limit) {
+      if (!kept.length) throw contextLimitError();
+      break;
+    }
+    kept.unshift(turn);
+    used += size;
+  }
+  return [...prefix, ...kept].flat(2);
 }
 
 module.exports = {
+  contextLimitError,
   groupValidMessages,
   limitAiControlMessages,
+  messageTokenEstimate,
 };

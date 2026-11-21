@@ -67,27 +67,6 @@
     if (trigger) trigger.title = title;
   }
 
-  function createNewConversationButton(shell) {
-    const newBtn = document.createElement('button');
-    newBtn.type = 'button';
-    newBtn.className = 'ai-select-option-new';
-    newBtn.setAttribute('role', 'option');
-    newBtn.innerHTML = '<span class="ai-select-option-new-icon" aria-hidden="true">+</span><span>新建对话</span>';
-    newBtn.addEventListener('click', (event) => {
-      event.preventDefault();
-      closeSelect(shell);
-      void startNewConversation();
-    });
-    return newBtn;
-  }
-
-  function createHistoryDivider() {
-    const divider = document.createElement('div');
-    divider.className = 'ai-select-option-divider';
-    divider.setAttribute('role', 'separator');
-    return divider;
-  }
-
   function createDraftHistoryButton(shell) {
     const draft = document.createElement('button');
     draft.type = 'button';
@@ -120,14 +99,12 @@
     const main = document.createElement('button');
     main.type = 'button';
     main.className = 'ai-select-option-label';
-    main.style.cssText = 'border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;padding:0;min-width:0;width:100%;';
     const titleSpan = document.createElement('span');
     titleSpan.textContent = session.title || '新对话';
-    const sub = document.createElement('span');
-    sub.className = 'ai-select-option-sub';
-    const metaParts = [formatRelativeTime(session.updatedAt), session.messageCount ? `${session.messageCount} 条` : ''].filter(Boolean);
-    sub.textContent = metaParts.join(' · ') || session.preview || '历史对话';
-    main.append(titleSpan, sub);
+    const time = document.createElement('span');
+    time.className = 'ai-select-option-sub';
+    time.textContent = formatRelativeTime(session.updatedAt);
+    main.append(titleSpan, time);
     main.addEventListener('click', (event) => {
       event.preventDefault();
       closeSelect(shell);
@@ -175,7 +152,6 @@
     const sessions = Array.isArray(state.sessionList) ? state.sessionList : [];
     const currentId = String(state.currentSession?.id || '');
     const showDraft = Boolean(currentId && !sessions.some((item) => String(item.id) === currentId) && currentMessages().length);
-    menu.append(createNewConversationButton(shell), createHistoryDivider());
     if (showDraft) menu.appendChild(createDraftHistoryButton(shell));
     if (!sessions.length && !showDraft) {
       menu.appendChild(createEmptyHistoryButton());

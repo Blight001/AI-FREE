@@ -9,6 +9,7 @@ const {
 } = require('./workspace-file-artifacts');
 
 const MAX_IMPORT_FILES = 32;
+const MAX_PASTED_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_PREVIEW_BYTES = 256 * 1024;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 64 * 1024 * 1024;
@@ -189,6 +190,24 @@ function importSelectedFiles(root, selectedPaths) {
   });
 }
 
+function importPastedFiles(root, files) {
+  if (!Array.isArray(files) || files.length > 16) throw new Error('一次最多粘贴 16 个文件');
+  const uploadDir = path.join(root, 'Uploads');
+  fs.mkdirSync(uploadDir, { recursive: true });
+  return files.map((file) => {
+    const name = path.basename(String(file?.name || '粘贴文件')).replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').slice(0, 180) || '粘贴文件';
+    const encoded = String(file?.data || '');
+    if (!encoded || encoded.length > Math.ceil(MAX_PASTED_FILE_BYTES * 4 / 3) + 8 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) {
+      throw new Error('粘贴文件内容无效或超过 10 MB');
+    }
+    const bytes = Buffer.from(encoded, 'base64');
+    if (!bytes.length || bytes.length > MAX_PASTED_FILE_BYTES) throw new Error('粘贴文件必须小于 10 MB');
+    const destination = uniqueDestination(uploadDir, name);
+    fs.writeFileSync(destination, bytes, { flag: 'wx' });
+    return publicFile(root, destination, fs.statSync(destination));
+  });
+}
+
 function createAiWorkspaceService(options = {}) {
   const getRoot = () => workspaceRoot(options.workspaceDir);
   return {
@@ -210,6 +229,9 @@ function createAiWorkspaceService(options = {}) {
         : await options.dialog.showOpenDialog(dialogOptions);
       if (result.canceled) return { ok: true, files: [], canceled: true };
       return { ok: true, files: importSelectedFiles(root, result.filePaths || []) };
+    },
+    importPastedFiles(files) {
+      return { ok: true, files: importPastedFiles(getRoot(), files) };
     },
     read(input = {}) {
       const root = getRoot();
@@ -291,8 +313,42 @@ function resolveAttachmentArtifacts(attachmentPaths, references) {
   return artifacts;
 }
 
+function appendInlineFilePart(parts, root, item) {
+  const preview = readPreview(root, String(item.path || ''));
+  if (preview.kind === 'image' && preview.dataUrl) {
+    parts.push({ type: 'image_url', image_url: { url: preview.dataUrl } });
+  } else if (preview.kind === 'text') {
+    parts.push({ type: 'text', text: `\n[文件 ${preview.name}${preview.truncated ? '，内容已截断' : ''}]\n${preview.content || ''}\n` });
+  } else {
+    parts.push({ type: 'text', text: `[文件 ${preview.name}，类型 ${preview.mimeType}；路径 ${preview.path}]` });
+  }
+}
+
+function buildInlineUserMessage(root, message) {
+  if (message?.role !== 'user' || !Array.isArray(message.inlineAttachments) || !message.inlineAttachments.length) return message;
+  const content = String(message.content || '');
+  const parts = [];
+  let offset = 0;
+  for (const item of message.inlineAttachments.slice(0, 16)) {
+    const marker = String(item?.marker || '');
+    const index = marker ? content.indexOf(marker, offset) : -1;
+    if (index < 0) continue;
+    if (index > offset) parts.push({ type: 'text', text: content.slice(offset, index) });
+    appendInlineFilePart(parts, root, item);
+    offset = index + marker.length;
+  }
+  if (offset < content.length) parts.push({ type: 'text', text: content.slice(offset) });
+  return parts.length ? { ...message, content: parts } : message;
+}
+
+function buildInlineAttachmentMessages(workspaceDir, messages = []) {
+  const root = workspaceRoot(workspaceDir);
+  return messages.map((message) => buildInlineUserMessage(root, message));
+}
+
 module.exports = {
   buildAttachmentMessages, buildVerifiedAttachmentMessages: buildAttachmentMessages,
+  buildInlineAttachmentMessages,
   createAiWorkspaceService, createDownloadArtifact, inspectWorkspaceFileSync, readPreview,
   resolveAttachmentArtifacts, verifyWorkspaceArtifactSync,
 };

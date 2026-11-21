@@ -8,7 +8,7 @@ test('stop preserves its original failure when releasing resources also fails', 
   const original = new Error('close failed');
   const state = { status: 'ready' };
   const instance = {
-    child: { pid: 123, exitCode: 0 }, paths: {},
+    child: { pid: 123, exitCode: null, once() {} }, paths: {},
     commandClient: { send: () => { throw original; } },
     resources: { dispose: async () => { throw new Error('cleanup failed'); } },
   };
@@ -32,9 +32,9 @@ test('stopping an exited Chromium does not wait for a stale close command acknow
     profileId: 'profile-1', status: 'ready', browserHwnd: null, hostHwnd: null,
   };
   const instance = {
-    child: { exitCode: 0, pid: 123 },
+    child: { exitCode: null, signalCode: 'SIGTERM', pid: 123 },
     commandClient: {
-      send: () => new Promise(() => {}),
+      send: () => assert.fail('exited Chromium must not receive a close command'),
       close: async () => {},
     },
     monitor: { stop() {} },

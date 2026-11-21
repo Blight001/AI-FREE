@@ -30,6 +30,8 @@ module.exports = {
   browser_workflow: ['查看最近的自动化报告，只返回摘要，不包含截图。',
     { action: 'report', include_details: false, include_images: false },
     { success: true, mode: 'automation', status: 'idle', reportCount: 0 }, '没有报告时，仅返回自动化状态。'],
+  account_manage: ['列出 Google 栏目的脱敏账号。', { action: 'list', provider: 'google' },
+    { ok: true, data: { accounts: [{ id: 'demo-account', maskedAccount: 'd•••@e•••' }] } }],
   manage_card: ['查找“示例验收卡”，先查看卡片说明，不运行。', { action: 'list' },
     { success: true, selectedId: '', items: [] }],
 };

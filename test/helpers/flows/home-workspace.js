@@ -72,7 +72,7 @@ async function readBackground() {
   const image = new Image();
   image.src = match[1];
   const decoded = await image.decode().then(() => image.naturalWidth > 0, () => false);
-  return { visible: decoded && Number(style.opacity) === 1 };
+  return { visible: decoded && Number(style.opacity) > 0 };
 }
 
 function homeWorkspaceDrivers(webContents, accountRequests) {

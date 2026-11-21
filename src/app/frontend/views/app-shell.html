@@ -10,18 +10,21 @@
   <link rel="stylesheet" href="../sidebar/client/app/side/styles/side.css" />
   <link rel="stylesheet" href="../renderer/styles/app-shell.css" />
   <link rel="stylesheet" href="../renderer/styles/app-shell-home.css" />
+  <link rel="stylesheet" href="../renderer/styles/app-shell-home-theme.css" />
   <link rel="stylesheet" href="../renderer/styles/app-shell-site-data.css" />
   <link rel="stylesheet" href="../renderer/styles/app-shell-account-auth.css" />
   <link rel="stylesheet" href="../renderer/styles/app-shell-account.css" />
   <link rel="stylesheet" href="../renderer/styles/app-shell-extensions.css" />
   <link rel="stylesheet" href="../renderer/styles/app-shell-console.css" />
   <link rel="stylesheet" href="../renderer/styles/app-shell-mcp.css" />
+  <link rel="stylesheet" href="../renderer/styles/app-shell-model-settings.css" />
   <link rel="stylesheet" href="../renderer/styles/app-shell-flow-studio.css" />
   <link rel="stylesheet" href="../renderer/styles/app-shell-network-magic.css" />
   <link rel="stylesheet" href="../renderer/styles/app-shell-layout.css" />
 </head>
 <body>
   <div id="app-container">
+    <div id="shell-title-bar" aria-hidden="true"></div>
     <footer id="taskbar-module" aria-label="浏览器任务栏">
     <div id="tab-bar">
       <button id="home-tab-btn" type="button" title="首页" aria-label="返回首页">
@@ -97,6 +100,9 @@
             <button id="home-automation-tab" type="button" role="tab" aria-controls="home-automation" aria-selected="false" tabindex="-1">
               <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="7" height="6" rx="1"/><rect x="14" y="14" width="7" height="6" rx="1"/><path d="M10 7h4a2 2 0 0 1 2 2v5M13 12l3 3 3-3"/></svg><span>自动化</span>
             </button>
+            <button id="home-model-settings-tab" type="button" role="tab" aria-controls="home-model-settings" aria-selected="false" tabindex="-1">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M4.9 4.9 7 7m10 10 2.1 2.1m0-14.2L17 7M7 17l-2.1 2.1"/></svg><span>模型设置</span>
+            </button>
             <button id="home-mcp-tab" type="button" role="tab" aria-controls="home-mcp" aria-selected="false" tabindex="-1" hidden>
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19h9M8 6l-5 6 5 6M16 6l5 6-5 6"/></svg><span>MCP 管理</span>
             </button>
@@ -130,8 +136,12 @@
             <div id="provider-account-panels"></div>
             <template id="provider-account-panel">
               <section role="tabpanel" hidden>
-                <div class="provider-account-heading"><h2></h2>
-                  <button type="button" class="browser-default-settings-btn provider-add-account" aria-haspopup="dialog">添加账号</button>
+                <div class="provider-account-heading">
+                  <h2></h2>
+                  <div class="provider-account-heading-actions">
+                    <button type="button" class="browser-default-settings-btn provider-add-account" aria-haspopup="dialog">添加账号</button>
+                    <button type="button" class="browser-default-settings-btn provider-trash-open" aria-haspopup="dialog">账号回收站</button>
+                  </div>
                 </div>
                 <div class="provider-account-list"></div>
               </section>
@@ -168,7 +178,7 @@
             <header class="shell-home-heading">
               <h1>个人中心</h1>
               <div class="shell-home-actions">
-                <button id="browser-settings-tutorial" class="browser-default-settings-btn" type="button">使用教程</button>
+                <button id="browser-settings-tutorial" class="browser-default-settings-btn" type="button">使用教程和商城</button>
               </div>
             </header>
           <div class="account-profile-shell">
@@ -206,7 +216,7 @@
                   <span class="account-vip-lock" aria-hidden="true">🔒</span>
                   <span class="account-vip-copy">
                     <strong id="account-vip-title">开通 VIP</strong>
-                    <small id="account-vip-description">无限浏览器窗口 · 自定义模型</small>
+                    <small id="account-vip-description">无限浏览器窗口 · 每周会员额度</small>
                   </span>
                   <span class="account-vip-action">立即开通</span>
                 </button>
@@ -331,7 +341,9 @@
                 <div class="sidebar-quota-redeem-row">
                   <input id="unified-gift-code" maxlength="64" autocomplete="off" placeholder="输入兑换码（自动识别）" disabled />
                   <button id="unified-redeem-gift" type="button" disabled>兑换</button>
+                  <button id="unified-open-gift-shop" type="button">商城</button>
                 </div>
+                <p id="unified-gift-shop-status" class="vip-shop-status" role="status"></p>
               </div>
 
               <div class="announcement-bar" id="announcement-bar" hidden>
@@ -434,6 +446,39 @@
 
           </section>
 
+          <section id="home-model-settings" role="tabpanel" aria-labelledby="home-model-settings-tab" tabindex="0" hidden>
+            <header class="shell-home-heading"><h1>模型设置</h1></header>
+            <div class="home-model-tabs" role="tablist" aria-label="模型设置栏目">
+              <button id="home-models-tab" type="button" role="tab" aria-controls="home-custom-models" aria-selected="true" data-model-settings-section="models">自定义模型</button>
+              <button id="home-model-server-tab" type="button" role="tab" aria-controls="home-model-server" aria-selected="false" tabindex="-1" data-model-settings-section="server">HeySure 服务器</button>
+              <button id="home-model-mcp-tab" type="button" role="tab" aria-controls="home-model-mcp" aria-selected="false" tabindex="-1" data-model-settings-section="mcp">MCP 配置</button>
+            </div>
+            <section id="home-custom-models" role="tabpanel" aria-labelledby="home-models-tab" data-model-settings-panel="models">
+              <div class="home-model-toolbar"><p id="home-model-status" role="status"></p><button id="home-model-add" type="button">添加模型</button></div>
+              <ul id="home-model-list" aria-label="自定义模型列表"></ul>
+            </section>
+            <section id="home-model-server" role="tabpanel" aria-labelledby="home-model-server-tab" data-model-settings-panel="server" hidden>
+              <form id="ai-server-device-form" class="home-model-integration-form">
+                <label>HeySure 地址<input id="ai-server-device-server" type="url" maxlength="2048" required value="http://49.234.181.190:58150"></label>
+                <label>账号<input id="ai-server-device-account" type="text" maxlength="200" required autocomplete="username" placeholder="HeySure 账号"></label>
+                <label>密码<input id="ai-server-device-password" type="password" maxlength="4096" required autocomplete="current-password" placeholder="HeySure 密码（使用系统安全存储加密记忆）"></label>
+                <label>设备名称<input id="ai-server-device-name" type="text" maxlength="80" value="AI-FREE" placeholder="显示在作坊面板中的名称"></label>
+                <div id="ai-server-device-summary" class="ai-server-device-summary" hidden></div>
+                <p id="ai-server-device-status" class="home-model-integration-status" role="status" aria-live="polite">登录后将上报 MCP 工具和浏览器远程控制能力，可从手机或其他电脑的 HeySure 网页查看并操作当前浏览器。</p>
+                <footer>
+                  <button id="ai-server-device-logout" type="button" hidden>断开并取消自动连接</button>
+                  <button id="ai-server-device-login" type="submit">登录并连接</button>
+                </footer>
+              </form>
+            </section>
+            <section id="home-model-mcp" role="tabpanel" aria-labelledby="home-model-mcp-tab" data-model-settings-panel="mcp" hidden>
+              <div class="home-model-integration-form">
+                <div class="home-model-integration-status-row"><strong>本机 MCP 服务</strong><span id="external-mcp-status" role="status" aria-live="polite">检查中…</span></div>
+                <p class="home-model-integration-warning">配置包含密钥，请勿发到聊天或分享给他人。</p>
+                <button id="copy-external-mcp-config" type="button" disabled>复制 MCP 配置</button>
+              </div>
+            </section>
+          </section>
           <section id="home-automation" class="home-automation" role="tabpanel" aria-labelledby="home-automation-tab" tabindex="0" hidden>
             <header class="shell-home-heading">
               <h1>自动化</h1>
@@ -508,6 +553,71 @@
         </div>
       </section>
         <div id="home-dialog-layer" hidden>
+          <dialog id="home-custom-model-dialog" data-home-panel="home-model-settings" aria-labelledby="home-custom-model-title">
+            <form id="home-custom-model-form" method="dialog" class="home-model-dialog-form">
+              <header><h2 id="home-custom-model-title">添加模型</h2><button type="button" data-model-dialog-close aria-label="关闭">×</button></header>
+              <label>显示名称<input id="home-model-name" type="text" maxlength="80" required></label>
+              <label>API 地址<input id="home-model-base-url" type="url" maxlength="2048" placeholder="https://api.openai.com/v1" required></label>
+              <label>API Key<input id="home-model-api-key" type="password" maxlength="4096" autocomplete="off" placeholder="可留空；编辑时留空保留已保存的 Key"></label>
+              <div class="home-model-discovery"><button id="home-model-discover" type="button">获取模型列表</button><span id="home-model-discovery-status" role="status"></span></div>
+              <fieldset id="home-model-discovered" hidden><legend>选择要添加的模型</legend><div id="home-model-discovered-list"></div></fieldset>
+              <label id="home-model-manual-field">模型名称<input id="home-model-id" type="text" maxlength="200" placeholder="例如 gpt-4o" required></label>
+              <fieldset class="home-model-capabilities"><legend>模型能力</legend>
+                <label><input id="home-model-tools" type="checkbox" checked>工具调用</label>
+                <label><input id="home-model-images" type="checkbox">图片输入</label>
+                <label><input id="home-model-reasoning" type="checkbox">思考模式</label>
+                <label><input id="home-model-custom-protocol" type="checkbox">发送推理协议字段</label>
+              </fieldset>
+              <div class="home-model-limits">
+                <div>
+                  <label>输入上下文
+                    <select id="home-model-context-window-preset">
+                      <option value="">提供商默认</option>
+                      <option value="4096">4,096 tokens</option>
+                      <option value="8192">8,192 tokens</option>
+                      <option value="16384">16,384 tokens</option>
+                      <option value="32768">32,768 tokens</option>
+                      <option value="65536">65,536 tokens</option>
+                      <option value="131072">131,072 tokens</option>
+                      <option value="200000">200,000 tokens</option>
+                      <option value="262144">262,144 tokens</option>
+                      <option value="1000000">1,000,000 tokens</option>
+                      <option value="custom">自定义</option>
+                    </select>
+                  </label>
+                  <input id="home-model-context-window" type="number" min="1" max="2000000" step="1" aria-label="自定义输入上下文 token 数" hidden disabled>
+                </div>
+                <div>
+                  <label>最大输出
+                    <select id="home-model-max-output-preset">
+                      <option value="">提供商默认</option>
+                      <option value="1024">1,024 tokens</option>
+                      <option value="2048">2,048 tokens</option>
+                      <option value="4096">4,096 tokens</option>
+                      <option value="8192">8,192 tokens</option>
+                      <option value="16384">16,384 tokens</option>
+                      <option value="32768">32,768 tokens</option>
+                      <option value="65536">65,536 tokens</option>
+                      <option value="131072">131,072 tokens</option>
+                      <option value="custom">自定义</option>
+                    </select>
+                  </label>
+                  <input id="home-model-max-output" type="number" min="1" max="2000000" step="1" aria-label="自定义最大输出 token 数" hidden disabled>
+                </div>
+              </div>
+              <p id="home-model-dialog-status" role="status"></p>
+              <footer><button type="button" data-model-dialog-close>取消</button><button type="submit">保存模型</button></footer>
+            </form>
+          </dialog>
+          <dialog id="provider-trash-dialog" data-home-panel="home-accounts" class="provider-account-dialog" aria-labelledby="provider-trash-title">
+            <div class="provider-account-form">
+              <h2 id="provider-trash-title">账号回收站</h2>
+              <p>删除的账号会保留在这里，直到你彻底删除。</p>
+              <p id="provider-trash-status" class="provider-account-status" role="status"></p>
+              <div id="provider-trash-list" class="provider-account-list"></div>
+              <div class="provider-account-form-actions"><button type="button" id="provider-trash-close">关闭</button></div>
+            </div>
+          </dialog>
           <dialog id="provider-category-dialog" data-home-panel="home-accounts" class="provider-account-dialog" aria-labelledby="provider-category-title">
             <form class="provider-account-form">
               <h2 id="provider-category-title"></h2>
@@ -620,7 +730,6 @@
                 <div id="vip-permission-head" class="vip-permission-row vip-permission-head"><strong>功能</strong><strong>普通</strong><strong>标准会员</strong><strong>高级会员</strong></div>
                 <div id="vip-permission-rows">
                   <div class="vip-permission-row"><span>独立浏览器</span><span>最多 5 个</span><strong>不限数量</strong><strong>不限数量</strong></div>
-                  <div class="vip-permission-row"><span>自定义模型</span><span>不可使用</span><strong>允许使用</strong><strong>允许使用</strong></div>
                   <div class="vip-permission-row"><span>每周 AI 额度</span><span>无赠送</span><strong>100 点</strong><strong>500 点</strong></div>
                   <div class="vip-permission-row"><span>每周魔法流量</span><span>无赠送</span><strong>10 GB</strong><strong>50 GB</strong></div>
                 </div>
@@ -635,6 +744,7 @@
               <div id="vip-plan-status" class="vip-plan-status" role="status">价格由服务器实时下发</div>
               <footer class="vip-benefits-actions">
                 <button id="vip-use-gift-code" class="vip-use-gift-code" type="button">使用 VIP 礼品码开通</button>
+                <p id="vip-gift-shop-status" class="vip-shop-status" role="status"></p>
               </footer>
           </dialog>
           <dialog id="browser-settings-dialog" data-home-panel="home-browsers" class="browser-settings-dialog-panel" aria-labelledby="browser-settings-dialog-title">
@@ -772,6 +882,8 @@
   <script src="../sidebar/client/app/side/controllers/pages/side-panel/dream-opener.js"></script>
   <script src="../renderer/controllers/pages/app-shell/shell-home-console.js"></script>
   <script src="../renderer/controllers/pages/app-shell/shell-home-mcp.js"></script>
+  <script src="../renderer/controllers/pages/app-shell/shell-home-models.js"></script>
+  <script src="../renderer/controllers/pages/app-shell/shell-home-model-integrations.js"></script>
   <script src="../renderer/controllers/pages/app-shell/automation-canvas.js"></script>
   <script src="../renderer/controllers/pages/app-shell/shell-home-automation.js"></script>
   <script src="../renderer/controllers/pages/app-shell/site-preference-transfer.js"></script>

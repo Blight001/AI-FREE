@@ -1,0 +1,106 @@
+diff --git a/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc b/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
+--- a/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
++++ b/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
+@@ -52,6 +52,7 @@
+ #include "content/public/browser/browser_task_traits.h"
+ #include "content/public/browser/browser_thread.h"
+ #include "content/public/browser/navigation_controller.h"
++#include "content/public/browser/navigation_entry.h"
+ #include "content/public/browser/render_frame_host.h"
+ #include "content/public/browser/render_widget_host.h"
+ #include "content/public/browser/storage_partition.h"
+@@ -381,6 +382,82 @@ class NavigationResponseObserver : public content::WebContentsObserver {
+   bool finished_ = false;
+ };
+ 
++bool MatchesEntryUrl(const GURL& candidate, const GURL& entry_url) {
++  return candidate == entry_url ||
++         (candidate.ref().empty() && entry_url.ref().empty() &&
++          candidate.EqualsIgnoringRef(entry_url));
++}
++
++bool MatchesNavigationEntry(const content::NavigationEntry* entry,
++                            const GURL& url) {
++  return entry && (MatchesEntryUrl(entry->GetOriginalRequestURL(), url) ||
++                   MatchesEntryUrl(entry->GetURL(), url));
++}
++
++int FindDestinationTab(TabStripModel* tabs, const GURL& url) {
++  int committed_match = -1;
++  int history_match = -1;
++  for (int i = 0; i < tabs->count(); ++i) {
++    auto* contents = tabs->GetWebContentsAt(i);
++    if (!contents) continue;
++    if (MatchesEntryUrl(contents->GetVisibleURL(), url)) return i;
++    auto& controller = contents->GetController();
++    if (MatchesNavigationEntry(controller.GetPendingEntry(), url) ||
++        MatchesNavigationEntry(controller.GetLastCommittedEntry(), url)) {
++      if (committed_match < 0) committed_match = i;
++    } else if (history_match < 0) {
++      for (int j = 0; j < controller.GetEntryCount(); ++j) {
++        if (MatchesNavigationEntry(controller.GetEntryAtIndex(j), url)) {
++          history_match = i;
++          break;
++        }
++      }
++    }
++  }
++  return committed_match >= 0 ? committed_match : history_match;
++}
++
++void OpenDestinationTab(scoped_refptr<BridgeConnection> connection,
++                        Browser* browser,
++                        const base::DictValue& command,
++                        const std::string& request,
++                        const std::string& command_name) {
++  const auto* url_text = command.FindString("url");
++  const auto* previous_text = command.FindString("previousUrl");
++  const GURL url(url_text ? *url_text : std::string());
++  const GURL previous(previous_text ? *previous_text : std::string());
++  if (!url.is_valid() || !url.SchemeIsHTTPOrHTTPS() ||
++      (previous_text && (!previous.is_valid() || !previous.SchemeIsHTTPOrHTTPS()))) {
++    return connection->SendErrorAsync(request, command_name, "URL_INVALID",
++                                      "打开目标标签页需要有效 HTTP/HTTPS URL");
++  }
++
++  auto* tabs = browser->tab_strip_model();
++  const int index = FindDestinationTab(tabs, url);
++  if (index >= 0) {
++    tabs->ActivateTabAt(index);
++  } else if (previous_text) {
++    const int previous_index = FindDestinationTab(tabs, previous);
++    if (previous_index >= 0) {
++      tabs->ActivateTabAt(previous_index);
++      auto* contents = tabs->GetWebContentsAt(previous_index);
++      new NavigationResponseObserver(connection, contents, request, command_name);
++      contents->GetController().LoadURL(
++          url, content::Referrer(), ui::PAGE_TRANSITION_TYPED, std::string());
++      return;
++    }
++    chrome::AddTabAt(browser, url, -1, true);
++  } else {
++    chrome::AddTabAt(browser, url, -1, true);
++  }
++
++  base::DictValue result;
++  if (auto* contents = tabs->GetActiveWebContents()) {
++    result.Set("url", contents->GetVisibleURL().spec());
++  }
++  connection->SendSuccessAsync(request, command_name, std::move(result));
++}
++
+ class StorageImportObserver : public content::WebContentsObserver {
+  public:
+   StorageImportObserver(scoped_refptr<BridgeConnection> connection,
+@@ -933,6 +1010,11 @@ void HandleCommandOnUi(scoped_refptr<BridgeConnection> connection,
+     return;
+   }
+ 
++  if (command_name == "open-destination-tab") {
++    return OpenDestinationTab(connection, browser, command, request,
++                              command_name);
++  }
++
+   if (command_name == "activate-tab") {
+     TabStripModel* tab_strip = browser->tab_strip_model();
+     int target_index = command.FindInt("index").value_or(-1);

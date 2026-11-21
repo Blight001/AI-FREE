@@ -18,6 +18,7 @@ const { createAiServerDeviceService } = require('../features/ai-chat/ai-server-d
 const { createHeySureFileMaterializer } = require('../features/ai-chat/heysure-file-materializer');
 const { createHeySureFileUploader } = require('../features/ai-chat/heysure-file-uploader');
 const { createAiServerDeviceCredentialStore } = require('../features/ai-chat/ai-server-device-credential-store');
+const { ProviderAccountVault } = require('../features/account/provider-account-vault');
 const { createLicenseStore } = require('../services/license-store');
 const { createServerResolver } = require('../services/server-resolver');
 const { createTabHelpers } = require('../services/tab-helpers');
@@ -387,6 +388,7 @@ function createCoreServices({ app, fs, path, BrowserWindow, dialog, shell, scree
     browserAutomationBridge,
     externalCodexLink,
     aiServerDeviceService,
+    providerAccountVault: new ProviderAccountVault({ fs, path, safeStorage, filePath: path.join(app.getPath('userData'), 'provider-accounts.json') }),
     isDevMode,
     sendToSide,
     getConsoleSnapshot,

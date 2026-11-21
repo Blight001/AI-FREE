@@ -53,7 +53,7 @@
       event.preventDefault();
       event.stopPropagation();
       closeSelect(shell);
-      void openCustomApiDialog();
+      window.aiFree?.ai?.openHomeModelSettings?.();
     });
     menu.appendChild(action);
   }
@@ -142,6 +142,10 @@
     const menu = shell.querySelector('.ai-select-menu');
     if (!trigger || !menu) return;
 
+    el('ai-chat-new-conversation')?.addEventListener('click', () => {
+      closeSelect(shell);
+      void startNewConversation();
+    });
     trigger.addEventListener('click', (event) => {
       event.preventDefault();
       if (shell.classList.contains('open')) {

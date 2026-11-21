@@ -66,7 +66,6 @@ function startMainApp() {
   let auth;
   let addTab;
   let openTutorialTab;
-  let syncTutorialTabUrl;
   let applyClashMiniBrowserProxy;
   let switchTab;
   let closeTab;
@@ -85,7 +84,6 @@ function startMainApp() {
     setAuth: (next) => { auth = next; },
     getAddTab: () => addTab,
     getOpenTutorialTab: () => openTutorialTab,
-    getSyncTutorialTabUrl: () => syncTutorialTabUrl,
     getSwitchTab: () => switchTab,
     getCloseTab: () => closeTab,
     getReorderTab: () => reorderTab,
@@ -110,7 +108,6 @@ function startMainApp() {
     appRuntime,
     sendToSide,
     setDreamTargetUrl,
-    getSyncTutorialTabUrl: late.getSyncTutorialTabUrl,
     updateLicenseRecordPlatform: services.licenseStore.updateLicenseRecordPlatform,
     normalizeValidationRuntimeConfig: services.normalizeValidationRuntimeConfig,
   });
@@ -170,7 +167,6 @@ function startMainApp() {
   ({
     addTab,
     openTutorialTab,
-    syncTutorialTabUrl,
     applyClashMiniBrowserProxy,
     switchTab,
     closeTab,

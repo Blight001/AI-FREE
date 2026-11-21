@@ -1,0 +1,43 @@
+.home-model-tabs { display: flex; gap: 6px; margin: 0 0 12px; border-bottom: 1px solid var(--shell-border); }
+.home-model-tabs button { padding: 8px 12px; border: 0; border-bottom: 2px solid transparent; color: var(--shell-muted); background: transparent; cursor: pointer; }
+.home-model-tabs button[aria-selected="true"] { border-color: var(--shell-accent); color: var(--shell-text); }
+.home-model-integration-form { display: grid; max-width: 620px; gap: 12px; padding: 8px 0; }
+.home-model-integration-form label { display: grid; gap: 5px; }
+.home-model-integration-form input:not([type="checkbox"]) { min-width: 0; height: 36px; padding: 0 9px; border: 1px solid var(--shell-border); border-radius: 5px; color: var(--shell-text); background: var(--shell-bg); font: inherit; }
+.home-model-integration-form button { justify-self: start; min-height: 34px; padding: 6px 11px; border: 1px solid var(--shell-border); border-radius: 5px; color: var(--shell-text); background: var(--shell-bg); cursor: pointer; }
+.home-model-integration-form button:disabled { opacity: .55; cursor: wait; }
+.home-model-integration-form footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.home-model-integration-status { min-height: 24px; color: var(--shell-muted); }
+.home-model-integration-status[data-type="success"], #external-mcp-status[data-type="success"] { color: var(--shell-accent); }
+.home-model-integration-status[data-type="error"], #external-mcp-status[data-type="error"] { color: var(--shell-danger); }
+.ai-server-device-summary { padding: 8px 10px; border: 1px solid var(--shell-border); border-radius: 5px; overflow-wrap: anywhere; }
+.home-model-integration-status-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.home-model-integration-warning { margin: 0; color: var(--shell-muted); }
+.home-model-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.home-model-toolbar p { min-height: 20px; color: var(--shell-muted); }
+#home-model-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.home-model-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px; border-bottom: 1px solid var(--shell-border); }
+.home-model-row > div:first-child { display: grid; min-width: 0; gap: 4px; }
+.home-model-row small { overflow-wrap: anywhere; color: var(--shell-muted); }
+.home-model-row > div:last-child { display: flex; flex: 0 0 auto; gap: 6px; }
+.home-model-empty { padding: 14px 8px; color: var(--shell-muted); }
+#home-custom-model-dialog { width: min(620px, calc(100vw - 24px)); max-height: min(90vh, 780px); padding: 0; overflow: auto; border: 1px solid var(--shell-border); border-radius: 8px; color: var(--shell-text); background: var(--shell-panel); }
+.home-model-dialog-form { display: grid; gap: 12px; padding: 18px; }
+.home-model-dialog-form > header, .home-model-dialog-form > footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.home-model-dialog-form h2 { margin: 0; font-size: 17px; }
+.home-model-dialog-form label { display: grid; gap: 5px; }
+.home-model-dialog-form input:not([type="checkbox"]), .home-model-dialog-form select { min-width: 0; height: 36px; padding: 0 9px; border: 1px solid var(--shell-border); border-radius: 5px; color: var(--shell-text); background: var(--shell-bg); font: inherit; }
+.home-model-dialog-form button { min-height: 34px; padding: 6px 11px; border: 1px solid var(--shell-border); border-radius: 5px; color: var(--shell-text); background: var(--shell-bg); cursor: pointer; }
+.home-model-dialog-form button:disabled { opacity: .55; cursor: wait; }
+.home-model-discovery { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.home-model-discovery span, #home-model-dialog-status, #home-model-status { color: var(--shell-muted); }
+.home-model-capabilities { display: flex; flex-wrap: wrap; gap: 12px; margin: 0; padding: 10px; border: 1px solid var(--shell-border); border-radius: 5px; }
+.home-model-capabilities legend { padding: 0 4px; }
+.home-model-capabilities label, #home-model-discovered-list label { display: inline-flex; align-items: center; gap: 5px; }
+.home-model-limits { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.home-model-limits > div { display: grid; min-width: 0; align-content: start; gap: 5px; }
+#home-model-discovered-list { display: grid; gap: 6px; max-height: 150px; overflow: auto; }
+#home-model-discovered-list label { overflow-wrap: anywhere; }
+#home-model-discovered-list input { flex: 0 0 auto; }
+#home-model-dialog-status[data-state="error"], #home-model-status[data-state="error"] { color: var(--shell-danger); }
+@media (max-width: 540px) { .home-model-row { align-items: flex-start; flex-direction: column; } .home-model-limits { grid-template-columns: 1fr; } }

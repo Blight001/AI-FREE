@@ -218,6 +218,7 @@ class EventStreamReader {
       const block = this.buffer.slice(0, boundary);
       this.buffer = this.buffer.slice(boundary + 2);
       if (block.trim()) this.dispatch(block);
+      if (typeof this.finalResult?.ok === 'boolean') return this.finalResult;
       boundary = this.buffer.indexOf('\n\n');
     }
   }
@@ -233,9 +234,19 @@ function handleEventStreamResponse(response, onEvent, resolve, reject) {
   const valid = response.statusCode >= 200 && response.statusCode < 300 && contentType.includes('text/event-stream');
   if (!valid) return resolveInvalidEventStream(response, resolve);
   const reader = new EventStreamReader(onEvent, resolve);
+  const finish = () => reader.finish();
+  const onData = (chunk) => {
+    const result = reader.push(chunk);
+    if (!result) return;
+    response.off('data', onData);
+    response.off('end', finish);
+    resolve(result);
+    // Let a coalesced HTTP end finish normally; do not retain an open tail.
+    setImmediate(() => { if (!response.complete) response.destroy(); });
+  };
   response.setEncoding('utf8');
-  response.on('data', (chunk) => reader.push(chunk));
-  response.on('end', () => reader.finish());
+  response.on('data', onData);
+  response.on('end', finish);
   response.on('aborted', () => reject(new Error('流式响应连接已中断')));
   response.on('error', reject);
 }
@@ -265,9 +276,13 @@ function createEventStreamRequest(url, data, timeoutMs, options, resolve, reject
     try { request.destroy(); } catch (_) {}
     reject(new Error(`请求超时（${Math.round((Number(timeoutMs) || 180000) / 1000)}秒）`));
   });
-  options.signal?.addEventListener?.('abort', () => {
-    try { request.destroy(createAbortError()); } catch (_) {}
-  }, { once: true });
+  const abort = () => {
+    const error = createAbortError();
+    reject(error);
+    request.destroy(error);
+  };
+  options.signal?.addEventListener('abort', abort, { once: true });
+  request.once('close', () => options.signal?.removeEventListener('abort', abort));
   request.write(payload);
   request.end();
 }

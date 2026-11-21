@@ -12,16 +12,16 @@ const { registerExternalMcpConfigIpc } = require('../../src/app/backend/features
 
 function bindMcpConfig(bridge) {
   const handlers = new Map();
-  const frame = { url: 'file:///app/src/app/frontend/sidebar/ai-control.html' };
+  const frame = { url: 'file:///app/src/app/frontend/views/app-shell.html' };
   const sender = { mainFrame: frame, isDestroyed: () => false };
   let text = '';
   const ipc = { handle: (name, handler) => handlers.set(name, handler) };
   registerExternalMcpConfigIpc(ipc, {
     browserAutomationBridge: bridge,
-    ui: { getSideView: () => ({ webContents: sender }) },
+    ui: { getMainWindow: () => ({ webContents: sender }) },
   }, (value) => { text = value; });
   return {
-    status: () => handlers.get('get-external-codex-status')(),
+    status: (event = { sender, senderFrame: frame }) => handlers.get('get-external-codex-status')(event),
     copy: (event = { sender, senderFrame: frame }) => handlers.get('copy-external-codex-config')(event),
     config: () => JSON.parse(text),
   };
@@ -66,6 +66,10 @@ test('automation bridge exposes authenticated external MCP without a legacy exte
     assert.equal((await configIpc.copy()).ok, false);
     await bridge.start();
     assert.equal((await configIpc.copy({ sender: {}, senderFrame: {} })).ok, false);
+    const sidebarFrame = { url: 'file:///app/src/app/frontend/sidebar/ai-control.html' };
+    const sidebarEvent = { sender: { mainFrame: sidebarFrame }, senderFrame: sidebarFrame };
+    assert.equal((await configIpc.copy(sidebarEvent)).ok, false);
+    assert.equal((await configIpc.status(sidebarEvent)).ok, false);
     assert.deepEqual(await configIpc.copy(), { ok: true, data: { mode: 'streamable-http' } });
     const { url, method, headers: requestHeaders, transport } = configIpc.config().streamableHttp;
     assert.equal(transport, 'streamable-http');

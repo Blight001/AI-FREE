@@ -31,7 +31,8 @@ function createMainWindowFixture(storedState) {
     setVisible(visible) { this.visible = visible; }
   }
   class FakeWindow {
-    constructor() {
+    constructor(options) {
+      this.options = options;
       this.events = new Map();
       this.webContents = Object.assign(new EventEmitter(), {
         isDestroyed: () => false,
@@ -95,19 +96,26 @@ function createMainWindowFixture(storedState) {
 test('浏览器配置内嵌主窗口且只创建侧边栏子视图', () => {
   const { controller, views, loadedPages, shellMessages, getMaximizeCalls } = createMainWindowFixture();
   const window = controller.createMainWindow();
+  const top = process.platform === 'win32' ? 32 : 0;
+  assert.equal(window.options.title, 'AI-FREE');
+  assert.equal(window.options.icon, 'C:/app/logo.ico');
+  if (top > 0) {
+    assert.equal(window.options.titleBarStyle, 'hidden');
+    assert.equal(window.options.titleBarOverlay?.height, top);
+  }
   assert.equal(getMaximizeCalls(), 1);
   window.emit('ready-to-show');
   assert.equal(views.length, 1);
   assert.deepEqual(loadedPages, ['C:/app/frontend/sidebar/ai-control.html']);
-  assert.deepEqual(views[0].bounds, { x: 700, y: 0, width: 300, height: 659 });
+  assert.deepEqual(views[0].bounds, { x: 700, y: top, width: 300, height: 659 - top });
   assert.equal(views[0].visible, true);
   assert.equal(controller.setSidebarWidth(500), 500);
-  assert.deepEqual(views[0].bounds, { x: 500, y: 0, width: 500, height: 659 });
+  assert.deepEqual(views[0].bounds, { x: 500, y: top, width: 500, height: 659 - top });
   assert.deepEqual(shellMessages.at(-1), {
     channel: 'sidebar-width-changed', payload: { visible: true, width: 500 },
   });
   assert.equal(controller.setSidebarWidth(900), 680);
-  assert.deepEqual(views[0].bounds, { x: 320, y: 0, width: 680, height: 659 });
+  assert.deepEqual(views[0].bounds, { x: 320, y: top, width: 680, height: 659 - top });
   assert.deepEqual(shellMessages.at(-1), {
     channel: 'sidebar-width-changed', payload: { visible: true, width: 680 },
   });

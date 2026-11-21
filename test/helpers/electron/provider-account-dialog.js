@@ -17,32 +17,29 @@ function bindProviderAccountFixture(layout, webContents) {
   const { registerProviderAccountDetails } = require(path.join(backend, 'features/account/register-provider-account-details'));
   const { createIpcRegistry } = require(path.join(backend, 'ipc/registry'));
   const filePath = path.join(app.getPath('userData'), 'fixture-provider-accounts.json');
-  const vault = new ProviderAccountVault({ fs, path, safeStorage, filePath });
+  const { AppError } = require(path.join(backend, '../contracts/ipc-result'));
+  class FixtureVault extends ProviderAccountVault {
+    constructor(options) { super(options); }
+
+    failFirstSave = true;
+    failFirstDelete = true;
+
+    save(input) {
+      if (!this.failFirstSave) return super.save(input);
+      this.failFirstSave = false;
+      throw new AppError('FIXTURE_SAVE_FAILED', 'Fixture save failed');
+    }
+
+    remove(provider, id) {
+      if (!this.failFirstDelete) return super.remove(provider, id);
+      this.failFirstDelete = false;
+      throw new AppError('FIXTURE_DELETE_FAILED', 'Fixture delete failed');
+    }
+  }
+  const vault = new FixtureVault({ fs, path, safeStorage, filePath });
   const ipc = createIpcRegistry(ipcMain);
   registerProviderAccountDetails(ipc, vault, () => webContents);
   webContents.once('destroyed', () => ipc.dispose());
-  let failFirstSave = true;
-  let failFirstDelete = true;
-  ipc.handle('provider-accounts-list', (_event, { provider }) => ({ ok: true, accounts: vault.list(provider) }));
-  ipc.handle('provider-accounts-save', (_event, input) => {
-    if (failFirstSave) {
-      failFirstSave = false;
-      return { ok: false, error: { message: 'Fixture save failed' } };
-    }
-    try {
-      return { ok: true, account: vault.save(input) };
-    } catch (error) {
-      return { ok: false, error: { message: error.message } };
-    }
-  });
-  ipc.handle('provider-accounts-delete', (_event, { provider, id }) => {
-    if (failFirstDelete) {
-      failFirstDelete = false;
-      return { ok: false };
-    }
-    vault.remove(provider, id);
-    return { ok: true };
-  });
 }
 
 function readDialog() {
@@ -126,6 +123,43 @@ function fillForm(address, note) {
   noteInput.value = note;
 }
 
+function readRecycleBinLayout(panel) {
+  const active = document.querySelector(panel);
+  const add = active.querySelector('.provider-add-account').getBoundingClientRect();
+  const trash = active.querySelector('.provider-trash-open')?.getBoundingClientRect();
+  return !!trash && trash.width > 0 && trash.left >= add.right
+    && Math.min(add.bottom, trash.bottom) > Math.max(add.top, trash.top);
+}
+
+async function checkRecycleBin(run, click) {
+  const panel = '#provider-microsoft-panel';
+  const trash = '#provider-trash-dialog';
+  const read = (selector) => run((target) => document.querySelector(target).textContent, selector);
+  const remove = async () => {
+    await click(`${panel} .provider-remove-account`);
+    await click('#home-confirm-dialog [value="confirm"]');
+  };
+  await click('#provider-microsoft-tab');
+  assert.equal(await run(readRecycleBinLayout, panel), true, 'Recycle bin must be beside Add Account on the right');
+  await poll(() => read(`${panel} .provider-account-list`), (text) => text.includes(email));
+  await remove();
+  await poll(() => read(`${panel} .provider-account-list`), (text) => !text.includes(email));
+  await click(`${panel} .provider-trash-open`);
+  await poll(() => read('#provider-trash-list'), (text) => text.includes(email));
+  await click(`${trash} .provider-account-row-actions button:first-child`);
+  await poll(() => read('#provider-trash-status'), (text) => text === '回收站为空');
+  await click('#provider-trash-close');
+  await poll(() => read(`${panel} .provider-account-list`), (text) => text.includes(email));
+  await remove();
+  await poll(() => read(`${panel} .provider-account-list`), (text) => !text.includes(email));
+  await click(`${panel} .provider-trash-open`);
+  await poll(() => read('#provider-trash-list'), (text) => text.includes(email));
+  await click(`${trash} .provider-account-row-actions button:last-child`);
+  await click('#home-confirm-dialog [value="confirm"]');
+  await poll(() => read('#provider-trash-status'), (text) => text === '回收站为空');
+  await click('#provider-trash-close');
+}
+
 async function checkProviderAccountDialog(webContents) {
   const run = rendererProbe(webContents);
   const read = () => run(readDialog);
@@ -174,6 +208,7 @@ async function checkProviderAccountDialog(webContents) {
   await click('#provider-account-form .provider-cancel');
   await checkProviderAccountImport(webContents, email);
   await checkProviderCategories(webContents);
+  await checkRecycleBin(run, click);
   await click('#home-browsers-tab');
 }
 

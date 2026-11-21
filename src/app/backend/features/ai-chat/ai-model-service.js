@@ -2,23 +2,21 @@
 
 const {
   CUSTOM_AI_MODEL_ID,
-  getCustomAiApiConfig,
+  getCustomAiApiConfigs,
   isCustomAiApiConfigured,
 } = require('../../utils/ai-control-settings');
 const { normalizeAccountSession } = require('../../utils/account-session');
 const { callOptional, firstText } = require('../../../shared/safe-values');
 
 function createCustomModel(store) {
-  const config = getCustomAiApiConfig(store);
-  return isCustomAiApiConfigured(config)
-    ? {
-      id: CUSTOM_AI_MODEL_ID,
-      name: config.name,
-      model: config.model,
-      custom_api: true,
-      supports_image_input: config.supportsImageInput,
-    }
-    : null;
+  return getCustomAiApiConfigs(store).filter(isCustomAiApiConfigured).map((config) => ({
+    id: config.id || CUSTOM_AI_MODEL_ID,
+    name: config.name,
+    model: config.model,
+    custom_api: true,
+    supports_image_input: config.supportsImageInput,
+    supports_tools: config.supportsTools,
+  }));
 }
 
 function remoteUnavailable(customModel, message = 'AI 服务尚未就绪') {
@@ -34,28 +32,31 @@ function createAiModelService(deps = {}) {
     const credentials = normalizeAccountSession(store?.userCredentials || {});
     const key = firstText(credentials.key).trim();
     const deviceId = firstText(credentials.deviceId).trim();
-    const customModel = createCustomModel(store);
+    const customModels = createCustomModel(store);
+    const appendCustomModels = (models) => [
+      ...(Array.isArray(models) ? models : []),
+      ...customModels,
+    ];
     if (!key || !deviceId) {
-      return customModel
-        ? { ok: true, models: [customModel], quota: null }
-        : remoteUnavailable(customModel);
+      return customModels.length
+        ? { ok: true, models: customModels, quota: null }
+        : remoteUnavailable(null);
     }
     const httpClient = callOptional(deps, 'getGlobalHttpClient');
     if (!httpClient || typeof httpClient.getAIControlModels !== 'function') {
-      return remoteUnavailable(customModel);
+      return customModels.length
+        ? { ok: true, models: customModels, quota: null, remoteError: 'AI 服务尚未就绪' }
+        : remoteUnavailable(null);
     }
     const result = await httpClient.getAIControlModels(key, deviceId);
     if (!result || result.ok !== true) {
-      return customModel
-        ? remoteUnavailable(customModel, firstText(result && result.message, result && result.error))
+      return customModels.length
+        ? { ok: true, models: customModels, quota: null, remoteError: firstText(result && result.message, result && result.error) }
         : result;
     }
     return {
       ...result,
-      models: [
-        ...(Array.isArray(result.models) ? result.models : []),
-        ...(customModel ? [customModel] : []),
-      ],
+      models: appendCustomModels(result.models),
     };
   }
 

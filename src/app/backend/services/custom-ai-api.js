@@ -26,28 +26,64 @@ function resolveChatCompletionsUrl(baseUrl) {
   return parsed.toString();
 }
 
-function normalizeMessages(messages = []) {
-  return (Array.isArray(messages) ? messages : []).map((message) => {
-    const role = String(message?.role || 'user');
-    const normalized = { role, content: message?.content ?? '' };
-    if (role === 'assistant' && Array.isArray(message?.tool_calls)) {
-      normalized.tool_calls = message.tool_calls;
-    }
-    if (role === 'tool') {
-      normalized.tool_call_id = String(message?.tool_call_id || '');
-      if (message?.name) normalized.name = String(message.name);
-    }
-    return normalized;
+function resolveModelsUrl(baseUrl) {
+  const raw = String(baseUrl || '').trim();
+  let parsed;
+  try { parsed = new URL(raw); } catch (_) { throw new Error('自定义 API 地址无效，请填写完整的 HTTP(S) 地址'); }
+  if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('自定义 API 仅支持 HTTP(S) 地址');
+  parsed.search = '';
+  parsed.hash = '';
+  let pathname = parsed.pathname.replace(/\/+$/, '');
+  pathname = pathname.replace(/\/chat\/completions$/i, '').replace(/\/models$/i, '');
+  if (!/\/v\d+$/i.test(pathname)) pathname = `${pathname}/v1`;
+  parsed.pathname = `${pathname}/models`.replace(/\/{2,}/g, '/');
+  return parsed.toString();
+}
+
+async function fetchCustomAiModels(config, client = axios) {
+  const normalized = normalizeCustomAiApiConfig(config);
+  if (!normalized.baseUrl) throw new Error('请先填写 API 地址');
+  const headers = normalized.apiKey ? { Authorization: `Bearer ${normalized.apiKey}` } : {};
+  const response = await client.get(resolveModelsUrl(normalized.baseUrl), {
+    headers,
+    timeout: 20000,
+    maxRedirects: 0,
+    maxContentLength: 2 * 1024 * 1024,
+    validateStatus: () => true,
   });
+  if (response.status < 200 || response.status >= 300) {
+    throw new Error(`获取模型列表失败：${getCustomAiErrorDetail(response.data, response.status)}`);
+  }
+  const items = Array.isArray(response.data?.data) ? response.data.data : [];
+  return items.map((item) => ({
+    id: String(item?.id || '').trim().slice(0, 200),
+    name: String(item?.name || item?.id || '').trim().slice(0, 200),
+  })).filter((item) => item.id);
+}
+
+function normalizeMessage(message = {}, options) {
+  const { role: sourceRole, content, tool_calls, reasoning, tool_call_id, name } = message;
+  const role = String(sourceRole || 'user');
+  const normalized = { role, content: content ?? '' };
+  if (role === 'assistant' && Array.isArray(tool_calls)) normalized.tool_calls = tool_calls;
+  if (role === 'assistant' && options.customProtocol && reasoning) normalized.reasoning_content = String(reasoning);
+  if (role === 'tool') Object.assign(normalized, { tool_call_id: String(tool_call_id || ''), ...(name && { name: String(name) }) });
+  return normalized;
+}
+
+function normalizeMessages(messages = [], options = {}) {
+  return (Array.isArray(messages) ? messages : []).map((message) => normalizeMessage(message ?? {}, options));
+}
+
+function contentHasImageInput(content) {
+  if (!Array.isArray(content)) return false;
+  return content.some((part) => (
+    String(part?.type || '').toLowerCase() === 'image_url' && Boolean(part?.image_url?.url)
+  ));
 }
 
 function messagesHaveImageInput(messages = []) {
-  return (Array.isArray(messages) ? messages : []).some((message) => (
-    Array.isArray(message?.content) && message.content.some((part) => (
-      String(part?.type || '').toLowerCase() === 'image_url'
-      && Boolean(part?.image_url?.url)
-    ))
-  ));
+  return (Array.isArray(messages) ? messages : []).some((message) => contentHasImageInput(message?.content));
 }
 
 function isRecord(value) {
@@ -89,9 +125,10 @@ function buildCustomAiRequest(normalized, messages, options) {
   if (normalized.apiKey) headers.Authorization = `Bearer ${normalized.apiKey}`;
   const payload = {
     model: normalized.model,
-    messages: normalizeMessages(messages),
+    messages: normalizeMessages(messages, { customProtocol: normalized.customProtocol }),
     stream: false,
   };
+  if (normalized.maxOutputTokens) payload.max_tokens = normalized.maxOutputTokens;
   const tools = normalizeOpenAiTools(options.tools);
   if (tools.length) payload.tools = tools;
   return { headers, payload };
@@ -106,7 +143,7 @@ function getCustomAiErrorDetail(data, status) {
   return (error && error.message) || (data && data.message) || `HTTP ${status}`;
 }
 
-function normalizeCustomAiSuccess(data) {
+function normalizeCustomAiSuccess(data, supportsReasoning) {
   const choices = Array.isArray(data.choices) ? data.choices : [];
   const message = choices[0] && choices[0].message;
   if (!message || typeof message !== 'object') {
@@ -118,7 +155,7 @@ function normalizeCustomAiSuccess(data) {
     message: {
       role: 'assistant',
       content: normalizedMessage.content,
-      reasoning: String(message.reasoning_content || message.reasoning || ''),
+      reasoning: supportsReasoning ? String(message.reasoning_content || message.reasoning || '') : '',
       tool_calls: normalizedMessage.toolCalls,
     },
     usage: data.usage || null,
@@ -138,6 +175,7 @@ async function sendCustomAIControlMessage(config, messages, options = {}) {
       errorCode: 'MODEL_IMAGE_INPUT_UNSUPPORTED',
     };
   }
+  if (!normalized.supportsTools) options = { ...options, tools: [] };
 
   const { headers, payload } = buildCustomAiRequest(normalized, messages, options);
 
@@ -155,7 +193,7 @@ async function sendCustomAIControlMessage(config, messages, options = {}) {
       const detail = getCustomAiErrorDetail(data, response.status);
       return { ok: false, message: `自定义 API 请求失败：${detail}` };
     }
-    return normalizeCustomAiSuccess(data);
+    return normalizeCustomAiSuccess(data, normalized.supportsReasoning);
   } catch (error) {
     const message = error && error.message ? error.message : String(error);
     return { ok: false, message: `自定义 API 请求失败：${message}` };
@@ -167,5 +205,7 @@ module.exports = {
   normalizeMessages,
   normalizeOpenAiTools,
   resolveChatCompletionsUrl,
+  resolveModelsUrl,
+  fetchCustomAiModels,
   sendCustomAIControlMessage,
 };

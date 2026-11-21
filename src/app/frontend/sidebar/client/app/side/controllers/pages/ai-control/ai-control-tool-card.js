@@ -184,6 +184,10 @@
   }
 
   function toolStateLabel(status, snapshot) {
+    if (Number.isInteger(snapshot.requested) && Number.isInteger(snapshot.completed)) {
+      const count = `${snapshot.completed}/${snapshot.requested} 步`;
+      return status === 'error' ? `已中断 · ${count}` : count;
+    }
     if (snapshot.uploadVerification === 'file_selected') return '文件已选入控件';
     if (snapshot.errorCode === 'UPLOAD_OUTCOME_UNVERIFIED') return '结果待核验';
     if (snapshot.errorCode === 'UPLOAD_NOT_CONFIRMED') return '上传已取消';
@@ -206,7 +210,7 @@
     card.addEventListener('toggle', () => { if (card.open) updateOutput?.(snapshot); });
     const update = ({ progress, ...next } = {}) => {
       if (progress) {
-        if (tool.name !== 'run_command' || (tool.status && tool.status !== 'running')) return;
+        if (!['run_command', 'browser_page_batch'].includes(tool.name) || (tool.status && tool.status !== 'running')) return;
         snapshot = progress;
         updateToolSummary(summary, tool, snapshot);
         if (card.open) updateOutput?.(snapshot);
@@ -214,7 +218,7 @@
       }
       Object.assign(tool, next);
       card.className = `ai-chat-tool ${tool.status || 'running'}`;
-      snapshot = ['run_command', 'browser_file'].includes(tool.name) ? parseToolArguments(tool.result) : {};
+      snapshot = ['run_command', 'browser_file', 'browser_page_batch'].includes(tool.name) ? parseToolArguments(tool.result) : {};
       updateToolSummary(summary, tool, snapshot);
       detail.innerHTML = '';
       updateOutput = appendToolDetails(detail, tool);

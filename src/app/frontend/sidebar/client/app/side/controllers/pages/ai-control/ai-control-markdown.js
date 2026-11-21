@@ -174,6 +174,7 @@
     browser_tab: '浏览器标签页',
     browser_observe: '观察页面',
     browser_action: '操作页面',
+    browser_page_batch: '批量操作页面',
     browser_wait: '等待页面',
     windows_tab: '外部软件栏目',
     run_command: '沙盒命令行',

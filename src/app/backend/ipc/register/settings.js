@@ -228,7 +228,11 @@ function registerSettingsIPC(ctx) {
     readStore: readStoreConfigSafe,
     writeStore: writeStoreConfigSafe,
   });
-  registerAiSettingsIpc({ ipc, service: aiSettingsService });
+  registerAiSettingsIpc({
+    ipc,
+    service: aiSettingsService,
+    onModelsChanged: () => ui?.sendToSide?.('ai-control-models-updated'),
+  });
   registerPluginSettingsIpc(ipc, ui, extensionManager);
   registerCredentialSettingsIpc(ipc, { computeDeviceId, licenseCache });
   registerNetworkSettingsIpc(ipc, licenseCache);

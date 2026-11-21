@@ -56,7 +56,7 @@ export class ProviderCategoryActions {
     this.name.value = removing ? '' : entry?.category.name || '';
     this.name.disabled = this.name.closest('label').hidden = removing;
     this.warning.hidden = !removing;
-    this.warning.textContent = removing ? `确定删除「${entry.category.name}」？此栏目中的所有账号也将被删除，且无法恢复。` : '';
+    this.warning.textContent = removing ? `确定删除「${entry.category.name}」？此栏目中的所有账号将移入账号回收站，可按账号恢复。` : '';
     this.save.textContent = removing ? '确认删除' : '保存';
     this.status.textContent = '';
     if (!homeDialogs.open(this.dialog, { resolveFocus: () => entry?.tab })) return;

@@ -1,6 +1,7 @@
 'use strict';
 
 const { createWindowBackgroundController } = require('../features/window/window-background-controller');
+const { mainWindowFrameOptions, resolveMainWindowPageBounds } = require('../features/window/main-window-frame');
 const { resolveAppShellViewPath } = require('../config/paths');
 const { clampSidebarWidth, resolveSidebarWidth } = require('../../shared/sidebar-layout');
 
@@ -14,7 +15,7 @@ function createWindowInstance(deps, windowStateController) {
     icon: iconPath,
     show: false,
     frame: true,
-    titleBarStyle: 'default',
+    ...mainWindowFrameOptions(),
     autoHideMenuBar: false,
     webPreferences: {
       nodeIntegration: false,
@@ -117,9 +118,7 @@ function bindSidebarEvents(deps, sideView) {
 }
 
 function resolveLayout(deps, mainWindow, sideView) {
-  const [width, height] = mainWindow.getContentSize();
-  const uiScale = Math.min(1.2, Math.max(1, Number(deps.getUiScale?.()) || 1));
-  const tabBarHeight = Math.round(41 * uiScale);
+  const { y, width, height } = resolveMainWindowPageBounds(mainWindow, deps.getUiScale?.());
   const isSidebarVisible = deps.getIsSidebarVisible ? deps.getIsSidebarVisible() : true;
   const sideViewWidth = resolveSidebarWidth({
     contentWidth: width,
@@ -132,13 +131,13 @@ function resolveLayout(deps, mainWindow, sideView) {
   const activeTab = deps.resolveTabs().get(deps.resolveActiveTabId());
   return {
     width,
-    tabBarHeight,
-    tabContentHeight: height - tabBarHeight,
+    y,
+    height,
     isSidebarVisible,
     sideViewWidth,
     activeTab,
     chromiumBounds: activeTab?.runtimeType === 'chromium'
-      ? { x: 0, y: 0, width: width - sideViewWidth, height: height - tabBarHeight }
+      ? { x: 0, y, width: width - sideViewWidth, height }
       : null,
   };
 }
@@ -149,9 +148,9 @@ function updateMainWindowLayout(deps, mainWindow) {
   if (sideView && layout.isSidebarVisible) {
     sideView.setBounds({
       x: layout.width - layout.sideViewWidth,
-      y: 0,
+      y: layout.y,
       width: layout.sideViewWidth,
-      height: layout.tabContentHeight,
+      height: layout.height,
     });
   }
   sideView?.setVisible?.(layout.isSidebarVisible);

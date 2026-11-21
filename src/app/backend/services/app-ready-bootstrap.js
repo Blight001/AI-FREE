@@ -137,7 +137,7 @@ function createAndRegisterAiServices(deps, ipc) {
   });
   registerMcpCatalogIpc(ipc, { ...deps, getWindowTools: aiChatService.getWindowTools });
   if (deps.aiServerDeviceService) {
-    registerAiServerDeviceIpc({ ipc, service: deps.aiServerDeviceService });
+    registerAiServerDeviceIpc({ ipc, service: deps.aiServerDeviceService, getMainWindow: deps.getMainWindow });
   }
   registerAiHistoryIpc({
     ipc,

@@ -242,6 +242,7 @@ html.sidebar-collapsed #browser-empty-state {
 #provider-category-menu button:is(:hover, :focus-visible) { background: var(--shell-tab-active-bg); }
 .provider-category-warning { margin: 0; overflow-wrap: anywhere; }
 .provider-account-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin: 8px 0; }
+.provider-account-heading-actions { display: flex; gap: 6px; margin-inline-start: auto; }
 .provider-account-row-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .provider-account-heading h2, .provider-account-form h2 { margin: 0; font-size: 15px; }
 .provider-account-list { display: grid; gap: 6px; }

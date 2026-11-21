@@ -68,6 +68,31 @@ test('name and URL helpers handle duplicates and managed loading pages', () => {
   assert.match(historyService.createBrowserHistoryId(), /^browser-\d+-[a-z0-9]+$/);
 });
 
+test('legacy tutorial records keep their profile and tutorial URL after visiting the shop', async () => {
+  const guide = 'https://tutorial.example.test/guide';
+  store.browserHistory = [{ id: 'guide-history', profileId: 'guide-profile', runtimeType: 'chromium',
+    name: '使用教程[AI-FREE]', url: guide }];
+  const [record] = historyService.readBrowserHistorySafe();
+  assert.equal(record.name, '使用教程和商城');
+  assert.equal(record.kind, 'tutorial');
+  assert.equal(store.browserHistory[0].name, record.name);
+  const tabs = new Map();
+  await historyService.openBrowserHistoryRecord({
+    getTabs: () => tabs,
+    async addTab(url, options) {
+      assert.equal(url, guide);
+      assert.equal(options.tabId, 'guide-profile');
+      assert.equal(options.fixedTitle, record.name);
+      assert.equal(options.isTutorialTab, true);
+      tabs.set(options.tabId, { ...options, id: options.tabId, requestedUrl: url, runtimeUrl: 'https://shop.example.test/' });
+      return options.tabId;
+    },
+  }, record.id);
+  const [reopened] = historyService.syncOpenTabsToBrowserHistory({ getTabs: () => tabs });
+  assert.equal(reopened.id, record.id);
+  assert.equal(reopened.url, guide);
+});
+
 test('open tabs create and update durable history records', () => {
   store.browserHistory = [{ id: 'existing', name: 'Existing', url: '', accountId: 'account-1', settings: {}, createdAt: 1, lastOpenedAt: 1 }];
   let updates = 0;

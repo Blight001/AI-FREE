@@ -54,7 +54,7 @@ function guardedBrowserRoute(context, toolName, args) {
   const action = text(args.action).toLowerCase();
   if (PAGE_TOOLS.has(toolName) && (!args.surface || args.surface === 'page')) return null;
   if (toolName === 'browser_control' && action === 'acquire') return null;
-  return routeFailure('BROWSER_TARGET_TOOL_UNSUPPORTED', '侧栏只支持单步页面工具、指定标签切换和新标签导航');
+  return routeFailure('BROWSER_TARGET_TOOL_UNSUPPORTED', '侧栏只支持受校验的页面操作、指定标签切换和新标签导航');
 }
 
 async function resolvePageGuard(context, connection) {

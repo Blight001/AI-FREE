@@ -32,13 +32,29 @@ function bindVipPlanControls() {
     const tierButton = event.target?.closest?.('[data-vip-tier]');
     if (tierButton?.dataset?.vipTier) renderVipPlanTier(tierButton.dataset.vipTier);
   });
-  safeGetEl('vip-use-gift-code')?.addEventListener('click', () => {
-    closeVipBenefitsDialog();
-    safeGetEl('unified-gift-code')?.focus?.();
-  });
+  bindVipShopButton('vip-use-gift-code', 'vip-gift-shop-status');
+  bindVipShopButton('unified-open-gift-shop', 'unified-gift-shop-status');
   safeGetEl('account-vip-card')?.addEventListener('click', openVipAccountCenter);
   safeGetEl('unified-redeem-gift')?.addEventListener('click', redeemUnifiedGiftCode);
   safeGetEl('unified-gift-code')?.addEventListener('keydown', redeemGiftCodeOnEnter);
+}
+
+function bindVipShopButton(buttonId, statusId) {
+  const button = /** @type {HTMLButtonElement | null} */ (safeGetEl(buttonId));
+  const status = safeGetEl(statusId);
+  if (!button || !status) return;
+  button.addEventListener('click', async () => {
+    button.disabled = true;
+    status.textContent = '';
+    try {
+      const result = await window.aiFree.account.openVipShop();
+      if (!result?.ok) status.textContent = result?.error?.message || '商城打开失败，请重试';
+    } catch (_) {
+      status.textContent = '商城打开失败，请重试';
+    } finally {
+      button.disabled = false;
+    }
+  });
 }
 
 function redeemGiftCodeOnEnter(event) {

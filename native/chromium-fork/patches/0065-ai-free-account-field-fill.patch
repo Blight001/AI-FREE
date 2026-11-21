@@ -1,0 +1,95 @@
+diff --git a/chrome/browser/ui/views/frame/ai_free_page_automation.cc b/chrome/browser/ui/views/frame/ai_free_page_automation.cc
+--- a/chrome/browser/ui/views/frame/ai_free_page_automation.cc
++++ b/chrome/browser/ui/views/frame/ai_free_page_automation.cc
+@@ -100,6 +100,57 @@
+   web_contents->GetPrimaryMainFrame()->ExecuteJavaScriptInIsolatedWorld(
+       base::UTF8ToUTF16(script), std::move(callback),
+       ISOLATED_WORLD_ID_CHROME_INTERNAL);
++}
++
++void FillAccountField(content::WebContents* contents,
++                      const base::DictValue& command,
++                      AiFreePageGuard guard,
++                      AiFreeAutomationSuccess success,
++                      AiFreeAutomationFailure failure) {
++  if (!guard || PageChanged(guard)) return FailPageChanged(std::move(failure));
++  const auto* origin = command.FindString("origin");
++  const auto* selector = command.FindString("selector");
++  const auto* value = command.FindString("value");
++  if (!origin || !base::StartsWith(*origin, "https://") || !selector ||
++      selector->empty() || selector->size() > 512 || !value || value->empty() ||
++      value->size() > 4096 ||
++      contents->GetPrimaryMainFrame()->GetLastCommittedOrigin().Serialize() !=
++          *origin) {
++    return Fail(std::move(failure), "ACCOUNT_TARGET_MISMATCH",
++                "Invalid account fill target");
++  }
++  // Main document only. Resolve, validate and fill in one renderer task.
++  // Never focus another element or return the credential in the response.
++  ExecuteIsolated(contents,
++      base::StrCat({R"JS((() => { try { const a=)JS", CommandJson(command), R"JS(;
++        if (location.origin !== a.origin) return false;
++        const matches = document.querySelectorAll(a.selector);
++        if (matches.length !== 1) return false;
++        const field = matches[0];
++        if (!(field instanceof HTMLInputElement) || field.disabled || field.readOnly ||
++            !field.checkVisibility({checkOpacity: true, checkVisibilityCSS: true})) return false;
++        const type = field.type;
++        if (a.field === 'password' ? type !== 'password' : !['text', 'email'].includes(type)) return false;
++        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
++        setter.call(field, a.value);
++        if (field.value !== a.value) return false;
++        field.dispatchEvent(new Event('input', {bubbles: true, composed: true}));
++        field.dispatchEvent(new Event('change', {bubbles: true}));
++        return true;
++      } catch { return false; } })())JS"}),
++      base::BindOnce(
++          [](AiFreePageGuard page_guard, AiFreeAutomationSuccess done,
++             AiFreeAutomationFailure failed, base::Value result) {
++            if (PageChanged(page_guard)) return FailPageChanged(std::move(failed));
++            if (!result.is_bool() || !result.GetBool()) {
++              return Fail(std::move(failed), "ACCOUNT_FILL_FAILED",
++                          "Account field must be unique, visible and editable");
++            }
++            base::DictValue response;
++            response.Set("success", true);
++            response.Set("filled", true);
++            std::move(done).Run(std::move(response));
++          }, std::move(guard), std::move(success), std::move(failure)));
+ }
+ 
+ std::string ObserveScript(const base::DictValue& command) {
+@@ -1015,7 +1066,7 @@
+   if (*type != "automation-takeover" && *type != "observe-page" &&
+       *type != "inspect-page-state" && *type != "inspect-page-diagnostics" &&
+       *type != "perform-action" && *type != "get-session-data" &&
+-      *type != "capture-screenshot" &&
++      *type != "capture-screenshot" && *type != "fill-account-field" &&
+       (*type != "download-element" || !page_guard)) {
+     return false;
+   }
+@@ -1049,6 +1100,11 @@
+     result.Set("suggestedTool", "browser_control");
+     result.Set("suggestedAction", "acquire");
+     std::move(success).Run(std::move(result));
++    return true;
++  }
++  if (*type == "fill-account-field") {
++    FillAccountField(web_contents, command, std::move(page_guard),
++                     std::move(success), std::move(failure));
+     return true;
+   }
+   if (*type == "inspect-page-state") {
+diff --git a/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc b/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
+--- a/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
++++ b/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
+@@ -808,7 +808,8 @@
+ bool IsPageCommand(std::string_view name) {
+   return name == "observe-page" || name == "capture-screenshot" ||
+          name == "perform-action" || name == "download-element" ||
+-         name == "automation-takeover" || name == "select-files";
++         name == "automation-takeover" || name == "select-files" ||
++         name == "fill-account-field";
+ }
+ 
+ bool IsCurrentPage(scoped_refptr<BridgeConnection> connection,

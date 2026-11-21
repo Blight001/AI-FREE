@@ -1,5 +1,6 @@
 'use strict';
 
+const assert = require('node:assert/strict');
 const fs = require('fs');
 const http = require('http');
 const os = require('os');
@@ -21,6 +22,7 @@ let switchWindow;
 let manager;
 let server;
 let acceptanceFinished = false;
+const embeddedDragTitles = ['AI_FREE_DRAG_FIRST', 'AI_FREE_DRAG_SECOND'];
 
 function assertReady(state) {
   if (!state || state.status !== 'ready' || state.bridgeConnected !== true ||
@@ -29,7 +31,7 @@ function assertReady(state) {
   }
 }
 
-function driveWin32Input(browserHwnd, addressOnly = false) {
+function driveWin32Input(browserHwnd, addressOnly = false, tabDrag = null) {
   const source = String.raw`
 using System;
 using System.Text;
@@ -93,14 +95,17 @@ public static class AiFreeInputAcceptance {
   [DllImport("user32.dll")] static extern bool IsWindowEnabled(IntPtr hwnd);
   [DllImport("user32.dll")] static extern IntPtr GetParent(IntPtr hwnd);
   [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] static extern bool EnumWindows(EnumWindowsProc callback, IntPtr parameter);
   [DllImport("user32.dll")] static extern bool EnumChildWindows(IntPtr hwnd, EnumWindowsProc callback, IntPtr parameter);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr hwnd, StringBuilder text, int maxCount);
   [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
   [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hwnd, IntPtr processId);
+  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
   [DllImport("user32.dll")] static extern bool GetGUIThreadInfo(uint threadId, ref GUITHREADINFO info);
   [DllImport("user32.dll", SetLastError = true)] static extern uint SendInput(uint count, INPUT[] inputs, int size);
   [DllImport("user32.dll")] static extern void mouse_event(uint flags, uint dx, uint dy, int data, UIntPtr extra);
   [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
+  [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT point);
   [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] static extern uint MapVirtualKey(uint code, uint mapType);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)]
@@ -247,6 +252,73 @@ public static class AiFreeInputAcceptance {
     return String.Join("|", descriptions.ToArray());
   }
 
+  static System.Windows.Rect FindTabBounds(IntPtr hwnd, string title) {
+    AutomationElementCollection tabs = AutomationElement.FromHandle(hwnd).FindAll(
+      TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TabItem));
+    foreach (AutomationElement tab in tabs) {
+      if (tab.Current.Name.Contains(title) && !tab.Current.BoundingRectangle.IsEmpty)
+        return tab.Current.BoundingRectangle;
+    }
+    throw new InvalidOperationException("Could not locate fixture tab: " + title);
+  }
+
+  static void CheckEmbeddedWindow(IntPtr hwnd, IntPtr owner, RECT expected, uint browserPid) {
+    RECT current;
+    if (!GetWindowRect(hwnd, out current) || GetParent(hwnd) != owner ||
+        current.Left != expected.Left || current.Top != expected.Top ||
+        current.Right != expected.Right || current.Bottom != expected.Bottom)
+      throw new InvalidOperationException("Tab drag moved or detached the embedded browser window");
+    bool found = false;
+    EnumWindows(delegate(IntPtr candidate, IntPtr ignored) {
+      uint pid;
+      GetWindowThreadProcessId(candidate, out pid);
+      found = candidate != hwnd && pid == browserPid && ClassName(candidate) == "Chrome_WidgetWin_1";
+      return !found;
+    }, IntPtr.Zero);
+    if (found) throw new InvalidOperationException("Tab drag created a separate Chromium window");
+  }
+
+  public static string DragTab(long rawHwnd, string fromTitle, string targetTitle) {
+    SetProcessDPIAware();
+    IntPtr hwnd = new IntPtr(rawHwnd);
+    IntPtr owner = GetParent(hwnd);
+    RECT windowBounds;
+    uint browserPid;
+    GetWindowThreadProcessId(hwnd, out browserPid);
+    if (owner == IntPtr.Zero || !GetWindowRect(hwnd, out windowBounds) || browserPid == 0)
+      throw new InvalidOperationException("Could not locate embedded drag fixture");
+    System.Windows.Rect from = FindTabBounds(hwnd, fromTitle);
+    int x = (int)(from.Left + from.Width / 2), y = (int)(from.Top + from.Height / 2);
+    bool outsideStrip = targetTitle == "";
+    System.Windows.Rect target = outsideStrip ? from : FindTabBounds(hwnd, targetTitle);
+    int toX = outsideStrip ? x + 65 : (int)(target.Left > from.Left ? target.Right + 8 : target.Left + 2);
+    int toY = outsideStrip ? windowBounds.Top - 30 : y;
+    IntPtr hit = WindowFromPoint(new POINT { X = x, Y = y });
+    POINT originalCursor;
+    if ((hit != hwnd && !IsChild(hwnd, hit)) || !GetCursorPos(out originalCursor))
+      throw new InvalidOperationException("Fixture tab is not visible at " + x + "," + y +
+        "; hit=" + ClassName(hit) + "; bounds=" + windowBounds.Left + "," + windowBounds.Top +
+        "," + windowBounds.Right + "," + windowBounds.Bottom);
+    CheckEmbeddedWindow(hwnd, owner, windowBounds, browserPid);
+    if (!SetCursorPos(x, y)) throw new InvalidOperationException("Could not position the drag cursor");
+    mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, UIntPtr.Zero);
+    try {
+      for (int i = 1; i <= 12; i++) {
+        if (!SetCursorPos(x + (toX - x) * i / 12, y + (toY - y) * i / 12))
+          throw new InvalidOperationException("Could not move the drag cursor");
+        Thread.Sleep(25);
+      }
+      Thread.Sleep(250);
+      CheckEmbeddedWindow(hwnd, owner, windowBounds, browserPid);
+    } finally {
+      mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, UIntPtr.Zero);
+      SetCursorPos(originalCursor.X, originalCursor.Y);
+    }
+    Thread.Sleep(200);
+    CheckEmbeddedWindow(hwnd, owner, windowBounds, browserPid);
+    return "TAB_DRAG_OK";
+  }
+
   public static string Drive(long rawHwnd, bool addressOnly) {
     SetProcessDPIAware();
     IntPtr hwnd = new IntPtr(rawHwnd);
@@ -312,8 +384,11 @@ public static class AiFreeInputAcceptance {
       ";RWHV=" + DescribeRenderWidgets(hwnd);
   }
 }`;
+  const invocation = tabDrag
+    ? `[AiFreeInputAcceptance]::DragTab([long]'${browserHwnd}', '${tabDrag.from}', '${tabDrag.to}')`
+    : `[AiFreeInputAcceptance]::Drive([long]'${browserHwnd}', $${addressOnly})`;
   const script = `$ErrorActionPreference = 'Stop'\nAdd-Type -ReferencedAssemblies System.Windows.Forms,UIAutomationClient,UIAutomationTypes,WindowsBase -TypeDefinition @'\n${source}\n'@\n` +
-    `[AiFreeInputAcceptance]::Drive([long]'${browserHwnd}', $${addressOnly})`;
+    invocation;
   const encoded = Buffer.from(script, 'utf16le').toString('base64');
   return new Promise((resolve, reject) => {
     const child = spawn('powershell.exe', [
@@ -382,20 +457,43 @@ async function verifyNativeNewTab(owner, runtime, state) {
   throw new Error('Native New Tab click did not increase the Chromium tab count');
 }
 
+async function verifyEmbeddedTabDrag(owner, runtime, state, url) {
+  const [base, second] = embeddedDragTitles;
+  owner.setAlwaysOnTop(true);
+  owner.focus();
+  const command = (name, payload) => runtime.dispatchAutomationByProcessId(state.pid, name, payload);
+  const titles = async () => (await command('list-tabs', {})).result.tabs.map(({ title }) => title);
+  const drag = async (from, to = '') => {
+    assert.equal(await driveWin32Input(state.browserHwnd, false, { from, to }), 'TAB_DRAG_OK');
+  };
+  const waitForTitles = async (expected) => {
+    const deadline = Date.now() + 3000;
+    let actual = await titles();
+    while (JSON.stringify(actual) !== JSON.stringify(expected) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      actual = await titles();
+    }
+    assert.deepEqual(actual, expected);
+  };
+  assert.equal((await runtime.navigate(state.profileId, 'chromium', `${url}?title=${base}`)).ok, true);
+  await waitForTitles([base]);
+  await drag(base);
+  await waitForTitles([base]);
+  assert.equal((await runtime.openTabs(state.profileId, 'chromium', [`${url}?title=${second}`])).result.opened, 1);
+  await waitForTitles([base, second]);
+  await drag(base);
+  assert.deepEqual((await titles()).sort(), [base, second]);
+  const [first, last] = await titles();
+  await drag(first, last);
+  await waitForTitles([last, first]);
+  await drag(first, last);
+  await waitForTitles([first, last]);
+  assertReady(runtime.getState(state.profileId));
+  console.log('[phase2-input] Embedded tabs reorder without detaching tabs or moving the child window');
+}
+
 function resolveTestResources() {
-  const bundled = path.resolve(__dirname, '..', '..', '..', 'resources');
-  const candidate = process.argv[2];
-  if (!candidate) return bundled;
-  const fixtureRoot = process.env.AI_FREE_FIXTURE_ROOT;
-  if (!fixtureRoot || !path.isAbsolute(candidate) || path.basename(candidate) !== 'chrome.dll') {
-    throw new Error('DLL comparison requires an absolute chrome.dll path and the fixture runner');
-  }
-  const isolated = path.join(fixtureRoot, 'candidate-resources');
-  const chromium = path.join(isolated, 'chromium');
-  fs.cpSync(path.join(bundled, 'chromium'), chromium, { recursive: true });
-  fs.copyFileSync(candidate, path.join(chromium, 'chrome.dll'));
-  require('../../../scripts/chromium-runtime-manifest').writeChromiumRuntimeManifest(chromium);
-  return isolated;
+  return require('../../helpers/flows/chromium-candidate-resources').resolveTestResources(process.argv[2]);
 }
 
 async function verifyAddressBarAcrossProfiles(runtime, first, bounds, url) {
@@ -442,9 +540,14 @@ async function shutdown(code) {
 }
 
 app.whenReady().then(async () => {
-  server = http.createServer((_request, response) => {
+  server = http.createServer((request, response) => {
     response.setHeader('Content-Type', 'text/html; charset=utf-8');
     response.setHeader('Cache-Control', 'no-store');
+    const title = new URL(request.url, 'http://127.0.0.1').searchParams.get('title');
+    if (embeddedDragTitles.includes(title)) {
+      response.end(`<!doctype html><title>${title}</title>`);
+      return;
+    }
     response.end(`<!doctype html>
       <title>WAITING_FOR_INPUT</title>
       <input id="target" autofocus style="position:fixed;inset:20px;font-size:40px">
@@ -490,6 +593,11 @@ app.whenReady().then(async () => {
   window.moveTop();
   window.focus();
   await new Promise((resolve) => setTimeout(resolve, 300));
+  if (process.env.AI_FREE_TAB_DRAG_ONLY === '1') {
+    await verifyEmbeddedTabDrag(window, manager, state, inputPageUrl);
+    await shutdown(0);
+    return;
+  }
   if (process.env.AI_FREE_NATIVE_POINTER_ONLY === '1') {
     await verifyNativeNewTab(window, manager, state);
     await shutdown(0);
@@ -534,6 +642,7 @@ app.whenReady().then(async () => {
   console.log('[phase2-input] Web input typing, wheel, resize and focus passed');
   console.log('[phase2-input] HWND result:', inputResult);
   await verifyNativeNewTab(window, manager, after);
+  await verifyEmbeddedTabDrag(window, manager, after, inputPageUrl);
   await shutdown(0);
 }).catch(async (error) => {
   console.error('[phase2-input] FAILED', error.stack || error);

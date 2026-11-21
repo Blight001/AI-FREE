@@ -193,20 +193,17 @@ for (const marker of [
   assert(timezonePatch.includes(marker), `timezone patch is missing: ${marker}`);
 }
 
-for (const marker of [
-  'void TabStrip::MaybeStartDrag',
-  'switches::kHsEmbedMode',
-  '"child-window"',
-  'return;',
-]) {
-  assert(embeddedTabDragPatch.includes(marker),
-    `embedded tab drag lock patch is missing: ${marker}`);
-}
+assert.match(embeddedTabDragPatch,
+  /switches::kHsEmbedMode\) == "child-window"/);
+assert.match(embeddedTabDragPatch,
+  /if \(IsAiFreeEmbeddedChildWindow\(\)\) \{\n\+    ref->detach_behavior_ = DetachBehavior::kNotDetachable;/);
+assert.match(embeddedTabDragPatch,
+  /if \(!IsAiFreeEmbeddedChildWindow\(\) &&\n\+        drag_data_\.num_dragging_tabs\(\) ==/);
 const embeddedTabDragPatchedFiles = [
   ...embeddedTabDragPatch.matchAll(/^diff --git a\/(\S+) /gm),
 ].map((match) => match[1]);
 assert.deepEqual(embeddedTabDragPatchedFiles, [
-  'chrome/browser/ui/views/tabs/tab_strip.cc',
+  'chrome/browser/ui/views/tabs/dragging/tab_drag_controller.cc',
 ]);
 
 for (const marker of [

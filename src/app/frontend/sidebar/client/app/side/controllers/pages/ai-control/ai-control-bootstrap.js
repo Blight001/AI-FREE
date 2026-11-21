@@ -31,11 +31,6 @@
         if (currentMessages().length) void persistCurrentSession();
       }
     });
-    el('ai-custom-api-form')?.addEventListener('submit', saveCustomApi);
-    el('ai-custom-api-clear')?.addEventListener('click', clearCustomApi);
-    document.querySelectorAll('[data-ai-custom-api-close]').forEach((button) => {
-      button.addEventListener('click', closeCustomApiDialog);
-    });
   }
 
   function bindChatForm() {
@@ -112,6 +107,10 @@
     });
   }
 
+  function bindCustomModelRefresh() {
+    window.aiFree?.ai?.onCustomModelsUpdated?.(() => void loadModels());
+  }
+
   function startAiControlPolling() {
     loadModels();
     loadMcpTools();
@@ -137,5 +136,6 @@
     bindChatInput();
     if (typeof bindChatWorkspace === 'function') bindChatWorkspace();
     bindAiAccountSessionRefresh();
+    bindCustomModelRefresh();
     startAiControlPolling();
   });

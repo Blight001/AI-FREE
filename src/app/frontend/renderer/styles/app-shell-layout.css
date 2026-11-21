@@ -1,4 +1,9 @@
 #app-container { display: flex; flex-direction: column; height: 100%; }
+#shell-title-bar {
+  flex: 0 0 env(titlebar-area-height, 0px);
+  width: env(titlebar-area-width, 0px);
+  app-region: drag;
+}
 #browser-page-module { order: 1; position: relative; flex: 1 1 auto; min-height: 0; }
 #taskbar-module { order: 2; flex: 0 0 auto; }
 #browser-page-module #content-area { height: 100%; }

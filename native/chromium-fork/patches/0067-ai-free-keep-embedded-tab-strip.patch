@@ -1,0 +1,111 @@
+diff --git a/chrome/browser/ui/ai_free_empty_tab_strip.h b/chrome/browser/ui/ai_free_empty_tab_strip.h
+new file mode 100644
+--- /dev/null
++++ b/chrome/browser/ui/ai_free_empty_tab_strip.h
+@@ -0,0 +1,19 @@
++#ifndef CHROME_BROWSER_UI_AI_FREE_EMPTY_TAB_STRIP_H_
++#define CHROME_BROWSER_UI_AI_FREE_EMPTY_TAB_STRIP_H_
++
++#include "base/command_line.h"
++#include "chrome/browser/lifetime/browser_shutdown.h"
++#include "chrome/browser/ui/browser.h"
++#include "chrome/common/chrome_switches.h"
++
++// Applies only to page tab closure, not explicit window or app shutdown.
++inline bool ShouldKeepAiFreeEmptyTabStrip(const Browser& browser) {
++  return browser.is_type_normal() &&
++         base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
++             switches::kHsEmbedMode) == "child-window" &&
++         !browser.IsAttemptingToCloseBrowser() &&
++         !browser.IsDeleteScheduled() &&
++         !browser_shutdown::IsTryingToQuit();
++}
++
++#endif  // CHROME_BROWSER_UI_AI_FREE_EMPTY_TAB_STRIP_H_
+diff --git a/chrome/browser/ui/browser.cc b/chrome/browser/ui/browser.cc
+--- a/chrome/browser/ui/browser.cc
++++ b/chrome/browser/ui/browser.cc
+@@ -37,2 +37,5 @@
+ #include "build/build_config.h"
++#if BUILDFLAG(IS_WIN)
++#include "chrome/browser/ui/ai_free_empty_tab_strip.h"
++#endif
+ #include "chrome/app/chrome_command_ids.h"
+@@ -1465,4 +1468,20 @@
+ void Browser::TabStripEmpty() {
++#if BUILDFLAG(IS_WIN)
++  if (ShouldKeepAiFreeEmptyTabStrip(*this)) {
++    // TabStripModel is still notifying observers under its reentrancy guard.
++    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
++        FROM_HERE, base::BindOnce([](base::WeakPtr<Browser> browser) {
++          if (browser && browser->tab_strip_model()->empty() &&
++              ShouldKeepAiFreeEmptyTabStrip(*browser)) {
++            const GURL url = browser->profile()->IsRegularProfile()
++                                 ? GURL(chrome::kChromeUINewTabPageURL)
++                                 : GURL();
++            chrome::AddTabAt(browser.get(), url, -1, true);
++          }
++        }, AsWeakPtr()));
++    return;
++  }
++#endif
+   // Note: even though the tab strip is empty, the call to Close() may not
+   // result in closing this Browser. This can happen in the case of closing
+   // the last Browser with ongoing downloads.
+diff --git a/chrome/browser/ui/unload_controller.cc b/chrome/browser/ui/unload_controller.cc
+--- a/chrome/browser/ui/unload_controller.cc
++++ b/chrome/browser/ui/unload_controller.cc
+@@ -11,4 +11,8 @@
+ #include "base/task/single_thread_task_runner.h"
++#include "build/build_config.h"
+ #include "chrome/browser/devtools/devtools_window.h"
+ #include "chrome/browser/lifetime/application_lifetime_desktop.h"
++#if BUILDFLAG(IS_WIN)
++#include "chrome/browser/ui/ai_free_empty_tab_strip.h"
++#endif
+ #include "chrome/browser/ui/browser.h"
+@@ -395,3 +399,8 @@
+ void UnloadController::TabStripEmpty() {
++#if BUILDFLAG(IS_WIN)
++  if (ShouldKeepAiFreeEmptyTabStrip(*browser_)) {
++    return;
++  }
++#endif
+   // Set is_attempting_to_close_browser_ here, so that extensions, etc, do not
+   // attempt to add tabs to the browser before it closes.
+diff --git a/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc b/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
+--- a/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
++++ b/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
+@@ -43,3 +43,4 @@
++#include "chrome/browser/ui/ai_free_empty_tab_strip.h"
+ #include "chrome/browser/ui/browser.h"
+ #include "chrome/browser/ui/browser_tabstrip.h"
+ #include "chrome/browser/ui/browser_window.h"
+@@ -991,4 +992,4 @@
+       result.Set("action", "close");
+       result.Set("closedIndex", index);
+-      if (tab_strip->count() == 1) {
++      if (tab_strip->count() == 1 && !ShouldKeepAiFreeEmptyTabStrip(*browser)) {
+         result.Set("accepted", true);
+@@ -1011,5 +1012,21 @@
+                                           TabCloseTypes::CLOSE_CREATE_HISTORICAL_TAB);
++      if (tab_strip->empty()) {
++        // Browser::TabStripEmpty has already queued the replacement tab.
++        content::GetUIThreadTaskRunner({})->PostTask(
++            FROM_HERE, base::BindOnce(
++                [](base::WeakPtr<Browser> owner,
++                   scoped_refptr<BridgeConnection> connection,
++                   std::string request, base::DictValue result) {
++                  if (!owner) return;
++                  auto* tabs = owner->tab_strip_model();
++                  result.Set("count", tabs->count());
++                  result.Set("closed", true);
++                  result.Set("activeTabId", base::NumberToString(tabs->active_index()));
++                  connection->SendSuccessAsync(request, "close-tab", std::move(result));
++                }, browser->AsWeakPtr(), connection, request, std::move(result)));
++        return;
++      }
+       result.Set("count", tab_strip->count());
+       result.Set("closed", tab_strip->count() < previous_count);
+       result.Set("activeTabId", base::NumberToString(tab_strip->active_index()));
+       connection->SendSuccessAsync(request, command_name, std::move(result));

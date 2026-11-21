@@ -2,6 +2,9 @@
 
 const { ASSETS, FILENAME, assetPath } = require('./pages');
 
+const { DRAW_CIRCLE, circlePlan } = require('./circle-fixture');
+const { EDITOR_PROMPT, editorPlan } = require('./page-batch-fixture');
+
 const MODEL_PATH = '/v1/chat/completions';
 const MODEL_ID = 'ai-free-fixture';
 const API_KEY = 'fixture-local-only';
@@ -141,6 +144,8 @@ function commandPlan(mode) {
 }
 
 function choosePlan(command, origin, attachments) {
+  if (command === DRAW_CIRCLE) return circlePlan(origin);
+  if (command === EDITOR_PROMPT) return editorPlan(origin);
   if (command === 'QA ATTACH' || command === 'QA SELECT B') {
     const file = requireAttachment(attachments);
     if (!file) return 'Attach exactly one fixture PNG using @ or Re-reference, then send the exact QA prompt.';

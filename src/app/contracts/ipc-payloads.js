@@ -89,6 +89,15 @@ function validateChatMessage(channel, message, index) {
       path: `${path}.${key}`,
     });
   }
+  if (message.inlineAttachments !== undefined) {
+    if (!Array.isArray(message.inlineAttachments) || message.inlineAttachments.length > 16) fail(channel, `${path}.inlineAttachments`, '必须是最多 16 项的数组');
+    message.inlineAttachments.forEach((item, itemIndex) => {
+      const itemPath = `${path}.inlineAttachments[${itemIndex}]`;
+      if (!isPlainObject(item)) fail(channel, itemPath, '必须是对象');
+      stringField(channel, item, 'path', { required: true, maxLength: 4096, path: `${itemPath}.path` });
+      stringField(channel, item, 'marker', { required: true, maxLength: 512, path: `${itemPath}.marker` });
+    });
+  }
   for (const key of ['tool_calls', 'tool_events', 'trace_events']) {
     if (message[key] === undefined) continue;
     if (!Array.isArray(message[key])) fail(channel, `${path}.${key}`, '必须是数组');
@@ -152,6 +161,18 @@ const IPC_PAYLOAD_SCHEMAS = Object.freeze({
     stringField(channel, input, 'email', { required: true, maxLength: 254 });
     stringField(channel, input, 'password', { required: true, maxLength: 1024 });
     for (const field of ['note', 'smsUrl']) stringField(channel, input, field, { maxLength: 2048 });
+    return input;
+  },
+  'account.provider-update': (channel, payload) => {
+    const input = providerRecordPayload(channel, payload);
+    stringField(channel, input, 'email', { required: true, maxLength: 254 });
+    stringField(channel, input, 'password', { maxLength: 1024 });
+    stringField(channel, input, 'note', { required: true, maxLength: 2048 });
+    return input;
+  },
+  'account.trash-record': (channel, payload) => {
+    const input = objectPayload(channel, payload);
+    stringField(channel, input, 'id', { required: true, maxLength: 64 });
     return input;
   },
   'account.provider-delete': providerRecordPayload,
@@ -239,10 +260,31 @@ const IPC_PAYLOAD_SCHEMAS = Object.freeze({
   'ai.custom-api': (channel, payload) => {
     const input = objectPayload(channel, payload, { optional: true });
     for (const key of ['clear', 'enabled']) booleanField(channel, input, key);
+    for (const key of ['supportsImageInput', 'supportsTools', 'supportsReasoning', 'customProtocol']) booleanField(channel, input, key);
     stringField(channel, input, 'name', { maxLength: 80 });
+    stringField(channel, input, 'id', { maxLength: 128 });
     stringField(channel, input, 'baseUrl', { maxLength: 2048 });
     stringField(channel, input, 'model', { maxLength: 200 });
     stringField(channel, input, 'apiKey', { maxLength: 4096 });
+    numberLikeField(channel, input, 'contextWindow');
+    numberLikeField(channel, input, 'maxOutputTokens');
+    return input;
+  },
+  'ai.custom-model-delete': (channel, payload) => {
+    const input = objectPayload(channel, payload);
+    stringField(channel, input, 'id', { required: true, maxLength: 128 });
+    return input;
+  },
+  'ai.custom-api-batch': (channel, payload) => {
+    const input = objectPayload(channel, payload);
+    if (!Array.isArray(input.models) || input.models.length < 1 || input.models.length > 64) fail(channel, 'models', '必须是 1 到 64 项的数组');
+    input.models.forEach((model, index) => {
+      if (!isPlainObject(model)) fail(channel, `models[${index}]`, '必须是对象');
+      for (const key of ['id', 'name', 'baseUrl', 'model', 'apiKey']) stringField(channel, model, key, { maxLength: key === 'apiKey' ? 4096 : key === 'baseUrl' ? 2048 : key === 'name' ? 80 : key === 'model' ? 200 : 128 });
+      for (const key of ['supportsImageInput', 'supportsTools', 'supportsReasoning', 'customProtocol']) booleanField(channel, model, key);
+      numberLikeField(channel, model, 'contextWindow');
+      numberLikeField(channel, model, 'maxOutputTokens');
+    });
     return input;
   },
   'ai.server-device-login': (channel, payload) => {
@@ -324,6 +366,17 @@ const IPC_PAYLOAD_SCHEMAS = Object.freeze({
     stringField(channel, input, 'path', { required: true, maxLength: 4096 });
     booleanField(channel, input, 'validateOnly');
     if (input.artifact !== undefined) validateArtifactPayload(channel, input.artifact);
+    return input;
+  },
+  'ai.workspace-pasted-files': (channel, payload) => {
+    const input = objectPayload(channel, payload);
+    if (!Array.isArray(input.files) || input.files.length < 1 || input.files.length > 16) fail(channel, 'files', '必须是 1 到 16 个文件');
+    input.files.forEach((file, index) => {
+      const filePath = `files[${index}]`;
+      if (!isPlainObject(file)) fail(channel, filePath, '必须是对象');
+      stringField(channel, file, 'name', { required: true, maxLength: 512, path: `${filePath}.name` });
+      stringField(channel, file, 'data', { required: true, maxLength: 14 * 1024 * 1024, path: `${filePath}.data` });
+    });
     return input;
   },
   'ui.sidebar-width': (channel, payload) => {

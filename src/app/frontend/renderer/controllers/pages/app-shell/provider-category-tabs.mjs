@@ -21,7 +21,7 @@ export function bindProviderCategoryTabs(root, { activate, openAccount, hidePass
       panel.hidden = !active;
     });
     if (focus && !root.closest('[hidden]')) entry.tab.focus();
-    activate(entry.panel);
+    activate(entry.panel, entry.category);
   }
 
   function addEntry(category) {
@@ -52,36 +52,59 @@ export function bindProviderCategoryTabs(root, { activate, openAccount, hidePass
     else if (action === 'rename') {
       updateName(entry, category);
       if (!root.closest('[hidden]')) entry.tab.focus();
-    } else {
-      entries.delete(entry.category.id);
-      entry.tab.remove();
-      entry.panel.remove();
-      if (selected === entry) select(entries.values().next().value, true);
-      else if (!root.closest('[hidden]')) selected.tab.focus();
-    }
+    } else removeEntry({ entry, entries, selected, select, root });
   }
 
-  async function load() {
+  let request;
+  async function load(preferred = selected?.category.id) {
+    const current = request = {};
+
     retry.hidden = true;
     status.textContent = '正在读取账号栏目…';
     try {
       const result = await window.aiFree.account.listProviderCategories();
       if (!result?.ok) throw new Error(result?.error?.message || '读取账号栏目失败');
-      const categories = result.data.categories;
-      for (const category of categories) addEntry(category);
-      select(entries.values().next().value);
+      if (request !== current) return null;
+      clearEntries(entries);
+      for (const category of result.data.categories) addEntry(category);
+      const entry = entries.get(preferred) || entries.values().next().value;
+      select(entry);
       status.textContent = '';
       add.disabled = false;
+      return entry;
     } catch (error) {
+      if (request !== current) return null;
       status.textContent = error.message;
       retry.hidden = false;
+      return null;
     }
   }
 
+  bindTabEvents({ add, retry, actions, load, tabList, entries, select });
+  void load();
+  return { load };
+}
+
+function bindTabEvents({ add, retry, actions, load, tabList, entries, select }) {
   add.addEventListener('click', () => actions.open('create'));
   retry.addEventListener('click', () => void load());
   tabList.addEventListener('keydown', (event) => navigateTabs(event, [...entries.values()], select));
-  void load();
+}
+
+function removeEntry({ entry, entries, selected, select, root }) {
+  entries.delete(entry.category.id);
+  entry.tab.remove();
+  entry.panel.remove();
+  if (selected === entry) select(entries.values().next().value, true);
+  else if (!root.closest('[hidden]')) selected.tab.focus();
+}
+
+function clearEntries(entries) {
+  for (const { tab, panel } of entries.values()) {
+    tab.remove();
+    panel.remove();
+  }
+  entries.clear();
 }
 
 function updateName(entry, category) {

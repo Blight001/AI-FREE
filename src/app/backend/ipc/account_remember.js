@@ -1,5 +1,5 @@
 // 账号管理 IPC 处理器
-const { ipcMain, safeStorage } = require('electron');
+const { ipcMain } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const accountStorage = require('../lib/account-storage');
@@ -18,8 +18,8 @@ const {
   promptImportedPlatformDecision: showImportedPlatformPrompt,
 } = require('../features/account/import-platform-prompt');
 const { createAccountRememberHandlers } = require('../features/account/account-remember-handlers');
-const { ProviderAccountVault } = require('../features/account/provider-account-vault');
 const { registerProviderAccountDetails } = require('../features/account/register-provider-account-details');
+const { registerVipShopIpc } = require('../features/account/register-vip-shop-ipc');
 
 function registerAccountIPC(ctx) {
   const ipc = ctx.ipc.scope('account_remember');
@@ -47,26 +47,11 @@ function registerAccountIPC(ctx) {
   ipc.handle('get-all-accounts', handlers.getAllAccounts);
   ipc.handle('delete-accounts', handlers.deleteAccounts);
   ipc.handle('switch-account', handlers.switchAccount);
-  const providerAccounts = new ProviderAccountVault({
-    fs, path, safeStorage,
-    filePath: path.join(ctx.app.getPath('userData'), 'provider-accounts.json'),
-  });
-  ipc.handle('provider-accounts-list', (_event, input) => providerAccountResult(() => ({
-    accounts: providerAccounts.list(input.provider),
-  })));
-  ipc.handle('provider-accounts-save', (_event, input) => providerAccountResult(() => ({
-    account: providerAccounts.save(input),
-  })));
-  ipc.handle('provider-accounts-delete', (_event, input) => providerAccountResult(() => {
-    providerAccounts.remove(input.provider, input.id);
-    return {};
-  }));
-  registerProviderAccountDetails(ipc, providerAccounts, () => ctx.ui?.getMainWindow?.()?.webContents);
-}
-
-function providerAccountResult(operation) {
-  try { return { ok: true, ...operation() }; }
-  catch (error) { return { ok: false, error: { message: error?.message || 'Account operation failed' } }; }
+  registerVipShopIpc({ ipc, getMainWindow: () => ctx.ui?.getMainWindow?.(),
+    openTutorialTab: (...args) => ctx.ui?.openTutorialTab?.(...args) });
+  if (ctx.providerAccountVault) {
+    registerProviderAccountDetails(ipc, ctx.providerAccountVault, () => ctx.ui?.getMainWindow?.()?.webContents);
+  }
 }
 
 module.exports = { registerAccountIPC };

@@ -23,6 +23,7 @@ test('未登录且远端模型服务不可用时仍返回本地自定义模型',
       model: 'model-x',
       custom_api: true,
       supports_image_input: false,
+      supports_tools: true,
     }],
     quota: null,
   });

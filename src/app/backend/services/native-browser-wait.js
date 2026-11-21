@@ -1,13 +1,11 @@
 'use strict';
 
+const { setTimeout: delay } = require('node:timers/promises');
+
 const RETRYABLE_WAIT_ERRORS = new Set(['INPUT_TARGET_UNAVAILABLE', 'WEB_CONTENTS_UNAVAILABLE']);
 
 function boundedWaitTimeout(input) {
   return Math.min(120000, Math.max(100, Number(input.timeout_ms ?? input.ms) || 10000));
-}
-
-function retryDelay(timeoutMs) {
-  return new Promise((resolve) => setTimeout(resolve, Math.min(100, timeoutMs)));
 }
 
 function timeoutResult(selector, timeoutMs, result) {
@@ -58,13 +56,14 @@ async function waitForBrowserCondition(options) {
   let result = null;
   let initialValue = options.input.initial_value ?? options.input.initialValue;
   do {
+    options.signal?.throwIfAborted();
     const attempt = await runAttempt({
       ...options, remaining: Math.max(100, deadline - Date.now()), initialValue,
     });
     result = attempt.result;
     initialValue = nextInitialValue(options.condition, initialValue, result);
     if (!attempt.retryable) return result;
-    if (Date.now() < deadline) await retryDelay(deadline - Date.now());
+    if (Date.now() < deadline) await delay(Math.min(100, deadline - Date.now()), undefined, { signal: options.signal });
   } while (Date.now() < deadline);
   return timeoutResult(options.selector || options.condition, timeoutMs, result);
 }

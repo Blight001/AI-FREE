@@ -1,0 +1,138 @@
+/* Day and night share the same surface opacity and blur. */
+html:not(.theme-gold) {
+  --shell-frost-opacity: 91%;
+  --shell-frost-blur: blur(19px);
+  --shell-frost-line: #70677965;
+  --shell-frost-accent-strong: #6366f1;
+  --shell-frost-accent: var(--shell-accent-hover);
+  --shell-frost-selected: color-mix(in srgb, var(--shell-frost-accent-strong) 26%, var(--shell-panel));
+  --shell-frost-selected-ink: var(--shell-accent-hover);
+  --shell-frost-wallpaper-strength: .68;
+  --shell-frost-current: #75c894;
+  --shell-frost-error: #f09595;
+}
+
+html.theme-light:not(.theme-gold) {
+  --shell-frost-line: #5b4a742f;
+  --shell-frost-accent: var(--shell-frost-accent-strong);
+  --shell-frost-selected: color-mix(in srgb, var(--shell-frost-accent-strong) 10%, var(--shell-panel));
+  --shell-frost-wallpaper-strength: .62;
+  --shell-frost-current: #28724a;
+  --shell-frost-error: #a6333e;
+}
+
+html:not(.theme-gold) #browser-empty-state::before {
+  opacity: var(--shell-frost-wallpaper-strength);
+  filter: blur(3px);
+  transform: scale(1.025);
+}
+
+html:not(.theme-gold) .shell-home-rail {
+  color: var(--shell-text);
+  border-color: var(--shell-frost-line);
+  background: color-mix(in srgb, var(--shell-bg) 94%, transparent);
+  backdrop-filter: var(--shell-frost-blur);
+}
+
+html:not(.theme-gold) .shell-home-tabs button { color: var(--shell-text); }
+html:not(.theme-gold) .shell-home-tabs button:hover { background: var(--shell-frost-selected); }
+html:not(.theme-gold) .shell-home-tabs button[aria-selected="true"] {
+  border-color: var(--shell-frost-accent);
+  color: var(--shell-frost-selected-ink);
+  background: var(--shell-frost-selected);
+}
+
+html:not(.theme-gold) #home-browsers :is(.browser-history-heading, .browser-history-item) {
+  color: var(--shell-text);
+  background: color-mix(in srgb, var(--shell-panel) var(--shell-frost-opacity), transparent);
+  backdrop-filter: var(--shell-frost-blur);
+}
+
+html:not(.theme-gold) #home-browsers .browser-history-heading {
+  padding: 5px 8px;
+  border-radius: 7px;
+}
+
+html:not(.theme-gold) #home-browsers :is(.browser-history-heading h2, .browser-history-name) {
+  color: var(--shell-text);
+}
+
+html:not(.theme-gold) #home-browsers :is(.browser-history-heading button, .browser-history-action) {
+  color: var(--shell-tab-text);
+  border-color: var(--shell-frost-line);
+  background: color-mix(in srgb, var(--shell-panel) 85%, var(--shell-frost-selected));
+}
+
+html:not(.theme-gold) #home-browsers :is(.browser-history-edit, .browser-history-heading button:hover, .browser-history-action:hover) {
+  color: var(--shell-frost-selected-ink);
+  border-color: var(--shell-frost-accent);
+}
+
+html:not(.theme-gold) #home-browsers :is(.browser-history-icon, .browser-history-account-meta:not(.browser-history-auto-delete)) {
+  color: var(--shell-tab-text);
+}
+
+html:not(.theme-gold) #home-browsers .browser-history-icon {
+  background: var(--shell-frost-selected);
+}
+
+html:not(.theme-gold) #home-browsers .browser-history-item {
+  --record-outline: var(--shell-frost-line);
+  border-color: var(--record-outline);
+}
+
+html:not(.theme-gold) #home-browsers .browser-history-item.is-open { --record-outline: var(--shell-frost-accent); }
+html:not(.theme-gold) #home-browsers .browser-history-item.is-active { --record-outline: var(--shell-frost-current); }
+html:not(.theme-gold) #home-browsers .browser-history-item.has-error { --record-outline: var(--shell-frost-error); }
+html:not(.theme-gold) #home-browsers .browser-history-item:is(.is-open, .is-active, .has-error) {
+  box-shadow: inset 0 0 0 1px var(--record-outline);
+}
+
+html:not(.theme-gold) #home-browsers .browser-history-item:is(.is-open, .is-active, .has-error) .browser-history-name-row::before {
+  background: var(--record-outline);
+  box-shadow: none;
+}
+
+.browser-history-status {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: var(--shell-tab-active-text);
+  background: var(--shell-tab-active-bg);
+  font-size: 11px;
+}
+
+html:not(.theme-gold) #home-browsers .browser-history-status {
+  color: var(--shell-text);
+  background: color-mix(in srgb, var(--record-outline) 23%, var(--shell-panel));
+}
+
+html:not(.theme-gold) #tab-bar {
+  background: color-mix(in srgb, var(--shell-panel) 97%, transparent);
+  border-color: var(--shell-frost-line);
+}
+
+html:not(.theme-gold) #tab-bar :is(.tab:not(.active), #home-tab-btn:not(:hover)) { color: var(--shell-tab-text); }
+html:not(.theme-gold) #tab-bar .tab:not(.active, .network-magic) { border-color: var(--shell-frost-line); }
+
+html:not(.theme-gold):has(#browser-empty-state:not([hidden])) #home-tab-btn:not(:hover),
+html:not(.theme-gold) #tab-bar .tab.active:not(.network-magic),
+html:not(.theme-gold) #tab-bar #home-tab-btn:hover {
+  border-color: var(--shell-frost-accent);
+  color: var(--shell-frost-selected-ink);
+  background: var(--shell-frost-selected);
+}
+
+html:not(.theme-gold) #tab-bar :is(#new-browser-window-btn:not(.gesture-active), .shell-theme-toggle-btn, .shell-action-btn:not(.is-active, .shell-action-back)) {
+  color: var(--shell-frost-selected-ink);
+  background: var(--shell-frost-selected);
+  border-color: var(--shell-frost-line);
+}
+
+html:not(.theme-gold) #tab-bar :is(#new-browser-window-btn:not(.gesture-active, :disabled), .shell-theme-toggle-btn, .shell-action-btn:not(.is-active, .shell-action-back)):hover {
+  background: color-mix(in srgb, var(--shell-frost-selected) 85%, var(--shell-frost-accent));
+}
+
+html:not(.theme-gold) #tab-bar :is(#new-browser-window-btn:not(.gesture-active), .shell-theme-toggle-btn, .shell-action-btn:not(.is-active, .shell-action-back)):is(:hover, :focus-visible) {
+  border-color: var(--shell-frost-accent);
+}

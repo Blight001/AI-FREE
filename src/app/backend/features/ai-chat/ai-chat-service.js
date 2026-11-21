@@ -2,6 +2,8 @@
 
 const { createAiBrowserWindowTools } = require('../../services/ai-browser-window-tools');
 const { createAiSandboxFileTools } = require('../../services/ai-sandbox-file-tools');
+const { createProviderAccountTools } = require('../account/provider-account-tools');
+const { createProviderAccountUi } = require('../account/provider-account-ui');
 const { combineToolSets } = require('../../services/combine-tool-sets');
 const { createChatRunRegistry } = require('./chat-run-registry');
 const { prepareChatRequest } = require('./chat-request-context');
@@ -35,6 +37,22 @@ async function waitForBrowserConnection(deps, target = {}, timeoutMs = 20000) {
   return null;
 }
 
+function buildAccountTools(deps) {
+  if (!deps.providerAccountVault) return null;
+  const ui = createProviderAccountUi({
+    getMainWindow: deps.getMainWindow,
+    revealMainWindow: deps.revealMainWindow,
+    switchTab: deps.browserWindowUi.switchTab,
+    dialog: deps.dialog,
+  });
+  return createProviderAccountTools({
+    vault: deps.providerAccountVault,
+    bridge: deps.browserAutomationBridge,
+    runtime: deps.browserRuntimeManager,
+    ...ui,
+  });
+}
+
 function createAiChatService(deps = {}) {
   const {
     licenseCache,
@@ -56,7 +74,8 @@ function createAiChatService(deps = {}) {
           waitForBrowserConnection: (target) => waitForBrowserConnection(deps, target),
         });
         const fileTools = createAiSandboxFileTools({ sandboxDir: deps.aiSandboxDir });
-        aiBrowserWindowTools = combineToolSets(windowTools, fileTools);
+        const accountTools = buildAccountTools(deps);
+        aiBrowserWindowTools = combineToolSets(windowTools, fileTools, accountTools);
       } catch (error) {
         logger.warn?.('[AI窗口工具] 初始化失败:', error?.message || error);
       }

@@ -95,6 +95,12 @@ function sanitizeMessage(item) {
       .filter((artifact) => message.attachmentPaths.includes(artifact.path));
     if (references.length) message.artifactReferences = references;
   }
+  if (role === 'user' && Array.isArray(item.inlineAttachments)) {
+    message.inlineAttachments = item.inlineAttachments
+      .filter((entry) => entry && typeof entry.path === 'string' && typeof entry.marker === 'string')
+      .slice(0, 16)
+      .map((entry) => ({ path: entry.path.slice(0, 4096), marker: entry.marker.slice(0, 512) }));
+  }
   return message;
 }
 

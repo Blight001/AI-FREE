@@ -2,6 +2,7 @@
   let focusPersonalOnShow = false;
   let syncConsole;
   let syncMcp;
+  let modelSettings;
 
   function setVisible(tabs = []) {
     const home = document.getElementById('browser-empty-state');
@@ -14,6 +15,7 @@
       leaveAccounts();
       clearPersonalTransientState();
     } else if (focusPersonalOnShow) focusPersonal();
+    modelSettings?.sync();
     syncConsole?.();
     syncMcp?.();
   }
@@ -77,6 +79,7 @@
       });
       syncConsole?.();
       syncMcp?.();
+      modelSettings?.sync();
     };
     tabList.addEventListener('click', (event) => {
       const index = tabs.indexOf(event.target.closest('[role="tab"]'));
@@ -102,6 +105,8 @@
     }
     bindSiteData();
     bindHomeTabs();
+    modelSettings = bindHomeModels();
+    window.aiFree?.ui?.onOpenHomeModelSettings?.(modelSettings.open);
     window.AppShellAutomation?.bind();
   }
 

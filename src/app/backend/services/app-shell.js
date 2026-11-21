@@ -36,7 +36,6 @@ class AppShellRuntime {
   resolveIsMainBootstrapped() { return this.resolveDependency('getIsMainBootstrapped', false); }
   resolveAddTab() { return this.resolveAction('getAddTab'); }
   resolveOpenTutorialTab() { return this.resolveAction('getOpenTutorialTab'); }
-  resolveSyncTutorialTabUrl() { return this.resolveAction('getSyncTutorialTabUrl'); }
   resolveSwitchTab() { return this.resolveAction('getSwitchTab'); }
   resolveCloseTab() { return this.resolveAction('getCloseTab'); }
   resolveReorderTab() { return this.resolveAction('getReorderTab'); }
@@ -279,7 +278,6 @@ class AppShellRuntime {
       resolveSetZoom: this.resolveSetZoom.bind(this),
       resolveSideView: this.resolveSideView.bind(this),
       resolveSwitchTab: this.resolveSwitchTab.bind(this),
-      resolveSyncTutorialTabUrl: this.resolveSyncTutorialTabUrl.bind(this),
       resolveTabs: this.resolveTabs.bind(this),
     });
   }

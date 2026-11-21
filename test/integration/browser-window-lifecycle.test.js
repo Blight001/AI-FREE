@@ -3,6 +3,8 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 
 const { createTabManager } = require('../../src/app/backend/services/tab-manager');
+const { registerMiscIPC } = require('../../src/app/backend/ipc/register/misc');
+const { createLicenseCache } = require('../../src/app/backend/runtime/license-cache');
 
 test('Chromium 新建标签页不经过 data URL 启动占位页', async () => {
   const chromium = new EventEmitter();
@@ -80,7 +82,8 @@ test('主窗口最大化后 Chromium 区域保留最大化前的侧栏宽度', a
 
   await manager.addTab('chrome://newtab/', { tabId: 'maximized-browser' });
 
-  assert.deepEqual(launchedBounds, { x: 0, y: 0, width: 1560, height: 999 });
+  const top = process.platform === 'win32' ? 32 : 0;
+  assert.deepEqual(launchedBounds, { x: 0, y: top, width: 1560, height: 999 - top });
 });
 
 test('浏览器启动解析 Profile 时不再传入出口 IP 探测参数', async () => {
@@ -352,20 +355,27 @@ test('普通空白栏目不会把服务器教程地址当作默认主页', async
   assert.equal(tabs.get('ordinary-browser')?.isTutorialTab, false);
 });
 
-test('服务器更换教程地址后同步刷新已打开的教程页', async () => {
+test('读取新教程地址不会导航，用户点击才切换到新地址', async () => {
   const chromium = new EventEmitter();
   const tabs = new Map([['tutorial-browser', {
     id: 'tutorial-browser',
     runtimeType: 'chromium',
     isTutorialTab: true,
     requestedUrl: 'https://old.example.com/guide',
-    runtimeUrl: 'https://old.example.com/guide',
+    runtimeUrl: 'https://shop.example.com/checkout',
   }]]);
   const navigations = [];
-  let updateCount = 0;
+  const oldUrl = tabs.get('tutorial-browser').requestedUrl;
+  const newUrl = 'https://new.example.com/guide';
+  const licenseCache = createLicenseCache();
   const manager = createTabManager({
     browserRuntimeManager: {
       chromium,
+      async openForegroundTab(profileId, runtimeType, url, previousUrl) {
+        navigations.push({ profileId, runtimeType, url, previousUrl });
+      },
+      async hide() {},
+      async show() {},
       async navigate(profileId, runtimeType, url) {
         navigations.push({ profileId, runtimeType, url });
       },
@@ -374,47 +384,33 @@ test('服务器更换教程地址后同步刷新已打开的教程页', async ()
     getMainWindow: () => ({ isDestroyed: () => false, emit() {} }),
     getActiveTabId: () => 'tutorial-browser',
     getIsSidebarVisible: () => false,
-    updateTabs() { updateCount += 1; },
+    updateTabs() {},
     sendToSide() {},
+    licenseCache,
     logger: { warn() {}, error() {} },
   });
 
-  const result = await manager.syncTutorialTabUrl('https://new.example.com/guide');
-
-  assert.equal(result.updated, true);
+  // Supply the old navigation hook to make the regression observable even with a shop active.
+  const handlers = new Map();
+  registerMiscIPC({
+    ipc: { scope: () => ({ handle: (channel, handler) => handlers.set(channel, handler) }) },
+    httpClient: { getTutorialUrl: async () => ({ ok: true, tutorialUrl: newUrl }) },
+    licenseCache,
+    ui: { syncTutorialTabUrl: (url) => navigations.push({ url }) },
+  });
+  assert.equal(await handlers.get('get-tutorial-url')(), newUrl);
+  assert.equal(licenseCache.getRuntimeConfig().tutorialUrl, newUrl);
+  assert.equal(tabs.get('tutorial-browser').requestedUrl, oldUrl);
+  assert.equal(tabs.get('tutorial-browser').runtimeUrl, 'https://shop.example.com/checkout');
+  assert.deepEqual(navigations, []);
+  assert.equal(await manager.openTutorialTab(), 'tutorial-browser');
   assert.deepEqual(navigations, [{
     profileId: 'tutorial-browser',
     runtimeType: 'chromium',
-    url: 'https://new.example.com/guide',
+    url: newUrl,
+    previousUrl: oldUrl,
   }]);
-  assert.equal(tabs.get('tutorial-browser').requestedUrl, 'https://new.example.com/guide');
-  assert.equal(tabs.get('tutorial-browser').runtimeUrl, 'https://new.example.com/guide');
-  assert.equal(updateCount, 1);
-});
-
-test('同步教程地址不会重新打开用户已经关闭的教程页', async () => {
-  const tabs = new Map();
-  let launchCount = 0;
-  const manager = createTabManager({
-    browserRuntimeManager: {
-      chromium: new EventEmitter(),
-      async launchProfile() { launchCount += 1; },
-      async navigate() { throw new Error('不应导航'); },
-    },
-    getTabs: () => tabs,
-    getMainWindow: () => ({ isDestroyed: () => false, emit() {} }),
-    getActiveTabId: () => null,
-    getIsSidebarVisible: () => false,
-    updateTabs() {},
-    sendToSide() {},
-    logger: { warn() {}, error() {} },
-  });
-
-  const result = await manager.syncTutorialTabUrl('https://new.example.com/guide');
-
-  assert.equal(result.updated, false);
-  assert.equal(launchCount, 0);
-  assert.equal(tabs.size, 0);
+  assert.equal(tabs.get('tutorial-browser').requestedUrl, newUrl);
 });
 
 test('关闭最后一个浏览器后回到内置首页且不再启动 Chromium', async () => {

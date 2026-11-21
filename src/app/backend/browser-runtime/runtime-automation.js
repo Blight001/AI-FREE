@@ -6,7 +6,7 @@ const { findProfileIdByProcessId } = require('./runtime-input');
 
 const AUTOMATION_COMMANDS = new Set([
   'observe-page', 'inspect-page-state', 'inspect-page-diagnostics', 'capture-screenshot', 'perform-action', 'download-element',
-  'get-session-data', 'list-tabs', 'activate-tab', 'close-tab', 'history-back', 'history-forward', 'automation-takeover',
+  'fill-account-field', 'get-session-data', 'list-tabs', 'activate-tab', 'close-tab', 'history-back', 'history-forward', 'automation-takeover',
 ]);
 const ACTIONS = new Set([
   'click', 'double_click', 'right_click', 'drag', 'upload_file', 'scroll',
@@ -303,6 +303,7 @@ function normalizeRuntimeAutomation(command, source = {}) {
   }[name];
   if (readOnlyNormalizer) return readOnlyNormalizer(input);
   if (name === 'capture-screenshot') return normalizeScreenshotPayload(input);
+  if (name === 'fill-account-field') return normalizeAccountFillPayload(input);
   if (name === 'perform-action') return normalizeActionPayload(input);
   if (name === 'download-element') return normalizeDownloadElementPayload(input);
   if (['activate-tab', 'close-tab', 'history-back', 'history-forward'].includes(name)) return normalizeTabTarget(input);
@@ -316,17 +317,30 @@ function normalizeRuntimeAutomation(command, source = {}) {
   return {};
 }
 
+function normalizeAccountFillPayload(input) {
+  return {
+    origin: optionalText(input.origin, 512),
+    selector: optionalText(input.selector, 512),
+    field: optionalText(input.field, 16),
+    value: optionalText(input.value, 4096),
+  };
+}
+
 async function dispatchRuntimeAutomation(runtime, profileId, command, source, options = {}) {
+  if (command === 'fill-account-field' && !options.expectedPageToken) {
+    throw automationError('BROWSER_TARGET_REQUIRED', '凭据填充需要页面绑定');
+  }
   const payload = normalizeRuntimeAutomation(command, source);
   if (options.expectedPageToken !== undefined && command === 'perform-action' && payload.action === 'upload_file') {
     Object.assign(payload, { selectionId: optionalText(source.selectionId, 128) });
   }
   const timeoutMs = Number('timeoutMs' in payload ? payload.timeoutMs : 10000) || 10000;
-  return runtime.enqueueProfileOperation(profileId, () => (
-    sendPageCommand(runtime.getReadyInstance(profileId).commandClient, command, payload, {
+  return runtime.enqueueProfileOperation(profileId, () => {
+    options.signal?.throwIfAborted();
+    return sendPageCommand(runtime.getReadyInstance(profileId).commandClient, command, payload, {
       timeoutMs: ['perform-action', 'download-element'].includes(command) ? timeoutMs + 2000 : 15000,
-    }, options.expectedPageToken)
-  ));
+    }, options.expectedPageToken);
+  });
 }
 
 async function dispatchRuntimeAutomationByProcessId(runtime, processId, command, source, options) {

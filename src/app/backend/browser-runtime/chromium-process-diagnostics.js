@@ -76,37 +76,46 @@ function createFailureBundle(diagnostics, details, reason) {
   }
 }
 
+/** @param {{spawnError?: Error, exitCode?: number|null, signal?: string|null, duringRuntime?: boolean}} details */
+function describeProcessFailure({ spawnError, exitCode, signal, duringRuntime }) {
+  if (spawnError) {
+    return `Chromium 进程${duringRuntime ? '运行异常' : '启动失败'}: ${spawnError.message || spawnError}`;
+  }
+  const formattedCode = formatWindowsExitCode(exitCode);
+  const exitDetails = [formattedCode && `退出码 ${formattedCode}`, signal && `信号 ${signal}`].filter(Boolean).join('，');
+  const exitReason = duringRuntime ? 'Chromium 运行中意外退出' : 'Chromium 在完成窗口握手前退出';
+  return `${exitReason}${exitDetails ? `（${exitDetails}）` : ''}`;
+}
+
 function createChromiumProcessFailure(diagnostics, details = {}) {
-  const spawnError = details.spawnError;
-  const formattedCode = formatWindowsExitCode(details.exitCode);
+  const reason = describeProcessFailure(details);
   const hint = Number.isInteger(details.exitCode) ? WINDOWS_EXIT_HINTS.get(details.exitCode >>> 0) : '';
-  const reason = spawnError
-    ? `Chromium 进程启动失败: ${spawnError.message || spawnError}`
-    : `Chromium 在完成窗口握手前退出${formattedCode ? `（退出码 ${formattedCode}）` : ''}`;
   persistProcessFailure(diagnostics, reason, hint);
   const diagnosticBundlePath = createFailureBundle(diagnostics, details, reason);
   const summary = diagnostics?.summarize?.() || '';
   const suffix = chromiumFailureSuffix(diagnostics, hint, summary, diagnosticBundlePath);
-  const error = /** @type {Error & {code?: string, exitCode?: number|null, diagnostic?: string, logFilePath?: string, diagnosticBundlePath?: string}} */ (
+  const error = /** @type {Error & {code?: string, exitCode?: number|null, signal?: string|null, diagnostic?: string, logFilePath?: string, diagnosticBundlePath?: string}} */ (
     new Error(`${reason}。${suffix}`)
   );
-  error.code = spawnError ? 'CHROMIUM_PROCESS_ERROR' : 'CHROMIUM_PROCESS_EXITED';
+  error.code = details.spawnError ? 'CHROMIUM_PROCESS_ERROR' : 'CHROMIUM_PROCESS_EXITED';
   error.exitCode = Number.isInteger(details.exitCode) ? details.exitCode : null;
+  error.signal = details.signal || null;
   error.diagnostic = summary;
   error.logFilePath = diagnosticLogPath(diagnostics);
   error.diagnosticBundlePath = diagnosticBundlePath;
   return error;
 }
 
-function bindChromiumProcessFailure(instance, onFailure, onExit = () => {}) {
+function bindChromiumProcessFailure(instance, onFailure, onExit = () => {}, isRunning = () => false) {
   instance.child.once('error', (spawnError) => {
-    instance.launchFailure = createChromiumProcessFailure(instance.diagnostics, { spawnError });
+    if (instance.expectedExit) return;
+    instance.launchFailure = createChromiumProcessFailure(instance.diagnostics, { spawnError, duringRuntime: isRunning() });
     onFailure(instance.launchFailure);
   });
   instance.child.once('exit', (exitCode, signal) => {
     onExit();
     if (instance.expectedExit) return;
-    instance.launchFailure ||= createChromiumProcessFailure(instance.diagnostics, { exitCode, signal });
+    instance.launchFailure ||= createChromiumProcessFailure(instance.diagnostics, { exitCode, signal, duringRuntime: isRunning() });
     onFailure(instance.launchFailure);
   });
 }

@@ -2,6 +2,7 @@
 
 const {
   getCustomAiApiConfig,
+  getCustomAiApiConfigById,
   isCustomAiApiConfigured,
   isCustomAiModelId,
 } = require('../../utils/ai-control-settings');
@@ -9,7 +10,7 @@ const { normalizeAccountSession } = require('../../utils/account-session');
 const { enrichBrowserConnectionNames } = require('./connection-names');
 const { listAutomationCards } = require('./automation-card-service');
 const { buildChatToolContext } = require('./chat-tool-context');
-const { buildAttachmentMessages } = require('./ai-workspace-service');
+const { buildAttachmentMessages, buildInlineAttachmentMessages } = require('./ai-workspace-service');
 
 function validateQuota(quota) {
   if (!quota || quota.unlimited === true) return null;
@@ -22,9 +23,13 @@ function validateQuota(quota) {
 }
 
 function resolveCustomAccess(store, modelId) {
-  const customApi = getCustomAiApiConfig(store);
+  const customApi = getCustomAiApiConfigById(store, modelId)
+    || (modelId === '__custom_openai_api__' ? getCustomAiApiConfig(store) : null);
   if (!isCustomAiApiConfigured(customApi)) {
-    return { error: { ok: false, message: '自定义 API 尚未配置完整，请重新配置' } };
+    const message = modelId === '__custom_openai_api__'
+      ? '自定义 API 尚未配置完整，请重新配置'
+      : '所选自定义模型不存在或配置不完整，请重新选择';
+    return { error: { ok: false, message } };
   }
   return { customApi, deviceId: '', httpClient: null, key: '', modelId, useCustomApi: true };
 }
@@ -141,6 +146,8 @@ function prepareChatRequest(deps, event, input, chatRuns, getWindowTools) {
   const access = resolveChatAccess(deps, input);
   if (access.error) return access;
   const options = normalizeChatOptions(input);
+  options.initialMessages = buildInlineAttachmentMessages(deps.aiSandboxDir, options.initialMessages);
+  if (access.useCustomApi && !access.customApi.supportsTools) options.disableTools = true;
   const resolvedConnections = resolveConnections(deps, options);
   if (resolvedConnections.error) return resolvedConnections;
   const resolvedCards = resolveAutomationCards(deps, options);

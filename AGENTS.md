@@ -36,8 +36,10 @@ browser extension ↔ AutomationBridge ↔ Chromium runtime
 | UI | 入口与宿主 | 当前职责 | 控制器与样式归属 | 整改约束 |
 |---|---|---|---|---|
 | 主窗口与浏览器首页 | `src/app/frontend/views/app-shell.html`，由主 `BrowserWindow` 加载 | 底部任务栏（主题、更新、内置代理与 AI 入口）、无活动浏览器时的首页、浏览器记录、环境配置；活动 Chromium 的可见区域也由该窗口协调 | 主窗口逻辑位于 `renderer/controllers/pages/app-shell/`，基础样式位于 `renderer/styles/app-shell*.css` | 主内容功能必须放在此处或由此页面装配，不得再创建覆盖首页的第二个 `WebContentsView`；首页显隐只由标签运行状态决定；浏览器内容区域和侧栏预留宽度必须同步验证；不得在此页重新加入已删除的原生自动化工作台 DOM |
+| 账号管理 | `src/app/frontend/views/app-shell.html` 的 `#home-accounts` | 按栏目添加、编辑和删除本机账号，回收站入口位于「添加账号」右侧 | `renderer/controllers/pages/app-shell/provider-*.mjs`、`renderer/styles/app-shell-home.css` 与 `backend/features/account/` | 各栏目共用一个回收站弹窗和加密账号库。账号 MCP 统一由 `account_manage` 按 `action` 调用，读取结果脱敏，通过引用填写凭据，删除和彻底删除需要本机确认 |
 | 网站数据 | 主窗口浏览器记录的「网站数据」按钮打开 `#site-data-dialog` | 按域名搜索并查看统计，预览和迁移站点图片、声音偏好及第一方 IndexedDB | `renderer/controllers/pages/app-shell/site-data.js` 与 `renderer/styles/app-shell-site-data.css` | 仅首页主帧按记录 ID 请求；统计、偏好和数据库预览只返回白名单字段；应用偏好须锁定目标 Profile，复制数据库须预览并锁定两边，保留来源与目标的其他网站数据 |
-| AI 控制页 | `src/app/frontend/sidebar/ai-control.html`，由右侧 `WebContentsView` 加载 | AI 对话、模型选择、由 AI 在每轮选择浏览器、上传确认、文件产物与工具调用、自定义 API、AI 服务器设备 | `sidebar/client/app/side/controllers/pages/ai-control/` 与 `sidebar/client/app/side/styles/modules/ai-control*.css` | 侧栏按钮只改变显隐；登录请求通过窄 IPC 交给主窗口，不导航或重新加载 AI；轮询、订阅和会话保存必须在页面卸载时保持可恢复 |
+| AI 控制页 | `src/app/frontend/sidebar/ai-control.html`，由右侧 `WebContentsView` 加载 | AI 对话、模型选择、由 AI 在每轮选择浏览器、上传确认、文件产物与工具调用 | `sidebar/client/app/side/controllers/pages/ai-control/` 与 `sidebar/client/app/side/styles/modules/ai-control*.css` | 侧栏按钮只改变显隐；登录和新增模型请求通过窄 IPC 交给主窗口，不导航或重新加载 AI；轮询、订阅和会话保存必须在页面卸载时保持可恢复 |
+| 模型设置栏目 | `src/app/frontend/views/app-shell.html` 的 `#home-model-settings` | 管理多个自定义模型、发现 OpenAI 兼容模型、配置 HeySure 服务器和本机 MCP | `renderer/controllers/pages/app-shell/shell-home-model*.js` 与 `renderer/styles/app-shell-model-settings.css` | 服务器和 MCP 为内嵌面板，仅新增和编辑模型使用首页弹窗；本机 MCP 配置由主进程直接写入剪贴板，不返回密钥 |
 | MCP 管理栏目 | `src/app/frontend/views/app-shell.html` 的 `#home-mcp`，开发模式下由首页左侧菜单进入 | 当前 MCP 工具目录、参数格式、示例提示词及请求和返回示例 | `renderer/controllers/pages/app-shell/shell-home-mcp.js`、`renderer/styles/app-shell-mcp.css` 与 `backend/features/browser/register-mcp-catalog-ipc.js` | 只读目录，仅开发模式下的主窗口首页主帧可访问；不执行示例，不捕获实际 Prompt、凭据或用户会话 |
 | 个人中心栏目 | `src/app/frontend/views/app-shell.html` 的 `#home-personal`，主窗口首页内嵌 | 登录/注册、设备登录、账号资料、额度、VIP 套餐、兑换码、常规设置、公告和教程 | `renderer/controllers/pages/app-shell/account/` 与 `renderer/styles/` | 登录表单和 VIP 弹层只在主窗口保留一个 DOM 真源；通过既有标签状态返回首页，不展开、不重载 AI；不得直接读取主进程存储或凭据 |
 | 内置代理弹窗 | `src/app/frontend/views/network-magic-popup.html`，受控临时窗口 | 从任务栏魔法棒入口管理内置代理和节点 | `backend/features/network/network-magic-popup-controller.js` 与 `renderer/controllers/pages/app-shell/network-magic-popup.js` | 不嵌入首页或 AI；未登录时导航到首页个人中心 |
@@ -47,6 +49,7 @@ browser extension ↔ AutomationBridge ↔ Chromium runtime
 | 浏览器历史手势弹窗 | 由 `main/features/browser/browser-history-popup-controller.js` 生成 `data:` 页面并加载到临时窗口 | 在顶部新建按钮手势中快速选择历史浏览器 | HTML 构建、窗口生命周期和输入路由归该 controller | 内容必须小型、短生命周期、无远程脚本；选项数据先在主进程规范化和转义；不得演变为第二套浏览器历史管理页 |
 | 标签上下文菜单弹窗 | 由 `main/features/browser/tab-context-menu-controller.js` 生成 `data:` 页面并加载到临时窗口 | 标签的重命名、关闭等上下文操作 | HTML 构建和动作回传归该 controller | 只承载上下文动作；必须绑定明确 tab ID、处理窗口销毁并转义可见文本；复杂设置应回到主窗口，不在弹窗中扩张 |
 | 更新下载页 | `main/features/updates/update-download-page.js` 创建窗口并加载受控远程地址 | 当直接安装包下载链路需要网页交互时，承载发行方下载页面 | URL 校验、导航、下载监听和窗口回收归更新域 | 这是外部页面而非本地 UI 真源；必须限制允许的 URL/导航和下载行为，不注入本地业务 DOM，不向页面暴露宽泛 preload 能力 |
+| 使用教程和商城 | 个人中心的教程、会员开通和兑换区商城入口 | 复用原教程内置 Chromium 浏览器，教程和固定商城地址各用一个网页标签 | 账号域 IPC 验证首页主帧，浏览器域管理 Profile 和标签 | 不创建 Electron 弹窗，不修改用户其他浏览器；后台更新教程地址不得覆盖商城页 |
 
 主窗口中的浏览器设置目前仍复用部分 `sidebar/client/.../side-panel/modules/` 控制器与侧栏样式，这是从独立设置页迁入 `app-shell.html` 后的已知过渡耦合。后续整改应按功能把 `browser-settings-*`、VPN 窗口栏绑定和对应样式迁到 `renderer/controllers/pages/app-shell/`、`renderer/styles/`，但迁移过程中只能移动真源，不能复制后保留两套实现。
 

@@ -9,6 +9,9 @@ const path = require('node:path');
 const { ASSETS, FILENAME, assetPath, sourcePage, uploadPage } = require('./pages');
 const { MODEL_PATH, MODEL_ID, API_KEY, modelResponse } = require('./local-model');
 
+const { CIRCLE_PATH, CIRCLE_SCRIPT_PATH, circlePage, circleScript } = require('./circle-fixture');
+const { EDITOR_PATH, EDITOR_SCRIPT_PATH, editorPage, editorScript } = require('./page-batch-fixture');
+
 const HOST = '127.0.0.1';
 const MAX_FILE_BYTES = 1024 * 1024;
 
@@ -85,6 +88,10 @@ function createRouter(uploadScript) {
 
   function readRoute(response, url) {
     const route = url.pathname;
+    if (route === CIRCLE_PATH) return reply(response, 200, 'text/html; charset=utf-8', circlePage());
+    if (route === CIRCLE_SCRIPT_PATH) return reply(response, 200, 'text/javascript; charset=utf-8', circleScript);
+    if (route === EDITOR_PATH) return reply(response, 200, 'text/html; charset=utf-8', editorPage);
+    if (route === EDITOR_SCRIPT_PATH) return reply(response, 200, 'text/javascript; charset=utf-8', editorScript);
     if (route === '/state') return json(response, 200, state);
     if (route === '/a') return reply(response, 200, 'text/html; charset=utf-8', sourcePage());
     if (route === '/upload-page.js') return reply(response, 200, 'text/javascript; charset=utf-8', uploadScript);
@@ -176,6 +183,7 @@ async function startFixture() {
     let closing;
     const close = () => closing ??= closeServer(server).finally(removeRoot);
     return { origin, urls: { a: `${origin}/a`, b: `${origin}/b`, c: `${origin}/c`,
+      circle: origin + CIRCLE_PATH, editor: origin + EDITOR_PATH,
       dropOnce: `${origin}/b?mode=drop-once`, state: `${origin}/state`, reset: `${origin}/reset`, model: origin + MODEL_PATH },
     model: { id: MODEL_ID, apiKey: API_KEY }, ...paths, close };
   } catch (error) {

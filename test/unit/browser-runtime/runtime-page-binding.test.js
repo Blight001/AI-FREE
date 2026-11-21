@@ -45,6 +45,18 @@ test('an old kernel rejects the wire envelope and never receives an unbound retr
   assert.deepEqual(attempts, ['page-bound-command']);
 });
 
+test('a page action cancelled while queued never reaches the Chromium command client', async () => {
+  const controller = new AbortController();
+  const runtime = commandRuntime({ send: async () => assert.fail('Cancelled action reached Chromium') });
+  runtime.enqueueProfileOperation = async (_profile, operation) => {
+    controller.abort();
+    return operation();
+  };
+  await assert.rejects(dispatchRuntimeAutomationByProcessId(runtime, PID, 'perform-action', { action: 'click' }, {
+    ...OPTIONS, signal: controller.signal,
+  }), { name: 'AbortError' });
+});
+
 function automationFixture(handler, select) {
   const calls = [];
   const runtime = {

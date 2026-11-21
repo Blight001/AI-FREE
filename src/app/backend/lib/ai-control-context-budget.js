@@ -1,8 +1,10 @@
 'use strict';
 
-const { groupValidMessages } = require('./ai-control-message-window');
+const { contextLimitError, groupValidMessages, messageTokenEstimate } = require('./ai-control-message-window');
+const { compactToolContent, omitToolImage } = require('./ai-control-tool-result-budget');
 
 const DEFAULT_MAX_REQUEST_CHARS = 60000;
+const DEFAULT_TOOL_IMAGE_CHARS = 96000;
 const DEFAULT_TOOL_RESULT_CHARS = 12000;
 const DEFAULT_TEXT_MESSAGE_CHARS = 16000;
 const DEFAULT_SUMMARY_CHARS = 6000;
@@ -47,18 +49,14 @@ function compactMessage(message, limits) {
   delete copy.artifacts;
   delete copy.artifactReferences;
   if (copy.role === 'tool') {
-    copy.content = truncateMiddle(copy.content, limits.toolResultChars);
-  } else if (typeof copy.content === 'string') {
+    copy.content = compactToolContent(String(copy.content ?? ''), limits.toolResultChars);
+  } else if (!limits.preserveContent && typeof copy.content === 'string') {
     copy.content = truncateMiddle(copy.content, limits.textMessageChars);
   }
   if (copy.role === 'assistant' && Array.isArray(copy.tool_calls)) {
     copy.tool_calls = compactToolCalls(copy.tool_calls, limits.toolArgumentChars);
   }
   return copy;
-}
-
-function compactGroup(group, limits) {
-  return group.map((message) => compactMessage(message, limits));
 }
 
 function isUserRequest(message) {
@@ -88,7 +86,7 @@ function createHistorySummary(groups, maxChars) {
   if (!groups.length || maxChars < 80) return null;
   const heading = `[较早对话摘要：已压缩 ${groups.length} 个消息组]`;
   const lines = summaryLines(groups, Math.max(0, maxChars - heading.length - 1));
-  return lines.length ? { role: 'user', content: [heading, ...lines].join('\n') } : null;
+  return lines.length ? { role: 'assistant', content: [heading, ...lines].join('\n') } : null;
 }
 
 function partitionGroups(messages) {
@@ -104,65 +102,148 @@ function partitionGroups(messages) {
 function normalizeLimits(options = {}) {
   return {
     maxRequestChars: Number(options.maxRequestChars) || DEFAULT_MAX_REQUEST_CHARS,
+    toolImageChars: Math.max(0, Number(options.toolImageChars ?? DEFAULT_TOOL_IMAGE_CHARS)),
     toolResultChars: Number(options.toolResultChars) || DEFAULT_TOOL_RESULT_CHARS,
     textMessageChars: Number(options.textMessageChars) || DEFAULT_TEXT_MESSAGE_CHARS,
     summaryChars: Number(options.summaryChars) || DEFAULT_SUMMARY_CHARS,
     toolArgumentChars: Number(options.toolArgumentChars) || 8000,
+    contextWindow: Number(options.contextWindow) || 0,
   };
 }
 
-function collectRecentGroups(system, conversation, tools, limits, requestIndex) {
-  const compacted = conversation.map((group) => compactGroup(group, limits));
-  let firstKeptIndex = compacted.length;
-  for (let index = compacted.length - 1; index >= 0; index -= 1) {
-    const request = index > requestIndex ? compacted[requestIndex] || [] : [];
-    const candidate = [...system, ...request, ...compacted.slice(index).flat()];
-    if (serializedLength(candidate, tools) > limits.maxRequestChars) break;
-    firstKeptIndex = index;
+function createRequestSizer(tools, contextWindow) {
+  const overhead = serializedLength([], tools);
+  const sizes = new WeakMap();
+  function chars(messages) {
+    let length = overhead + Math.max(0, messages.length - 1);
+    for (const message of messages) {
+      if (!sizes.has(message)) sizes.set(message, JSON.stringify(message).length);
+      length += sizes.get(message);
+    }
+    return length;
   }
-  return keepRecentGroups(conversation, compacted, firstKeptIndex, requestIndex);
+  function fits(messages, maxChars) {
+    if (contextWindow > 0) {
+      const estimated = messages.reduce((total, message) => total + messageTokenEstimate(message), 0);
+      if (estimated > contextWindow) return false;
+    }
+    return chars(messages) <= maxChars;
+  }
+  return { chars, fits };
+}
+function projectGroup(group, limits) {
+  const images = group.filter((message) => message.ai_free_transient_image === true);
+  const imageIds = new Set(images.map((message) => message.ai_free_tool_call_id));
+  const originalTools = new Map();
+  const messages = group.filter((message) => message.ai_free_transient_image !== true).map((message) => {
+    if (message.role !== 'tool' || !imageIds.has(message.tool_call_id)) return compactMessage(message, limits);
+    originalTools.set(message.tool_call_id, message);
+    return compactMessage(omitToolImage(message, 'context_budget'), limits);
+  });
+  return { messages, images, originalTools, limits };
 }
 
-function keepRecentGroups(conversation, compacted, firstKeptIndex, requestIndex) {
-  const omitted = conversation.slice(0, firstKeptIndex);
-  const kept = compacted.slice(firstKeptIndex);
-  if (requestIndex >= 0 && requestIndex < firstKeptIndex) {
-    omitted.splice(requestIndex, 1);
-    kept.unshift(compacted[requestIndex]);
+function requiredGroups(conversation, requestIndex) {
+  const required = new Set([conversation.length - 1]);
+  if (requestIndex < 0) return required;
+  required.add(requestIndex);
+  for (let index = requestIndex + 1; index < conversation.length; index += 1) {
+    if (conversation[index][0]?.ai_free_attachment_context === true) required.add(index);
   }
-  return { kept, omitted };
+  return required;
 }
 
-function forceLatestGroup(conversation, limits, requestIndex) {
-  const tight = {
-    ...limits, toolResultChars: 2000, textMessageChars: 4000, toolArgumentChars: 2000,
-  };
-  const compacted = conversation.map((group, index) => compactGroup(group, index === requestIndex ? limits : tight));
-  return keepRecentGroups(conversation, compacted, conversation.length - 1, requestIndex);
+function flattenGroups(selected) {
+  return [...selected.entries()].sort(([a], [b]) => a - b).flatMap(([, group]) => group.messages);
+}
+
+function collectRecentGroups(system, conversation, sizer, limits, required) {
+  const kept = new Map();
+  const add = (index, preserveContent) => kept.set(index, projectGroup(conversation[index], { ...limits, preserveContent }));
+  for (const index of required) {
+    if (index >= 0) add(index, isUserRequest(conversation[index][0]) || conversation[index][0]?.ai_free_attachment_context === true);
+  }
+  const check = () => sizer.fits([...system, ...flattenGroups(kept)], limits.maxRequestChars);
+  if (!check()) return null;
+  for (let index = conversation.length - 1; index >= 0; index -= 1) {
+    if (kept.has(index)) continue;
+    add(index, false);
+    if (check()) continue;
+    kept.delete(index);
+    break;
+  }
+  return kept;
+}
+
+function selectGroups(system, conversation, sizer, limits, required) {
+  const initial = collectRecentGroups(system, conversation, sizer, limits, required);
+  if (initial) return initial;
+  for (const cap of [2000, 512, 128]) {
+    const selected = collectRecentGroups(system, conversation, sizer, {
+      ...limits, toolResultChars: Math.min(cap, limits.toolResultChars),
+      toolArgumentChars: Math.min(limits.toolArgumentChars, Math.max(256, cap)),
+    }, required);
+    if (selected) return selected;
+  }
+  throw contextLimitError();
+}
+
+function addHistorySummary(system, conversation, selected, sizer, limits) {
+  const omitted = conversation.filter((_group, index) => !selected.has(index));
+  const messages = flattenGroups(selected);
+  const remaining = limits.maxRequestChars - sizer.chars([...system, ...messages]);
+  const summary = createHistorySummary(omitted, Math.min(limits.summaryChars, remaining - 80));
+  if (!summary || !sizer.fits([...system, summary, ...messages], limits.maxRequestChars)) return system;
+  return [...system, summary];
+}
+
+function reattachGroupImage(group, image) {
+  const { ai_free_tool_call_id: id, ...envelope } = image;
+  const original = group.originalTools.get(id);
+  if (!original) return null;
+  const tool = compactMessage(original, group.limits);
+  const messages = group.messages.map((message) => message.tool_call_id === id ? tool : message);
+  return { ...group, messages: [...messages, envelope] };
+}
+
+function restoreToolImages(prefix, selected, sizer, limits) {
+  let available = limits.toolImageChars;
+  const totalChars = limits.maxRequestChars + available;
+  for (const index of [...selected.keys()].sort((a, b) => b - a)) {
+    const group = selected.get(index);
+    for (const image of group.images) {
+      const size = JSON.stringify(image).length + 1;
+      if (size > available) continue;
+      const candidate = reattachGroupImage(selected.get(index), image);
+      if (!candidate) continue;
+      const previous = selected.get(index);
+      selected.set(index, candidate);
+      if (sizer.fits([...prefix, ...flattenGroups(selected)], totalChars)) available -= size;
+      else selected.set(index, previous);
+    }
+  }
 }
 
 function fitAiControlContext(messages = [], tools = [], options = {}) {
   const limits = normalizeLimits(options);
+  if (limits.contextWindow > 0 && tools.length) {
+    limits.contextWindow -= Math.ceil(JSON.stringify(tools).length / 4);
+    if (limits.contextWindow <= 0) throw contextLimitError();
+  }
   const { system, conversation } = partitionGroups(messages);
+  const prefix = system.map((message) => compactMessage(message, { ...limits, preserveContent: true }));
   const requestIndex = conversation.map((group) => isUserRequest(group[0])).lastIndexOf(true);
-  let selected = collectRecentGroups(system, conversation, tools, limits, requestIndex);
-  if (selected.omitted.length) {
-    const reserved = Math.min(limits.summaryChars, Math.floor(limits.maxRequestChars * 0.2));
-    selected = collectRecentGroups(system, conversation, tools, {
-      ...limits,
-      maxRequestChars: Math.max(1000, limits.maxRequestChars - reserved),
-    }, requestIndex);
-  }
-  if (conversation.length && selected.omitted.at(-1) === conversation.at(-1)) {
-    // An oversized latest group still travels with the user's actual request.
-    selected = forceLatestGroup(conversation, limits, requestIndex);
-  }
-  const flattened = selected.kept.flat();
-  const withoutSummary = [...system, ...flattened];
-  const remaining = limits.maxRequestChars - serializedLength(withoutSummary, tools);
-  const summary = createHistorySummary(selected.omitted, Math.min(limits.summaryChars, remaining - 80));
-  const fitted = summary ? [...system, summary, ...flattened] : withoutSummary;
-  return groupValidMessages(fitted).flat();
+  const required = requiredGroups(conversation, requestIndex);
+  const sizer = createRequestSizer(tools, limits.contextWindow);
+  // Attachment ingress already limits the size of explicit user inputs. Reserve their cost once,
+  // while keeping the model window check and the tool-image allocation independent.
+  const attachments = [...prefix, ...[...required].flatMap((index) => conversation[index] || [])]
+    .filter((message) => message.ai_free_attachment_context === true);
+  limits.maxRequestChars += sizer.chars(attachments) - sizer.chars([]);
+  const selected = selectGroups(prefix, conversation, sizer, limits, required);
+  restoreToolImages(prefix, selected, sizer, limits);
+  const withSummary = addHistorySummary(prefix, conversation, selected, sizer, limits);
+  return [...withSummary, ...flattenGroups(selected)];
 }
 
 module.exports = {

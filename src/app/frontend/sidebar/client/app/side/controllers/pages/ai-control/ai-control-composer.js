@@ -137,16 +137,21 @@
     const messages = currentMessages();
     const attachmentContext = typeof takeChatAttachmentContext === 'function'
       ? takeChatAttachmentContext(content)
-      : { attachmentPaths: [], mentions: [] };
+      : { attachmentPaths: [], inlineAttachments: [], mentions: [] };
+    const inlineAttachments = attachmentContext.inlineAttachments || [];
     const wasFirstExchange = !messages.some((message) => message.role === 'assistant' && String(message.content || '').trim());
     const userMessage = { role: 'user', content };
     if (attachmentContext.attachmentPaths.length > 0) {
       userMessage.attachmentPaths = attachmentContext.attachmentPaths;
     }
+    if (inlineAttachments.length > 0) {
+      userMessage.inlineAttachments = inlineAttachments;
+    }
     messages.push(userMessage);
     appendMessage('user', content, {
       messageIndex: messages.length - 1,
       attachmentPaths: attachmentContext.attachmentPaths,
+      inlineAttachments,
     });
     updateSessionTitleUi();
     input.value = '';

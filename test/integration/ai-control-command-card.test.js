@@ -88,3 +88,13 @@ test('command card shows distinct terminal states and understands old timeout re
     assert.equal(card.querySelector('.ai-chat-tool-state').textContent, label);
   }
 });
+
+test('the page batch uses one activity and keeps its confirmed count on interruption', (t) => {
+  const { card, update } = cardFixture(t, { name: 'browser_page_batch', status: 'running', arguments: {} });
+  const summary = card.querySelector('.ai-chat-tool-state');
+  update({ progress: { completed: 3, requested: 10 } });
+  assert.equal(summary.textContent, '3/10 步');
+  update({ status: 'error', result: { completed: 3, requested: 10, failedStepOutcome: 'unknown' } });
+  update({ progress: { completed: 4, requested: 10 } });
+  assert.equal(summary.textContent, '已中断 · 3/10 步');
+});

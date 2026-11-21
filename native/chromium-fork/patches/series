@@ -59,3 +59,7 @@
 0061-ai-free-user-agent-metadata.patch
 0062-ai-free-prism-pointer.patch
 0063-ai-free-atomic-page-binding.patch
+0064-ai-free-takeover-pointer.patch
+0065-ai-free-account-field-fill.patch
+0066-ai-free-destination-tab.patch
+0067-ai-free-keep-embedded-tab-strip.patch

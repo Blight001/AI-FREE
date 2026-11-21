@@ -482,9 +482,7 @@ html.theme-light #new-browser-window-btn:hover:not(:disabled) {
   text-overflow: ellipsis;
   flex-grow: 1;
   min-width: 0;
-  /* 显式基准字号：标题原本继承浏览器默认 16px，选中放大需要明确起点。 */
   font-size: calc(16px * var(--ui-scale, 1));
-  transition: font-size 0.22s ease;
 }
 
 .tab-title-editor {
@@ -509,10 +507,7 @@ html.theme-light #new-browser-window-btn:hover:not(:disabled) {
   box-shadow: 0 3px 10px color-mix(in srgb, var(--shell-accent) 18%, transparent);
 }
 
-/* 当前选中标签统一用放大加粗的标题字体标识（普通/魔法/AI 状态都适用），
-   字号随 .tab-title 的 transition 平滑变大变小。 */
 .tab.active .tab-title {
-  font-size: calc(19px * var(--ui-scale, 1));
   font-weight: 700;
 }
 
@@ -568,10 +563,6 @@ html.theme-light .tab.network-magic {
 @media (prefers-reduced-motion: reduce) {
   .tab.network-magic {
     animation: none;
-  }
-
-  .tab-title {
-    transition: none;
   }
 }
 

@@ -3,6 +3,7 @@ const { resolveTabTitle } = require('../../services/tab-common');
 const { createTabContextMenuController } = require('../../features/browser/tab-context-menu-controller');
 const { createNetworkMagicPopupController } = require('../../features/network/network-magic-popup-controller');
 const { createSidebarFocusHandler } = require('../../features/browser/sidebar-focus-controller');
+const { updateMainWindowFrameTheme } = require('../../features/window/main-window-frame');
 const { registerExternalMcpConfigIpc } = require('../../features/browser/register-external-mcp-config-ipc');
 const {
   readWindowCloseBehavior,
@@ -43,6 +44,7 @@ function createThemeController(ui) {
           const backgrounds = { light: '#f6f9fd', gold: '#0c0b09', dark: '#0f1115' };
           mainWindow.setBackgroundColor(backgrounds[currentTheme]);
           sendThemeToContents(mainWindow.webContents, currentTheme);
+          updateMainWindowFrameTheme(mainWindow, currentTheme);
         }
       } catch (_) {}
       try { ui?.sendToSide?.('app-theme-changed', currentTheme); } catch (_) {}
@@ -396,6 +398,20 @@ function registerUiUtilityIPC(ipc, ctx) {
     const popup = networkMagicPopup.getWindow();
     if (popup && popup.webContents.id === event.sender?.id) networkMagicPopup.close();
     openHomeAccountCenter(ui);
+  });
+  ipc.on('request-home-model-settings', (event) => {
+    const side = ui.getSideView?.()?.webContents;
+    const main = ui.getMainWindow?.()?.webContents;
+    if (!side || side.isDestroyed?.() || event.sender !== side || event.senderFrame !== side.mainFrame) return;
+    if (!main || main.isDestroyed?.()) return;
+    const open = () => {
+      if (main.isDestroyed?.()) return;
+      ui.switchTab(null);
+      ui.revealMainWindow?.();
+      main.send('open-home-model-settings');
+    };
+    if (main.isLoadingMainFrame?.()) main.once('did-finish-load', open);
+    else open();
   });
   ipc.handle('open-active-web-console', async () => {
     try {

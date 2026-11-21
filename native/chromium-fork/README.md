@@ -40,6 +40,22 @@ depot_tools Python/CIPD bootstrap，再启动并行 gclient 任务，避免首�
 正式运行目录是 `resources/chromium/`。stage 脚本复制完整 Chromium 运行时，
 包括 DLL、PAK、locales、resources、Vulkan/SwiftShader 文件和版本目录。
 
+## 嵌入窗口的标签拖拽
+
+`0039` 在嵌入模式下允许标签在原标签栏内换序。拖出标签栏时，标签仍附着在原窗口。
+拖动单个或全部标签也不会启动移动整个嵌入窗口的操作。
+
+Windows 原生鼠标验收可单独运行。传入新编译的 DLL 可以用临时运行目录测试，方便在项目内核仍被占用时验证。
+
+```powershell
+$env:AI_FREE_TAB_DRAG_ONLY = '1'
+try {
+  npm run accept:chromium-input -- E:/chromium-ai-free/src/out/AI-Free/chrome.dll
+} finally {
+  Remove-Item Env:AI_FREE_TAB_DRAG_ONLY
+}
+```
+
 ## 启动自检与故障诊断
 
 ### HTML5 媒体支持

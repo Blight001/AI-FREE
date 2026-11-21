@@ -10,12 +10,21 @@ const customStore = {
 };
 
 test('custom model requires complete configuration', () => {
-  assert.deepEqual(createCustomModel(customStore), {
+  assert.deepEqual(createCustomModel(customStore), [{
     id: '__custom_openai_api__', name: 'Private', model: 'fixture-model', custom_api: true,
     supports_image_input: false,
-  });
-  assert.equal(createCustomModel({ aiControlSettings: { customApi: { enabled: true } } }), null);
-  assert.equal(createCustomModel({}), null);
+    supports_tools: true,
+  }]);
+  assert.deepEqual(createCustomModel({ aiControlSettings: { customApi: { enabled: true } } }), []);
+  assert.deepEqual(createCustomModel({}), []);
+});
+
+test('custom model service exposes every configured model with stable ids', () => {
+  const store = { aiControlSettings: { customApis: [
+    { id: '__custom_openai_api__:first', enabled: true, baseUrl: 'https://one.example/v1', model: 'one' },
+    { id: '__custom_openai_api__:second', enabled: true, baseUrl: 'https://two.example/v1', model: 'two' },
+  ] } };
+  assert.deepEqual(createCustomModel(store).map((model) => model.id), ['__custom_openai_api__:first', '__custom_openai_api__:second']);
 });
 
 test('remote unavailable response preserves an available custom model', () => {

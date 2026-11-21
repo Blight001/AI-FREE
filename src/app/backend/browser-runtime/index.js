@@ -44,6 +44,9 @@ class BrowserRuntimeManager {
   async reload(profileId, type) { return this.chromium.reload(profileId); }
   async navigate(profileId, type, url) { return this.chromium.navigate?.(profileId, url); }
   async openTabs(profileId, type, urls) { return this.chromium.openTabs?.(profileId, urls); }
+  async openForegroundTab(profileId, type, url, previousUrl) {
+    return this.chromium.openForegroundTab(profileId, url, previousUrl);
+  }
   async listTabs(profileId, type) { return this.chromium.listTabs?.(profileId); }
   async dispatchInput(profileId, input) { return this.chromium.dispatchInput(profileId, input); }
   async dispatchInputByProcessId(processId, input) {

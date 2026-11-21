@@ -10,6 +10,9 @@ const { app, BrowserWindow } = require('electron');
 const { createBrowserRuntimeManager } = require('../../../src/app/backend/browser-runtime');
 const { MAX_MESSAGE_BYTES, PROTOCOL_VERSION } = require('../../../src/app/backend/browser-runtime/chromium-command-client');
 const { acceptPageBinding } = require('../../helpers/flows/chromium-page-binding-cases');
+const { verifyTakeoverPointer } = require('../../helpers/flows/chromium-takeover-pointer');
+const { acceptChromiumRobustness } = require('../../helpers/flows/chromium-runtime-robustness');
+const { resolveTestResources } = require('../../helpers/flows/chromium-candidate-resources');
 
 const acceptanceChromiumPath = String(process.env.AI_FREE_ACCEPTANCE_CHROMIUM_PATH || '').trim();
 if (acceptanceChromiumPath) {
@@ -26,6 +29,13 @@ const requests = [];
 let manager;
 let window;
 let server;
+
+function readCandidateDll() {
+  const index = process.argv.indexOf('--candidate-dll');
+  if (index < 0) return '';
+  assert(process.argv[index + 1], '--candidate-dll requires a path');
+  return process.argv[index + 1];
+}
 
 function cookieHeaderHas(header, name, value) {
   return String(header || '').split(/;\s*/).includes(`${name}=${value}`);
@@ -46,6 +56,11 @@ function createTestServer() {
     });
     response.setHeader('Content-Type', 'text/html; charset=utf-8');
     response.setHeader('Cache-Control', 'no-store');
+    if (url.pathname === '/tutorial-entry') {
+      response.writeHead(302, { Location: '/page?profile=a' });
+      response.end();
+      return;
+    }
     if (url.pathname.startsWith('/asset-') && url.pathname.endsWith('.svg')) {
       response.setHeader('Content-Type', 'image/svg+xml');
       response.end(`<svg xmlns="http://www.w3.org/2000/svg" width="320" height="240"><rect width="320" height="240" fill="#345"/><text x="20" y="120" fill="white">${url.pathname}</text></svg>`);
@@ -334,7 +349,7 @@ app.whenReady().then(async () => {
   const acceptanceResourcesPath = String(process.env.AI_FREE_ACCEPTANCE_RESOURCES_PATH || '').trim()
     || (acceptanceChromiumPath
       ? path.dirname(acceptanceChromiumPath)
-      : path.resolve(__dirname, '..', '..', '..', 'resources'));
+      : resolveTestResources(readCandidateDll()));
   manager = createBrowserRuntimeManager({
     userDataDir: runtimeRoot,
     sandboxDir: path.join(runtimeRoot, 'AI-Workspace'),
@@ -342,6 +357,63 @@ app.whenReady().then(async () => {
     getParentWindow: () => window,
     logger: console,
   });
+
+  if (process.argv.includes('--robustness-only')) {
+    await acceptChromiumRobustness({ manager, origin, stopAndAssertReleased });
+    return shutdown(0);
+  }
+
+  if (process.argv.includes('--tutorial-shop-only')) {
+    const profileId = 'phase3_tutorial_shop_a';
+    const tutorialUrl = `${origin}/tutorial-entry`;
+    const landedUrl = `${origin}/page?profile=a`;
+    const shopUrl = `${origin}/page?profile=b`;
+    const { state } = await launchProfile(profileId, landedUrl);
+    await manager.navigate(profileId, 'chromium', tutorialUrl);
+    const countEntryLoads = () => requests.filter((request) => request.path === '/tutorial-entry').length;
+    const entryLoads = countEntryLoads();
+    for (const url of [shopUrl, tutorialUrl, shopUrl, tutorialUrl]) {
+      await manager.openForegroundTab(profileId, 'chromium', url);
+      const { result } = await manager.listTabs(profileId, 'chromium');
+      assert.equal(result.count, 2, `Expected one tutorial and one shop tab, got ${JSON.stringify(result.tabs.map((tab) => tab.url))}`);
+      assert.equal(result.activeTab.url, url === tutorialUrl ? landedUrl : shopUrl);
+    }
+    assert.equal(countEntryLoads(), entryLoads, 'Switches must not request the tutorial again');
+    const article = `${origin}/page?profile=article`;
+    await manager.navigate(profileId, 'chromium', article);
+    await manager.openForegroundTab(profileId, 'chromium', shopUrl);
+    await manager.openForegroundTab(profileId, 'chromium', tutorialUrl);
+    assert.equal((await manager.listTabs(profileId, 'chromium')).result.activeTab.url, article);
+
+    const newGuide = `${origin}/page?profile=new-guide`;
+    await manager.openForegroundTab(profileId, 'chromium', newGuide, tutorialUrl);
+    assert.deepEqual((await manager.listTabs(profileId, 'chromium')).result.tabs.map((tab) => tab.url), [newGuide, shopUrl]);
+    await stopAndAssertReleased(profileId, state.pid);
+    const restored = await manager.launchProfile({
+      profileId, runtimeType: 'chromium', restoreLastSession: true, restoreFallbackUrl: tutorialUrl,
+    }, { x: 0, y: 41, width: 1180, height: 719 });
+    await manager.openForegroundTab(profileId, 'chromium', tutorialUrl);
+    assert.equal((await manager.listTabs(profileId, 'chromium')).result.activeTab.url, newGuide);
+    assert.equal((await manager.listTabs(profileId, 'chromium')).result.count, 2);
+    assert.equal(countEntryLoads(), entryLoads, 'A restored tab still knows its original tutorial entry');
+
+    await manager.dispatchAutomationByProcessId(restored.pid, 'close-tab', { index: 0 });
+    await manager.openForegroundTab(profileId, 'chromium', tutorialUrl);
+    await waitForRequest((request) => request.path === '/tutorial-entry' && countEntryLoads() > entryLoads);
+    assert.equal((await manager.listTabs(profileId, 'chromium')).result.count, 2, 'An explicitly closed tutorial can be opened again');
+    console.log('Tutorial and shop reused two Chromium page tabs in one profile');
+    await stopAndAssertReleased(profileId, restored.pid);
+    return shutdown(0);
+  }
+
+  if (process.argv.includes('--account-fill-only')) {
+    const { acceptAccountFill } = require('../../helpers/flows/chromium-account-fill');
+    await acceptAccountFill({
+      manager, runtimeRoot, plainOrigin: origin, stopAndAssertReleased,
+      certificateDirectory: process.argv[process.argv.indexOf('--account-fill-only') + 1],
+    });
+    return shutdown(0);
+  }
 
   if (process.argv.includes('--page-binding-only')) {
     const profileId = 'phase3_binding';
@@ -356,7 +428,15 @@ app.whenReady().then(async () => {
     return shutdown(0);
   }
 
+  if (!process.argv.includes('--takeover-pointer-only')) {
+    await acceptChromiumRobustness({ manager, origin, stopAndAssertReleased });
+  }
   const a = await launchProfile('phase3_a', `${origin}/page?profile=a`);
+  await verifyTakeoverPointer({ manager, pid: a.state.pid, profileId: 'phase3_a', url: `${origin}/page?profile=a` });
+  if (process.argv.includes('--takeover-pointer-only')) {
+    await stopAndAssertReleased('phase3_a', a.state.pid);
+    return shutdown(0);
+  }
   await manager.hide('phase3_a', 'chromium');
   const b = await launchProfile(
     'phase3_b',

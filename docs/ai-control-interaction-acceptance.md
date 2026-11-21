@@ -114,12 +114,16 @@ node --test test/acceptance/fixtures/ai-control-interaction/electron-sidebar.tes
 | --- | --- |
 | `fixture.test.js` | 回环 HTTP、同名 PNG、B/C 独立统计、截断回执、延时命令和临时目录清理。 |
 | `browser-smoke.js` | 真实 Chromium Fork 中的 A/B/C DOM、文件选择、站点提交和读回。Playwright 直接操控测试网页。 |
-| `native-model-smoke.js` | 自定义 API、真实 Chromium Bridge、真实素材下载和上传选择，使用夹具模型。 |
+| `native-model-smoke.js` | 自定义 API、真实 Chromium Bridge、普通拖拽、一次调用执行 10 个混合页面步骤并读回草稿、真实素材下载和上传选择，使用夹具模型。 |
 | `electron-sidebar.test.js` | 从 `.generated/app` 加载实际侧栏和 preload，使用生产 IPC 注册、聊天服务、工作区预览及磁盘历史仓库。模型返回固定工具序列，浏览器工具由桥接替身返回。 |
 | `npm run accept:chromium-phase3 -- --page-binding-only` | 真实内核验证同 URL 重载失效、等待和下载的页面保护、上传点击期间切页，以及工作区原文件被替换后网页仍读取已确认字节。 |
 | U1–U9 | 在候选版本上由用户操作，记录实际结果。 |
 
 常规 Electron 夹具覆盖直接发送任务、自动识别页、对话中查看 PNG、关闭并重启 Electron 后通过历史菜单恢复和再次引用、取消上传、批准中目标身份变更、确认文件选择以及丢失工具结果后停止重放。页面令牌由桥接替身提供。实际内核是否正确签发、保留和作废令牌，须在具备对应能力的内核上验证。站点处理后丢失 HTTP 回执的场景由 `browser-smoke.js` 实测，Electron 测试中的传输故障由桥接替身注入。
+
+混合批处理验收可在 `urls.editor` 发送 `QA PREVIEW DRAFT`。预期观察并接管后，侧栏用一条 `browser_page_batch` 执行 10 步（点击、表单输入、按键、条件等待），显示 `10/10 步`；最后读回网页上的 `Accepted: First draft!`。刷新后再复测。单笔画圆仍是独立的浏览器输入回归，不是批处理的触发条件。
+
+批处理只接收同一页面中参数已知的 `browser_action` 和 `browser_wait`（条件等待），每批 1–50 步，单步等待或动作超时参数不超过 10 秒；60 秒后不再发起新步骤，已发出的操作仍需等待结果。需要模型判断新页面、确认敏感操作或处理文件等任务时，在该步前结束本批，再使用原有工具。失败或停止不回滚已完成步骤，不续跑，不重放；同轮剩余调用会标记为未执行。在执行中插入新消息时，等待当前步骤返回，在下一步前中止原计划；想立即停止等待应点击停止。检查 `completed`、`failedStepOutcome` 和 `notAttempted`，对未知结果先读回页面。文档不变也不代表 UI 布局不变：布局会变的步骤应使用稳定选择器和条件等待，不能沿用可能漂移的坐标。
 
 ## 候选包验证记录
 
