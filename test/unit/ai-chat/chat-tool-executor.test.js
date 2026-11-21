@@ -122,12 +122,13 @@ test('没有浏览器连接时 prompt 不会诱导 AI 虚构浏览器 MCP', () =
 });
 
 test('多浏览器工具要求明确路由，名称歧义和未知连接返回可恢复诊断', () => {
-  const connections = [{ id: 'a' }, { id: 'b' }];
-  const describe = () => 'A(a), B(b)';
-  assert.equal(resolvePluginTarget({}, connections, (ref) => connections.find((item) => item.id === ref), describe, 'a').connection.id, 'a');
-  assert.match(resolvePluginTarget({ change_browser: 'same' }, connections, () => ({ ambiguous: true }), describe).error, /change_browser/);
-  const missing = resolvePluginTarget({ change_browser: 'missing' }, connections, () => null, describe).error;
-  assert.match(missing, /当前 AI 已选且在线/);
+  const connections = [{ id: 'a', name: 'same' }, { id: 'b', name: 'same' }];
+  const describe = () => 'same(a), same(b)';
+  assert.match(resolvePluginTarget({}, connections, describe).error, /change_browser/);
+  assert.equal(resolvePluginTarget({}, connections, describe, 'a').connection.id, 'a');
+  assert.match(resolvePluginTarget({ change_browser: 'same' }, connections, describe).error, /多个/);
+  const missing = resolvePluginTarget({ change_browser: 'missing' }, connections, describe).error;
+  assert.match(missing, /在线浏览器/);
   assert.match(missing, /history_id\/tab_id 不能代替 change_browser/);
 });
 

@@ -36,11 +36,11 @@ test('only the locally authorized chat can route input to an app surface', async
     click: (profileId, surface, ref) => { events.push([profileId, surface, ref]); return { success: true }; },
   };
   const id = 'native:profile-a';
-  const action = { surface: 'sidebar', action: 'click', ref: 'ai-chat-browser-trigger' };
+  const action = { surface: 'sidebar', action: 'click', ref: 'ai-chat-model-trigger' };
   assert.equal((await service.dispatch(id, 'browser_action', action)).errorCode, 'APP_SURFACE_UNAVAILABLE');
   assert.equal((await service.dispatch(id, 'browser_observe', { surface: 'sidebar' }, { allowAppSurface: true })).surface, 'sidebar');
   assert.equal((await service.dispatch(id, 'browser_action', action, { allowAppSurface: true })).success, true);
-  assert.deepEqual(events, [['profile-a', 'sidebar', 'ai-chat-browser-trigger']]);
+  assert.deepEqual(events, [['profile-a', 'sidebar', 'ai-chat-model-trigger']]);
   assert.deepEqual(calls, []);
 });
 

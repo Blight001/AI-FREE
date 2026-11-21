@@ -1,0 +1,526 @@
+diff --git a/chrome/browser/ui/BUILD.gn b/chrome/browser/ui/BUILD.gn
+index fa923e936da277d6fbe96efeb1bdd5c9e8fbea40..7c5ccf3d49f9ff5367512d2dc8e896f3541a8970 100644
+--- a/chrome/browser/ui/BUILD.gn
++++ b/chrome/browser/ui/BUILD.gn
+@@ -3316,6 +3316,8 @@ static_library("ui") {
+       "views/frame/ai_free_observe_highlight.h",
+       "views/frame/ai_free_automation_pointer.cc",
+       "views/frame/ai_free_automation_pointer.h",
++      "views/frame/ai_free_pointer_overlay.cc",
++      "views/frame/ai_free_pointer_overlay.h",
+       "views/frame/browser_caption_button_container_win.cc",
+       "views/frame/browser_caption_button_container_win.h",
+       "views/frame/browser_desktop_window_tree_host.h",
+diff --git a/chrome/browser/ui/views/frame/ai_free_automation_pointer.cc b/chrome/browser/ui/views/frame/ai_free_automation_pointer.cc
+index 1a59263a47a384b41b8530d52b63e4f4f9e79cda..df02d400fec283fb21dfc91bce84a8df346c8cd6 100644
+--- a/chrome/browser/ui/views/frame/ai_free_automation_pointer.cc
++++ b/chrome/browser/ui/views/frame/ai_free_automation_pointer.cc
+@@ -6,7 +6,6 @@
+ #include <map>
+ #include <memory>
+ #include <utility>
+-#include <vector>
+ 
+ #include "base/functional/bind.h"
+ #include "base/memory/raw_ptr.h"
+@@ -14,10 +13,10 @@
+ #include "base/task/sequenced_task_runner.h"
+ #include "base/time/time.h"
+ #include "base/timer/timer.h"
+-#include "cc/paint/paint_flags.h"
+ #include "chrome/browser/ui/browser.h"
+ #include "chrome/browser/ui/browser_finder.h"
+ #include "chrome/browser/ui/tabs/tab_strip_model.h"
++#include "chrome/browser/ui/views/frame/ai_free_pointer_overlay.h"
+ #include "chrome/browser/ui/views/frame/browser_view.h"
+ #include "chrome/browser/ui/views/frame/contents_web_view.h"
+ #include "content/public/browser/render_frame_host.h"
+@@ -25,108 +24,13 @@
+ #include "content/public/browser/web_contents.h"
+ #include "third_party/blink/public/common/input/web_input_event.h"
+ #include "third_party/blink/public/common/input/web_mouse_event.h"
+-#include "third_party/skia/include/core/SkPathBuilder.h"
+-#include "ui/compositor/layer.h"
+ #include "ui/events/event_utils.h"
+-#include "ui/gfx/canvas.h"
+ #include "ui/gfx/geometry/rect.h"
+ #include "ui/views/view.h"
+-#include "ui/views/view_class_properties.h"
+ #include "ui/views/view_observer.h"
+ 
+ namespace {
+ 
+-class PointerOverlay : public views::View {
+- public:
+-  PointerOverlay() {
+-    SetCanProcessEventsWithinSubtree(false);
+-    SetProperty(views::kViewIgnoredByLayoutKey, true);
+-    SetPaintToLayer();
+-    layer()->SetFillsBoundsOpaquely(false);
+-  }
+-
+-  void SetPointer(const gfx::PointF& point, bool pressed) {
+-    if (!trail_.empty() && (trail_.back() - point).Length() > 2) {
+-      trail_.push_back(point);
+-      if (trail_.size() > 7) {
+-        trail_.erase(trail_.begin());
+-      }
+-    } else if (trail_.empty()) {
+-      trail_.push_back(point);
+-    }
+-    point_ = point;
+-    pressed_ = pressed;
+-    SetVisible(true);
+-    SchedulePaint();
+-  }
+-
+-  void Pulse() {
+-    pulse_started_ = base::TimeTicks::Now();
+-    pulse_timer_.Start(FROM_HERE, base::Milliseconds(16),
+-                       base::BindRepeating(&PointerOverlay::TickPulse,
+-                                           base::Unretained(this)));
+-    SchedulePaint();
+-  }
+-
+-  void ClearPulse() {
+-    pulse_timer_.Stop();
+-    pulse_started_ = base::TimeTicks();
+-    SchedulePaint();
+-  }
+-
+-  void OnPaint(gfx::Canvas* canvas) override {
+-    cc::PaintFlags flags;
+-    flags.setAntiAlias(true);
+-    for (size_t i = 0; i < trail_.size(); ++i) {
+-      const U8CPU alpha = static_cast<U8CPU>(18 + 72 * (i + 1) / trail_.size());
+-      flags.setColor(SkColorSetARGB(alpha, 28, 132, 255));
+-      flags.setStyle(cc::PaintFlags::kFill_Style);
+-      canvas->DrawCircle(trail_[i], 2.0f + i * 0.25f, flags);
+-    }
+-    if (!pulse_started_.is_null()) {
+-      const double elapsed =
+-          (base::TimeTicks::Now() - pulse_started_).InMillisecondsF();
+-      const float progress =
+-          std::clamp(static_cast<float>(elapsed / 320.0), 0.0f, 1.0f);
+-      flags.setColor(SkColorSetARGB(static_cast<U8CPU>(110 * (1 - progress)),
+-                                    28, 132, 255));
+-      flags.setStyle(cc::PaintFlags::kStroke_Style);
+-      flags.setStrokeWidth(2.0f);
+-      canvas->DrawCircle(point_, 8.0f + 20.0f * progress, flags);
+-    }
+-    const float scale = pressed_ ? 0.88f : 1.0f;
+-    const SkPath path =
+-        SkPathBuilder()
+-            .moveTo(point_.x(), point_.y())
+-            .lineTo(point_.x() + 4 * scale, point_.y() + 17 * scale)
+-            .lineTo(point_.x() + 8 * scale, point_.y() + 11 * scale)
+-            .lineTo(point_.x() + 14 * scale, point_.y() + 10 * scale)
+-            .close()
+-            .detach();
+-    flags.setStyle(cc::PaintFlags::kFill_Style);
+-    flags.setColor(SK_ColorWHITE);
+-    canvas->DrawPath(path, flags);
+-    flags.setStyle(cc::PaintFlags::kStroke_Style);
+-    flags.setStrokeWidth(1.5f);
+-    flags.setColor(SkColorSetRGB(20, 91, 196));
+-    canvas->DrawPath(path, flags);
+-  }
+-
+- private:
+-  void TickPulse() {
+-    if (base::TimeTicks::Now() - pulse_started_ >= base::Milliseconds(320)) {
+-      return ClearPulse();
+-    }
+-    SchedulePaint();
+-  }
+-
+-  gfx::PointF point_;
+-  std::vector<gfx::PointF> trail_;
+-  base::TimeTicks pulse_started_;
+-  base::RepeatingTimer pulse_timer_;
+-  bool pressed_ = false;
+-};
+-
+ class PointerSession;
+ using SessionMap =
+     std::map<content::WebContents*, std::unique_ptr<PointerSession>>;
+@@ -286,9 +190,8 @@ class PointerSession : public content::WebContentsObserver,
+       DetachOverlay();
+     }
+     if (!overlay_) {
+-      std::unique_ptr<views::View> overlay = std::make_unique<PointerOverlay>();
+-      overlay_ = static_cast<PointerOverlay*>(
+-          browser_view->AddChildView(std::move(overlay)));
++      overlay_ = browser_view->AddChildView(
++          std::make_unique<AiFreePointerOverlay>());
+       overlay_->AddObserver(this);
+     }
+     UpdateOverlayBounds(browser_view);
+@@ -434,7 +337,7 @@ class PointerSession : public content::WebContentsObserver,
+ 
+   void HideOverlay() {
+     if (overlay_ && phase_ == Phase::kIdle) {
+-      overlay_->ClearPulse();
++      overlay_->ResetEffects();
+       overlay_->SetVisible(false);
+     }
+   }
+@@ -453,7 +356,7 @@ class PointerSession : public content::WebContentsObserver,
+   }
+ 
+   raw_ptr<content::WebContents> observed_contents_ = nullptr;
+-  raw_ptr<PointerOverlay> overlay_ = nullptr;
++  raw_ptr<AiFreePointerOverlay> overlay_ = nullptr;
+   gfx::PointF start_;
+   gfx::PointF position_;
+   gfx::PointF target_;
+diff --git a/chrome/browser/ui/views/frame/ai_free_pointer_overlay.cc b/chrome/browser/ui/views/frame/ai_free_pointer_overlay.cc
+new file mode 100644
+index 0000000000000000000000000000000000000000..c8262b33bb87a648680b7343887924b9b19a6216
+--- /dev/null
++++ b/chrome/browser/ui/views/frame/ai_free_pointer_overlay.cc
+@@ -0,0 +1,298 @@
++// Copyright 2026 AI-FREE Authors. All rights reserved.
++
++#include "chrome/browser/ui/views/frame/ai_free_pointer_overlay.h"
++
++#include <algorithm>
++#include <array>
++#include <cmath>
++
++#include "base/functional/bind.h"
++#include "cc/paint/paint_flags.h"
++#include "cc/paint/paint_shader.h"
++#include "third_party/skia/include/core/SkColor.h"
++#include "third_party/skia/include/core/SkPathBuilder.h"
++#include "third_party/skia/include/core/SkPoint.h"
++#include "third_party/skia/include/core/SkTileMode.h"
++#include "ui/base/metadata/metadata_impl_macros.h"
++#include "ui/compositor/layer.h"
++#include "ui/gfx/canvas.h"
++#include "ui/views/view_class_properties.h"
++
++namespace {
++
++constexpr auto kTrailFade = base::Milliseconds(260);
++constexpr auto kPulseDuration = base::Milliseconds(320);
++constexpr float kTrailLength = 65.0f;
++constexpr size_t kTrailSamples = 18;
++constexpr SkColor kWhiteTip = SkColorSetRGB(248, 243, 255);
++constexpr SkColor kViolet = SkColorSetRGB(176, 116, 255);
++constexpr SkColor kBlue = SkColorSetRGB(135, 183, 255);
++constexpr SkColor kCyan = SkColorSetRGB(81, 224, 246);
++constexpr SkColor kInset = SkColorSetRGB(43, 59, 82);
++
++template <size_t N>
++void PaintGradient(gfx::Canvas* canvas,
++                   const SkPath& path,
++                   const SkPoint (&axis)[2],
++                   const std::array<SkColor, N>& colors,
++                   const float* stops = nullptr,
++                   float stroke = 0,
++                   float opacity = 1) {
++  std::array<SkColor4f, N> rgba;
++  std::ranges::transform(colors, rgba.begin(), SkColor4f::FromColor);
++  cc::PaintFlags flags;
++  flags.setAntiAlias(true);
++  if (stroke > 0) {
++    flags.setStyle(cc::PaintFlags::kStroke_Style);
++    flags.setStrokeWidth(stroke);
++    flags.setStrokeCap(cc::PaintFlags::kRound_Cap);
++  }
++  flags.setAlphaf(opacity);
++  flags.setShader(cc::PaintShader::MakeLinearGradient(
++      axis, rgba.data(), stops, rgba.size(), SkTileMode::kClamp));
++  canvas->DrawPath(path, flags);
++}
++
++template <size_t N>
++void PaintRim(gfx::Canvas* canvas,
++              SkPoint a,
++              SkPoint b,
++              const std::array<SkColor, N>& colors,
++              float scale,
++              const float* stops = nullptr) {
++  const SkPoint axis[] = {a, b};
++  const SkPath edge = SkPathBuilder().moveTo(a).lineTo(b).detach();
++  PaintGradient(canvas, edge, axis, colors, stops, 3.5f * scale, 0.16f);
++  PaintGradient(canvas, edge, axis, colors, stops, 1.5f * scale);
++}
++
++void PaintArrow(gfx::Canvas* canvas, const gfx::PointF& point, bool pressed) {
++  const float scale = pressed ? 0.90f : 1.0f;
++  const SkPoint tip = {point.x(), point.y()};
++  const SkPoint wing = {tip.x() + 21.0f * scale, tip.y() + 12.0f * scale};
++  const SkPoint notch = {tip.x() + 11.9f * scale, tip.y() + 14.6f * scale};
++  const SkPoint heel = {tip.x() + 6.5f * scale, tip.y() + 23.0f * scale};
++  const SkPath shape = SkPathBuilder()
++                           .moveTo(tip)
++                           .lineTo(wing)
++                           .lineTo(notch)
++                           .lineTo(heel)
++                           .close()
++                           .detach();
++  // A dark keyline keeps the white hotspot visible over light pages.
++  cc::PaintFlags keyline;
++  keyline.setAntiAlias(true);
++  keyline.setColor(SkColorSetARGB(184, 49, 37, 78));
++  keyline.setStyle(cc::PaintFlags::kStroke_Style);
++  keyline.setStrokeJoin(cc::PaintFlags::kRound_Join);
++  keyline.setStrokeWidth(2.7f * scale);
++  canvas->DrawPath(shape, keyline);
++  const SkPoint face_axis[] = {tip, {tip.x(), heel.y()}};
++  PaintGradient(canvas, shape, face_axis,
++                std::array{SkColorSetRGB(13, 12, 21), SkColorSetRGB(3, 4, 8)});
++
++  constexpr float kUpperStops[] = {0.0f, 0.58f, 1.0f};
++  PaintRim(canvas, wing, notch, std::array{kBlue, kInset}, scale);
++  PaintRim(canvas, notch, heel, std::array{kInset, kCyan}, scale);
++  PaintRim(canvas, tip, wing, std::array{kWhiteTip, kViolet, kBlue}, scale,
++           kUpperStops);
++  PaintRim(canvas, heel, tip, std::array{kCyan, kWhiteTip}, scale);
++}
++
++void TrimTrail(std::vector<gfx::PointF>& trail) {
++  float remaining = kTrailLength;
++  for (size_t i = trail.size() - 1; i > 0; --i) {
++    const auto segment = trail[i - 1] - trail[i];
++    const float length = segment.Length();
++    if (remaining <= 0.0f) {
++      trail.erase(trail.begin(), trail.begin() + i);
++      break;
++    }
++    if (length > remaining) {
++      const float ratio = remaining / length;
++      trail[i - 1] = trail[i] + gfx::Vector2dF(segment.x() * ratio,
++                                              segment.y() * ratio);
++      trail.erase(trail.begin(), trail.begin() + i - 1);
++      break;
++    }
++    remaining -= length;
++  }
++  if (trail.size() > kTrailSamples) {
++    trail.erase(trail.begin(), trail.end() - kTrailSamples);
++  }
++}
++
++float TrailLength(const std::vector<gfx::PointF>& trail) {
++  float length = 0.0f;
++  for (size_t i = 1; i < trail.size(); ++i) {
++    length += (trail[i] - trail[i - 1]).Length();
++  }
++  return length;
++}
++
++std::vector<SkPoint> TrailEdge(const std::vector<gfx::PointF>& trail,
++                               float length,
++                               float side) {
++  std::vector<SkPoint> edge;
++  edge.reserve(trail.size());
++  float distance = 0;
++  for (size_t i = 0; i < trail.size(); ++i) {
++    const auto& point = trail[i];
++    if (i > 0) {
++      distance += (point - trail[i - 1]).Length();
++    }
++    const auto tangent = trail[std::min(i + 1, trail.size() - 1)] -
++                         trail[i > 0 ? i - 1 : i];
++    const float width =
++        side * 1.28f * std::pow(distance / length, 0.78f) /
++        std::max(0.01f, tangent.Length());
++    edge.push_back({point.x() - tangent.y() * width,
++                    point.y() + tangent.x() * width});
++  }
++  return edge;
++}
++
++void AppendSmoothedEdge(SkPathBuilder& path,
++                        const std::vector<SkPoint>& edge) {
++  for (size_t i = 1; i + 1 < edge.size(); ++i) {
++    const SkPoint midpoint = {(edge[i].x() + edge[i + 1].x()) * 0.5f,
++                              (edge[i].y() + edge[i + 1].y()) * 0.5f};
++    path.quadTo(edge[i], midpoint);
++  }
++  path.lineTo(edge.back());
++}
++
++void PaintTrail(gfx::Canvas* canvas,
++                const std::vector<gfx::PointF>& trail,
++                float opacity) {
++  if (trail.size() < 2 || opacity <= 0) {
++    return;
++  }
++  const float length = TrailLength(trail);
++  if (length < 1.0f) {
++    return;
++  }
++  const auto left = TrailEdge(trail, length, 1.0f);
++  auto right = TrailEdge(trail, length, -1.0f);
++  std::ranges::reverse(right);
++  SkPathBuilder outline;
++  outline.moveTo(left.front());
++  AppendSmoothedEdge(outline, left);
++  outline.lineTo(right.front());
++  AppendSmoothedEdge(outline, right);
++  outline.close();
++
++  const auto& head = trail.back();
++  const auto& tail = (head - trail.front()).Length() > 1.0f
++                         ? trail.front()
++                         : trail[trail.size() - 2];
++  const SkPoint axis[] = {{tail.x(), tail.y()}, {head.x(), head.y()}};
++  PaintGradient(canvas, outline.detach(), axis,
++                std::array{SkColorSetARGB(0, 135, 119, 247),
++                           SkColorSetARGB(100, 142, 112, 247),
++                           SkColorSetARGB(180, 145, 133, 251)},
++                nullptr, 0, opacity);
++}
++
++void PaintPulse(gfx::Canvas* canvas, const gfx::PointF& point, float progress) {
++  cc::PaintFlags flags;
++  flags.setAntiAlias(true);
++  flags.setStyle(cc::PaintFlags::kStroke_Style);
++  flags.setStrokeWidth(1.4f);
++  flags.setColor(SkColorSetARGB(static_cast<U8CPU>(102 * (1.0f - progress)),
++                                154, 129, 251));
++  canvas->DrawCircle(point, 8.0f + 20.0f * progress, flags);
++}
++
++}  // namespace
++
++AiFreePointerOverlay::AiFreePointerOverlay() {
++  SetCanProcessEventsWithinSubtree(false);
++  SetProperty(views::kViewIgnoredByLayoutKey, true);
++  SetPaintToLayer();
++  layer()->SetFillsBoundsOpaquely(false);
++}
++
++AiFreePointerOverlay::~AiFreePointerOverlay() = default;
++
++void AiFreePointerOverlay::SetPointer(const gfx::PointF& point, bool pressed) {
++  RecordMovement(point, base::TimeTicks::Now());
++  point_ = point;
++  pressed_ = pressed;
++  SetVisible(true);
++  SchedulePaint();
++}
++
++void AiFreePointerOverlay::RecordMovement(const gfx::PointF& point,
++                                          base::TimeTicks now) {
++  if (!point_) {
++    return;
++  }
++  if (last_move_.is_null() || now - last_move_ >= kTrailFade) {
++    trail_.assign(1, *point_);
++  }
++  if ((point - trail_.back()).Length() < 0.35f) {
++    return;
++  }
++  trail_.push_back(point);
++  TrimTrail(trail_);
++  last_move_ = now;
++  RequestFrame();
++}
++
++void AiFreePointerOverlay::Pulse() {
++  pulse_started_ = base::TimeTicks::Now();
++  RequestFrame();
++  SchedulePaint();
++}
++
++void AiFreePointerOverlay::ResetEffects() {
++  effect_timer_.Stop();
++  trail_.clear();
++  point_.reset();
++  last_move_ = pulse_started_ = base::TimeTicks();
++  SchedulePaint();
++}
++
++void AiFreePointerOverlay::OnPaint(gfx::Canvas* canvas) {
++  if (!point_) {
++    return;
++  }
++  const auto now = base::TimeTicks::Now();
++  if (!last_move_.is_null()) {
++    const float age = static_cast<float>((now - last_move_) / kTrailFade);
++    PaintTrail(canvas, trail_, std::max(0.0f, 1.0f - age));
++  }
++  if (!pulse_started_.is_null()) {
++    const float progress = static_cast<float>((now - pulse_started_) /
++                                              kPulseDuration);
++    PaintPulse(canvas, *point_, std::clamp(progress, 0.0f, 1.0f));
++  }
++  PaintArrow(canvas, *point_, pressed_);
++}
++
++void AiFreePointerOverlay::RequestFrame() {
++  if (!effect_timer_.IsRunning()) {
++    effect_timer_.Start(FROM_HERE, base::Milliseconds(16),
++                        base::BindRepeating(&AiFreePointerOverlay::TickEffects,
++                                            base::Unretained(this)));
++  }
++}
++
++void AiFreePointerOverlay::TickEffects() {
++  const auto now = base::TimeTicks::Now();
++  if (!last_move_.is_null() && now - last_move_ >= kTrailFade) {
++    last_move_ = base::TimeTicks();
++    trail_.clear();
++  }
++  if (!pulse_started_.is_null() && now - pulse_started_ >= kPulseDuration) {
++    pulse_started_ = base::TimeTicks();
++  }
++  if (last_move_.is_null() && pulse_started_.is_null()) {
++    effect_timer_.Stop();
++  }
++  SchedulePaint();
++}
++
++BEGIN_METADATA(AiFreePointerOverlay)
++END_METADATA
+diff --git a/chrome/browser/ui/views/frame/ai_free_pointer_overlay.h b/chrome/browser/ui/views/frame/ai_free_pointer_overlay.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..bfea2422dec5b130d42b23754dddaca10f3ce92c
+--- /dev/null
++++ b/chrome/browser/ui/views/frame/ai_free_pointer_overlay.h
+@@ -0,0 +1,40 @@
++// Copyright 2026 AI-FREE Authors. All rights reserved.
++
++#ifndef CHROME_BROWSER_UI_VIEWS_FRAME_AI_FREE_POINTER_OVERLAY_H_
++#define CHROME_BROWSER_UI_VIEWS_FRAME_AI_FREE_POINTER_OVERLAY_H_
++
++#include <optional>
++#include <vector>
++
++#include "base/time/time.h"
++#include "base/timer/timer.h"
++#include "ui/base/metadata/metadata_header_macros.h"
++#include "ui/gfx/geometry/point_f.h"
++#include "ui/views/view.h"
++
++class AiFreePointerOverlay : public views::View {
++  METADATA_HEADER(AiFreePointerOverlay, views::View)
++
++ public:
++  AiFreePointerOverlay();
++  ~AiFreePointerOverlay() override;
++
++  void SetPointer(const gfx::PointF& point, bool pressed);
++  void Pulse();
++  void ResetEffects();
++
++ private:
++  void OnPaint(gfx::Canvas* canvas) override;
++  void RecordMovement(const gfx::PointF& point, base::TimeTicks now);
++  void RequestFrame();
++  void TickEffects();
++
++  std::optional<gfx::PointF> point_;
++  std::vector<gfx::PointF> trail_;
++  base::TimeTicks last_move_;
++  base::TimeTicks pulse_started_;
++  base::RepeatingTimer effect_timer_;
++  bool pressed_ = false;
++};
++
++#endif  // CHROME_BROWSER_UI_VIEWS_FRAME_AI_FREE_POINTER_OVERLAY_H_

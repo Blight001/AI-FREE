@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -9,6 +10,9 @@ const test = require('node:test');
 const {
   buildAttachmentMessages,
   createAiWorkspaceService,
+  createDownloadArtifact,
+  inspectWorkspaceFileSync,
+  verifyWorkspaceArtifactSync,
 } = require('../../../src/app/backend/features/ai-chat/ai-workspace-service');
 
 function fixture(t) {
@@ -72,4 +76,77 @@ test('工作区预览支持视频、JSON 和无扩展名文本识别', (t) => {
   assert.match(video.dataUrl, /^data:video\/mp4;base64,/);
   assert.equal(service.read({ path: 'settings.json' }).file.mimeType, 'application/json');
   assert.equal(service.read({ path: 'README' }).file.kind, 'text');
+});
+
+function downloadResult(data, relativePath = 'media/pixel.png') {
+  return {
+    success: true, action: 'download_element', relative_path: relativePath,
+    size: data.length, sha256: crypto.createHash('sha256').update(data).digest('hex'),
+  };
+}
+
+function mediaArtifact(result) {
+  return createDownloadArtifact({ toolName: 'browser_media', action: 'download', toolCallId: 'download-1', result });
+}
+
+test('only successful downloads with a safe relative path and a digest produce artifact metadata', () => {
+  const result = downloadResult(Buffer.from('fixture'), 'media\\pixel.png');
+  const artifact = mediaArtifact({ ...result, absolute_path: 'not persisted', final_url: 'not persisted' });
+  assert.deepEqual(artifact, {
+    path: 'media/pixel.png', name: 'pixel.png', kind: 'image', size: result.size,
+    sha256: result.sha256, toolName: 'browser_media', toolCallId: 'download-1',
+  });
+  for (const bad of [
+    { success: false }, { action: 'save_session' }, { action: 'upload' }, { relative_path: '../outside.png' },
+    { relative_path: 'C:\\outside.png' }, { relative_path: '/root.txt' }, { sha256: '' }, { size: 2 ** 31 },
+  ]) {
+    assert.equal(mediaArtifact({ ...result, ...bad }), null);
+  }
+  assert.equal(createDownloadArtifact({ toolName: 'browser_file', action: 'save_session', result, toolCallId: 'session' }), null);
+  assert.equal(createDownloadArtifact({ toolName: 'custom_tool', action: 'download', result, toolCallId: 'external' }), null);
+});
+
+test('preview, reattach, chat and upload checks all reject same-size replacement and missing files', (t) => {
+  const { root } = fixture(t);
+  const original = Buffer.from('old png fixture');
+  const file = path.join(root, 'pixel.png');
+  const result = downloadResult(original, 'pixel.png');
+  const artifact = mediaArtifact(result);
+  const service = createAiWorkspaceService({ workspaceDir: root });
+  const input = { path: artifact.path, artifact };
+  fs.writeFileSync(file, original);
+  assert.equal(service.read(input).file.dataUrl, `data:image/png;base64,${original.toString('base64')}`);
+  assert.equal(service.read({ ...input, validateOnly: true }).file.dataUrl, undefined);
+  assert.equal(verifyWorkspaceArtifactSync(root, artifact).sha256, artifact.sha256);
+  assert.equal(buildAttachmentMessages(root, [artifact.path], [], [artifact])[0].content[1].image_url.url,
+    `data:image/png;base64,${original.toString('base64')}`);
+  assert.equal(service.read({ ...input, path: 'another.png' }).error.code, 'ARTIFACT_INVALID');
+  assert.throws(() => buildAttachmentMessages(root, [], [], [artifact]), { code: 'ARTIFACT_INVALID' });
+  const before = inspectWorkspaceFileSync(root, artifact.path);
+  fs.writeFileSync(file, 'new png fixture');
+  assert.notEqual(inspectWorkspaceFileSync(root, artifact.path).sha256, before.sha256);
+  assert.equal(service.read(input).error.code, 'ARTIFACT_CHANGED');
+  assert.equal(service.read({ ...input, validateOnly: true }).error.code, 'ARTIFACT_CHANGED');
+  assert.throws(() => verifyWorkspaceArtifactSync(root, artifact), { code: 'ARTIFACT_CHANGED' });
+  assert.throws(() => buildAttachmentMessages(root, [artifact.path], [], [artifact]), { code: 'ARTIFACT_CHANGED' });
+  fs.renameSync(file, path.join(root, 'moved.png'));
+  assert.equal(service.read(input).error.code, 'ARTIFACT_UNAVAILABLE');
+});
+
+test('a removed file mention cannot send attachment content or path metadata', (t) => {
+  const { root } = fixture(t);
+  fs.writeFileSync(path.join(root, 'secret.txt'), 'fixture data');
+  const mention = { type: 'file', label: 'secret.txt', reference: 'secret.txt', detail: 'fixture metadata' };
+  assert.deepEqual(buildAttachmentMessages(root, [], [mention]), []);
+});
+
+test('an artifact cannot be reattached through a junction or directory symlink outside the workspace', (t) => {
+  const { root, source } = fixture(t);
+  const outside = fs.mkdtempSync(path.join(root, '..', 'ai-free-artifact-outside-'));
+  t.after(() => fs.rmSync(outside, { recursive: true, force: true }));
+  fs.copyFileSync(source, path.join(outside, 'fixture.txt'));
+  fs.symlinkSync(outside, path.join(root, 'linked'), process.platform === 'win32' ? 'junction' : 'dir');
+  const artifact = mediaArtifact(downloadResult(fs.readFileSync(source), 'linked/fixture.txt'));
+  assert.throws(() => verifyWorkspaceArtifactSync(root, artifact), { code: 'ARTIFACT_CHANGED' });
+  assert.throws(() => inspectWorkspaceFileSync(root, artifact.path), { code: 'ARTIFACT_CHANGED' });
 });

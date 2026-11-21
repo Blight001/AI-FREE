@@ -313,13 +313,6 @@ function toggleAnnouncementMail(event) {
   setAnnouncementMailOpen(bar?.hidden !== false);
 }
 
-function closeAnnouncementMail(event) {
-  const bar = safeGetEl('announcement-bar');
-  if (!bar || bar.hidden) return;
-  if (event?.target?.closest?.('#announcement-bar, #announcement-mail-btn')) return;
-  setAnnouncementMailOpen(false);
-}
-
 function markAnnouncementMailUnread() {
   const bar = safeGetEl('announcement-bar');
   const dot = safeGetEl('announcement-mail-dot');
@@ -332,9 +325,10 @@ function bindAnnouncementMailControls() {
   if (!button || button.dataset.bound === 'true') return;
   button.dataset.bound = 'true';
   button.addEventListener('click', toggleAnnouncementMail);
-  document.addEventListener('click', closeAnnouncementMail);
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') setAnnouncementMailOpen(false);
+    if (event.key === 'Escape' && safeGetEl('announcement-bar')?.getClientRects().length) {
+      setAnnouncementMailOpen(false);
+    }
   });
 }
 

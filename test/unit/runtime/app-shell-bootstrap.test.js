@@ -8,6 +8,7 @@ function bootstrapDeps(options = {}) {
   const calls = {
     createMainWindow: 0,
     openTutorial: 0,
+    restoreBrowserSession: 0,
     registerIPCContext: null,
     revealMainWindow: 0,
   };
@@ -59,6 +60,7 @@ function bootstrapDeps(options = {}) {
     resolveSwitchTab: () => () => {},
     resolveSyncTutorialTabUrl: () => () => {},
     resolveTabs: () => new Map(),
+    restoreBrowserSession: async () => { calls.restoreBrowserSession += 1; },
     revealMainWindow() { calls.revealMainWindow += 1; },
     setSidebarWidth: (width) => width,
     setAuth() {},
@@ -70,7 +72,7 @@ function bootstrapDeps(options = {}) {
   return { calls, deps, readStoreConfigSafe, writeStoreConfigSafe };
 }
 
-test('软件启动显示内置首页且不自动打开教程或启动浏览器', async () => {
+test('软件启动恢复上次打开的浏览器会话且不自动打开教程', async () => {
   const { calls, deps } = bootstrapDeps();
 
   await createAppShellBootstrap(deps)();
@@ -79,6 +81,7 @@ test('软件启动显示内置首页且不自动打开教程或启动浏览器',
 
   assert.equal(calls.createMainWindow, 1);
   assert.equal(calls.openTutorial, 0);
+  assert.equal(calls.restoreBrowserSession, 1);
 });
 
 test('主界面已初始化但窗口缺失时只重建软件外壳', async () => {

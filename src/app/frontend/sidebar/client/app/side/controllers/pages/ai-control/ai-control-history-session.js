@@ -1,24 +1,6 @@
   function applySession(session) {
     state.currentSession = session || null;
     state.messages = Array.isArray(session?.messages) ? [...session.messages] : [];
-    const restoredIds = sessionBrowserIds(session);
-    if (restoredIds.length) {
-      state.currentBrowserIds = restoredIds;
-    }
-    const browserSelect = el('ai-chat-browser');
-    if (browserSelect) {
-      const available = new Set(Array.from(browserSelect.options)
-        .map((opt) => opt.value)
-        .filter(Boolean));
-      // 连接列表尚未加载时不过滤，等 loadBrowserConnections 恢复会话勾选。
-      if (available.size) {
-        state.currentBrowserIds = state.currentBrowserIds.filter((id) => available.has(id));
-      }
-      setSelectBrowserIds(browserSelect, state.currentBrowserIds);
-      if (state.currentBrowserIds.length) state.browserSelectionExplicitlyDisabled = false;
-      syncSelectUi(browserSelect);
-    }
-    notifyBrowserSelection();
     const modelSelect = el('ai-chat-model');
     if (modelSelect && session?.modelId) {
       const hasModel = Array.from(modelSelect.options).some((opt) => opt.value === session.modelId);
@@ -235,8 +217,6 @@
       title: '新对话',
       titleGenerated: false,
       modelId: String(el('ai-chat-model')?.value || ''),
-      browserConnectionId: state.currentBrowserIds[0] || '',
-      browserConnectionIds: [...state.currentBrowserIds],
       automationCardId: '',
       messages: [],
       createdAt: Date.now(),
@@ -259,8 +239,6 @@
       title: '新对话',
       titleGenerated: false,
       modelId: String(el('ai-chat-model')?.value || ''),
-      browserConnectionId: state.currentBrowserIds[0] || '',
-      browserConnectionIds: [...state.currentBrowserIds],
       automationCardId: '',
       messages: state.messages,
       createdAt: Date.now(),

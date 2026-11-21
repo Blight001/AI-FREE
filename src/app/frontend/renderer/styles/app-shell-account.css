@@ -1,19 +1,126 @@
 #home-personal {
+  --account-surface: rgb(12 38 59 / 78%);
+  --account-edge: rgb(180 227 249 / 22%);
+  --account-highlight: rgb(107 218 234 / 16%);
+  --account-tile: rgb(185 230 252 / 9%);
+  --account-text: #f1f8ff;
+  --account-muted: #b4cbdf;
+  --account-focus: #8de3ef;
   width: min(100%, 780px);
   margin-inline: auto;
+  color: var(--account-text);
 }
 
-#home-personal .shell-home-actions { margin-block-end: 10px; }
-#home-personal .account-profile-card {
-  min-width: 0;
-  background: var(--shell-panel);
+html.theme-light #home-personal {
+  --account-surface: rgb(242 250 255 / 86%);
+  --account-edge: rgb(38 100 138 / 24%);
+  --account-highlight: rgb(66 164 204 / 20%);
+  --account-tile: rgb(255 255 255 / 54%);
+  --account-text: #17364e;
+  --account-muted: #49677e;
+  --account-focus: #1c6e8d;
 }
-#home-personal .account-profile-cover { border-radius: 8px 8px 0 0; }
-#home-personal .account-profile-identity { min-width: 0; overflow-wrap: anywhere; }
 
-#browser-empty-state .vip-benefits-dialog { position: absolute; }
-#browser-empty-state .vip-benefits-backdrop { background: rgb(0 0 0 / 45%); }
-#browser-empty-state .vip-benefits-panel {
-  width: min(620px, 100%);
-  max-height: 100%;
+html.theme-gold #home-personal {
+  --account-surface: rgb(32 30 29 / 82%);
+  --account-edge: rgb(219 188 123 / 28%);
+  --account-highlight: rgb(217 173 93 / 17%);
+  --account-tile: rgb(224 191 132 / 10%);
+  --account-text: #f8edd7;
+  --account-muted: #d9c7a9;
+  --account-focus: #f1ce82;
+}
+
+#home-personal :is(.shell-home-heading, .account-profile-card, .account-wool-resource) {
+  border: 1px solid var(--account-edge);
+  border-radius: 18px;
+  background: var(--account-surface);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 8px 26px rgb(5 27 46 / 15%);
+}
+
+#home-personal .shell-home-heading {
+  gap: 8px 16px;
+  margin-block-end: 12px;
+  padding: 10px 16px;
+}
+
+#home-personal .shell-home-heading h1 {
+  color: inherit;
+  font-size: 19px;
+}
+
+#home-personal :is(.shell-home-actions button, .open-wool-platform-btn) {
+  border: 1px solid var(--account-edge);
+  color: var(--account-text);
+  background: var(--account-tile);
+  box-shadow: none;
+}
+
+#home-personal :is(.shell-home-actions button, .open-wool-platform-btn):hover:not(:disabled) {
+  border-color: var(--account-focus);
+  background: var(--account-highlight);
+}
+
+#home-personal button:focus-visible {
+  outline: 2px solid var(--account-focus);
+  outline-offset: 2px;
+}
+
+#home-personal .account-profile-cover {
+  border-radius: 17px 17px 0 0;
+  background: radial-gradient(ellipse at 50% 0%, var(--account-highlight), transparent 75%);
+}
+
+#home-personal .account-profile-cover::before,
+#home-personal .account-profile-cover::after { content: none; }
+
+#home-personal .account-profile-identity { min-width: 0; }
+#home-personal .account-profile-identity h2 { color: var(--account-text); }
+
+#home-personal .account-usage-details {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
+  gap: 10px;
+  margin-block-start: 14px;
+}
+
+#home-personal :is(.sidebar-quota-redeem-label, .account-usage-hero-label,
+    .account-usage-hero-side-label, .account-usage-stat-label, .account-usage-io-label) {
+  color: var(--account-muted);
+}
+
+#home-personal .account-wool-resource {
+  margin-block-start: 12px;
+  padding: 14px 16px 16px;
+}
+
+#home-personal .account-wool-resource:has(.wool-platform-buttons[hidden]) { display: none; }
+
+#home-personal .account-wool-resource-title {
+  margin: 0;
+  color: var(--account-text);
+  font-size: 14px;
+}
+
+#home-personal .wool-platform-buttons:not([hidden]) {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 8px;
+}
+
+#home-personal .open-wool-platform-btn {
+  margin: 0;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+
+#home-personal .wool-platform-remaining {
+  display: block;
+  margin: 2px 0 0;
+  color: var(--account-muted);
+  font-size: 11px;
+  opacity: 1;
 }

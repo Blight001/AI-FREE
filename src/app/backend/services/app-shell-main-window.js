@@ -1,6 +1,7 @@
 'use strict';
 
 const { createWindowBackgroundController } = require('../features/window/window-background-controller');
+const { resolveAppShellViewPath } = require('../config/paths');
 const { clampSidebarWidth, resolveSidebarWidth } = require('../../shared/sidebar-layout');
 
 function createWindowInstance(deps, windowStateController) {
@@ -74,9 +75,7 @@ function loadSidebar(deps, sideView) {
     return;
   }
   deps.logger.log?.('[启动] 加载本地侧边栏:', sidebarLocalPath);
-  sideView.webContents.loadFile(sidebarLocalPath, {
-    query: { dev: deps.isDevMode ? '1' : '0' },
-  }).catch((error) => {
+  sideView.webContents.loadFile(sidebarLocalPath).catch((error) => {
     deps.logger.error?.('[启动] 本地侧边栏加载失败:', error?.message || error);
   });
 }
@@ -96,10 +95,6 @@ async function publishWindowStartupData(deps, mainWindow) {
   const deviceId = await deps.computeDeviceId();
   if (mainWindow.isDestroyed()) return;
   deps.sendToSide('update-device-id', deviceId);
-  try {
-    const history = typeof deps.getAppConsoleHistory === 'function' ? deps.getAppConsoleHistory() : [];
-    deps.sendToSide('app-console-history', history);
-  } catch (_) {}
   try { deps.sendToSide('app-version', deps.app.getVersion()); } catch (_) {}
   const timer = setTimeout(async () => {
     mainWindow.removeListener('closed', cancel);
@@ -264,7 +259,7 @@ function createMainWindow(deps, backgroundController, windowStateController) {
   const sideView = createSidebarView(deps, mainWindow);
   bindSidebarEvents(deps, sideView);
   updateMainWindowLayout(deps, mainWindow);
-  mainWindow.loadFile(deps.path.join(__dirname, '../../frontend/views/app-shell.html'), { query: { dev: deps.isDevMode ? '1' : '0' } });
+  mainWindow.loadFile(resolveAppShellViewPath(), { query: { dev: deps.isDevMode ? '1' : '0' } });
   loadSidebar(deps, sideView);
   scheduleControlPanel(deps);
   backgroundController.bindWindow(mainWindow);

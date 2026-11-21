@@ -188,7 +188,49 @@
     if (String(content || '').trim()) return true;
     if (options.pending || String(options.reasoning || '').trim()) return true;
     return (Array.isArray(options.toolEvents) && options.toolEvents.length > 0)
-      || (Array.isArray(options.traceEvents) && options.traceEvents.length > 0);
+      || (Array.isArray(options.traceEvents) && options.traceEvents.length > 0)
+      || (Array.isArray(options.artifacts) && options.artifacts.length > 0);
+  }
+
+  function artifactAction(label, action) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'ai-chat-workspace-file-attach';
+    button.textContent = label;
+    button.addEventListener('click', action);
+    return button;
+  }
+
+  function workspaceArtifactRow(artifact) {
+    const row = document.createElement('div');
+    row.className = 'ai-chat-workspace-file ai-chat-message-artifact';
+    const info = document.createElement('div');
+    info.className = 'ai-chat-workspace-file-info';
+    const name = document.createElement('strong');
+    name.textContent = artifact.name || artifact.path;
+    const detail = document.createElement('span');
+    detail.textContent = `${artifact.path} · ${formatWorkspaceFileSize(artifact.size)} · ${artifact.toolName === 'browser_media' ? '页面媒体' : '浏览器下载'}`;
+    detail.title = detail.textContent;
+    info.append(name, detail);
+    row.append(info,
+      artifactAction('预览', () => void previewWorkspaceFile(artifact.path, artifact)),
+      artifactAction('再次引用', (event) => void attachWorkspaceArtifact(artifact, event.currentTarget)));
+    return row;
+  }
+
+  // Shared by the live assistant view and the restored history view.
+  function renderAssistantArtifacts(view, artifacts) {
+    if (!view?.row || !Array.isArray(artifacts)) return;
+    const list = view.row.querySelector('.ai-chat-message-artifacts') || document.createElement('div');
+    list.className = 'ai-chat-message-artifacts';
+    const unique = new Map();
+    for (const artifact of artifacts.slice(0, 16)) {
+      if (typeof artifact?.path !== 'string' || !artifact.sha256 || !artifact.toolCallId) continue;
+      unique.set(JSON.stringify([artifact.toolCallId, artifact.path]), artifact);
+    }
+    if (!unique.size) { list.remove(); return; }
+    list.replaceChildren(...Array.from(unique.values(), workspaceArtifactRow));
+    if (!list.parentNode) view.row.appendChild(list);
   }
 
   function appendUserMessageFiles(bubble, attachmentPaths) {
@@ -197,7 +239,7 @@
     files.className = 'ai-chat-message-files';
     attachmentPaths.forEach((filePath) => {
       const item = document.createElement('span');
-      item.textContent = `📎 ${workspaceFileByPath(filePath)?.name || filePath}`;
+      item.textContent = `📎 ${filePath}`;
       item.title = filePath;
       files.appendChild(item);
     });
@@ -210,7 +252,9 @@
     if (role === 'tool' || role === 'system') return null;
     if (role === 'assistant' && !hasAssistantMessageContent(content, options)) return null;
     if (role === 'assistant') {
-      return createAssistantView({ ...options, content });
+      const view = createAssistantView({ ...options, content });
+      renderAssistantArtifacts(view, options.artifacts);
+      return view;
     }
     const welcome = container.querySelector('.ai-chat-welcome');
     if (welcome) welcome.remove();
@@ -239,10 +283,12 @@
     // 带 tool_calls 的 assistant 是模型协议消息；其内容已经由最终回复的
     // trace_events 重建为活动/阶段答案，不能再渲染成独立 AI 气泡。
     if (Array.isArray(message.tool_calls) && message.tool_calls.length) return false;
-    return !!(String(message.content || '').trim()
-      || String(message.reasoning || '').trim()
-      || message.tool_events?.length
-      || message.trace_events?.length);
+    return hasAssistantMessageContent(message.content, {
+      reasoning: message.reasoning,
+      toolEvents: message.tool_events,
+      traceEvents: message.trace_events,
+      artifacts: message.artifacts,
+    });
   }
 
   function createWelcomeHero() {
@@ -266,6 +312,7 @@
   }
 
   function renderWelcome() {
+    if (typeof syncWorkspaceDraftSession === 'function') syncWorkspaceDraftSession();
     const container = el('ai-chat-messages');
     if (!container) return;
     container.innerHTML = '';
@@ -278,6 +325,7 @@
   }
 
   function renderConversation() {
+    if (typeof syncWorkspaceDraftSession === 'function') syncWorkspaceDraftSession();
     const container = el('ai-chat-messages');
     if (!container) return;
     container.innerHTML = '';
@@ -296,6 +344,7 @@
         toolEvents: message.tool_events,
         traceEvents: message.trace_events,
         attachmentPaths: message.attachmentPaths,
+        artifacts: message.artifacts,
       });
     });
     updateSessionTitleUi();

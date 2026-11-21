@@ -1,5 +1,4 @@
 .sidebar-account-auth[hidden],
-.vip-benefits-dialog[hidden],
 .sidebar-auth-field[hidden],
 .account-profile-menu[hidden] {
   display: none !important;
@@ -9,31 +8,8 @@
   display: none !important;
 }
 
-.vip-benefits-dialog {
-  position: fixed;
-  inset: 0;
-  z-index: 1400;
-  display: grid;
-  place-items: center;
-  padding: 10px;
-  box-sizing: border-box;
-}
-
-.vip-benefits-backdrop {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  border: 0;
-  background: transparent;
-  backdrop-filter: none;
-}
-
 .vip-benefits-panel {
-  position: relative;
-  z-index: 1;
-  width: min(410px, calc(100vw - 20px));
-  max-height: calc(100vh - 20px);
+  width: 620px;
   overflow: auto;
   padding: 18px;
   border: 1px solid rgba(235, 183, 74, .52);
@@ -512,15 +488,18 @@ html.theme-light .account-switch { color: #60758f; }
   height: 82px;
   padding: 4px;
   transform: translateX(-50%);
-  border-radius: 50%;
-  background: linear-gradient(145deg, #fff, #9cc9ff);
   box-shadow: 0 8px 24px rgba(0, 0, 0, .28);
-  box-sizing: border-box;
   border: 0;
   cursor: default;
 }
 
-.account-profile-avatar img {
+.account-profile-avatar-frame {
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #fff, #9cc9ff);
+}
+
+.account-profile-avatar-frame img {
   display: block;
   width: 100%;
   height: 100%;
@@ -541,7 +520,7 @@ html.theme-light .account-switch { color: #60758f; }
   box-sizing: border-box;
 }
 
-.account-profile-card[data-authenticated='true'] .account-profile-presence {
+[data-authenticated='true'] .account-profile-presence {
   background: #43d58b;
 }
 

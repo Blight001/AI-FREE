@@ -107,7 +107,7 @@ function bindHomeTabBtnOnce() {
   homeTabBtn.addEventListener('click', (event) => {
     event.preventDefault();
     event.stopPropagation();
-    ShellApi.switchTab(null);
+    if (tabsContainer?.querySelector('.tab.active')) ShellApi.switchTab(null);
   });
   homeTabBtn.dataset.bound = '1';
 }

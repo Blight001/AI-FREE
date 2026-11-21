@@ -25,48 +25,22 @@ function createModalHTML() {
     </div>
   `;
 
-  // 将弹窗插入到body末尾
-  document.body.insertAdjacentHTML('beforeend', modalHTML);
+  const host = document.getElementById('browser-page-module') || document.body;
+  host.insertAdjacentHTML('beforeend', modalHTML);
 }
 
 /**
  * 显示服务器消息弹窗
  * @param {Object} messageData - 消息数据对象
  * @param {string} messageData.message - 消息内容
- * @param {string} messageData.type - 消息类型：'info'(默认), 'success', 'warning', 'error', 'announcement'
- * @param {string} messageData.message_type - 公告消息的类型（当type为'announcement'时使用）
+ * @param {string} messageData.type - 消息类型：'info'(默认), 'success', 'warning', 'error'
  */
 function showServerMessage(messageData) {
-  // 处理不同类型的服务器消息
-  let type = messageData.type || 'info';
-  let message = messageData.message || '收到服务器消息';
-  const messageType = messageModalGetServerMessageType(messageData);
-  const messageText = messageModalGetServerMessageText(messageData) || message;
+  // 公告由个人中心邮箱展示，只有其他消息才进入弹窗和提示音队列。
+  if (messageData.type === 'announcement' || messageModalIsUpdateLikeMessage(messageData)) return;
 
-  if (messageModalIsUpdateLikeMessage(messageData)) {
-    return;
-  }
-
-  // 如果是公告消息，使用 message_type 作为显示类型
-  if (type === 'announcement') {
-    if (messageType === 'update' || messageType === 'upgrade') {
-      return;
-    }
-    if (messageModalIsShutdownAnnouncement(messageData) || messageType === 'shutdown' || messageText.includes('软件暂时无法使用') || messageText.includes('停用')) {
-      return;
-    }
-    // 服务器公告类型映射到前端显示类型
-    const announcementTypeMap = {
-      'normal': 'info',
-      'warning': 'warning',
-      'error': 'error',
-      'maintenance': 'maintenance', // maintenance使用专用样式
-      'success': 'success'
-    };
-
-    type = announcementTypeMap[messageType] || 'info';
-  }
-
+  const type = messageData.type || 'info';
+  const message = messageData.message || '收到服务器消息';
   const priority = MESSAGE_PRIORITY[type] || MESSAGE_PRIORITY.info;
   enqueueMessage({
     kind: 'info',

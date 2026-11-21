@@ -23,7 +23,7 @@ const domains = {
   },
   'home-workspace': {
     requireOracle: true,
-    operations: { click: 'action', key: 'action', inspect: 'oracle',
+    operations: { click: 'action', key: 'action', filterSites: 'action', inspect: 'oracle',
       inspectBackground: 'oracle', inspectAccountRequests: 'oracle' },
   },
   'electron-pages': {

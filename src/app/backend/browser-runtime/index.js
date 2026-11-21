@@ -49,11 +49,11 @@ class BrowserRuntimeManager {
   async dispatchInputByProcessId(processId, input) {
     return this.chromium.dispatchInputByProcessId(processId, input);
   }
-  async dispatchAutomationByProcessId(processId, command, input) {
-    return this.chromium.dispatchAutomationByProcessId(processId, command, input);
+  async dispatchAutomationByProcessId(processId, command, input, options = {}) {
+    return this.chromium.dispatchAutomationByProcessId(processId, command, input, options);
   }
-  async selectFilesByProcessId(processId, selection) {
-    return selectRuntimeFilesByProcessId(this.chromium, processId, selection, { sandboxDir: this.sandboxDir });
+  async selectFilesByProcessId(processId, selection, options = {}) {
+    return selectRuntimeFilesByProcessId(this.chromium, processId, selection, { ...options, sandboxDir: this.sandboxDir });
   }
   async importSession(profileId, sessionData) { return this.chromium.importSession(profileId, sessionData); }
   async setCookies(profileId, cookies) { return this.chromium.setCookies(profileId, cookies); }

@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const { atomicWrite } = require('../platform/atomic-json');
 const fs = require('fs');
 const path = require('path');
 
@@ -51,6 +52,7 @@ function normalizeCardEntry(source = {}) {
   const latest = versions.find((version) => version.id === latestVersionId) || versions.at(-1);
   return {
     ...source, ...normalizedMetadata(source), id: String(source.id || '').trim(),
+    deletedAt: source.deletedAt ? Number(source.deletedAt) : null,
     cardName: String(source.cardName || latest.cardData.name || source.id || '').trim(),
     cardData: clone(latest.cardData), latestVersionId, versions,
   };
@@ -66,17 +68,6 @@ function normalizeCardCacheState(source = {}) {
   const selectedId = items.some((item) => item.id === requestedSelectedId)
     ? requestedSelectedId : String(items[0]?.id || '').trim();
   return { items, selectedId };
-}
-
-function atomicWrite(filePath, payload) {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const tempPath = `${filePath}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`;
-  try {
-    fs.writeFileSync(tempPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
-    fs.renameSync(tempPath, filePath);
-  } finally {
-    try { if (fs.existsSync(tempPath)) fs.rmSync(tempPath, { force: true }); } catch (_) {}
-  }
 }
 
 function createCardCacheStore(options = {}) {

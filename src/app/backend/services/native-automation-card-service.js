@@ -2,11 +2,13 @@
 
 const crypto = require('crypto');
 const { definitionDigest, normalizedMetadata } = require('./automation-card-store');
+const cardLifecycle = require('./automation-card-lifecycle');
 const { videoEditingRegressionCard } = require('./video-editing-regression-card');
 
 const ACTIONS = new Set([
   'rules', 'list', 'get', 'write', 'patch_step', 'insert_step', 'delete_step', 'move_step', 'delete', 'run',
   'validate', 'clone', 'versions', 'get_version', 'set_enabled', 'export', 'template',
+  'restore', 'purge',
 ]);
 const STEP_TYPES = new Set([
   'navigate', 'click', 'type', 'wait', 'condition', 'save_cookies',
@@ -73,10 +75,11 @@ function summarizeListedCard(item) {
 
 function resolveCard(state, args) {
   const id = text(args.id);
-  const byId = id ? state.items.find((item) => text(item.id) === id) : null;
+  const includeDeleted = args.include_deleted === true;
+  const byId = id ? state.items.find((item) => text(item.id) === id && (includeDeleted || !item.deletedAt)) : null;
   if (byId) return byId;
   const name = text(args.card_name);
-  const matches = name ? state.items.filter((item) => text(item.cardName) === name) : [];
+  const matches = name ? state.items.filter((item) => text(item.cardName) === name && (includeDeleted || !item.deletedAt)) : [];
   if (matches.length === 1) return matches[0];
   if (matches.length > 1) throw new Error(`存在多个同名卡片「${name}」，请使用 id`);
   throw new Error(`自动化卡片不存在: ${id || name || '(未指定)'}。请先 list 并根据名称、网站或说明筛选后传入 id 或唯一 card_name`);
@@ -333,6 +336,8 @@ async function runCard(card, args, dispatch, context = {}) {
   await openCardWebsite(card, args, dispatch, execution);
   const maxTransitions = Math.max(1, Number(context.maxTransitions || Math.max(120, card.steps.length * 20)));
   while (index >= 0 && count < maxTransitions) {
+    await context.beforeStep?.({ stepId: text(card.steps[index]?.id) || `step_${index + 1}`, transitionCount: count });
+    throwIfCancelled(context.signal);
     const outcome = await runOneStep(card, index, count, inputs, execution, dispatch, context);
     if (outcome.failed) return outcome.failed;
     if (outcome.ended) break;
@@ -360,6 +365,7 @@ class NativeAutomationCardService {
     const existing = requestedId
       ? state.items.find((item) => text(item.id) === requestedId)
       : state.items.find((item) => text(item.cardName) === text(args.cardData.name));
+    cardLifecycle.assertEditable(existing);
     const id = text(existing?.id) || requestedId || crypto.randomUUID();
     const cardData = clone(args.cardData);
     const digest = definitionDigest(cardData);
@@ -432,18 +438,36 @@ class NativeAutomationCardService {
   deleteCard(args) {
     const state = this.state();
     const entry = resolveCard(state, args);
-    state.items = state.items.filter((item) => item !== entry);
-    if (state.selectedId === entry.id) state.selectedId = state.items[0]?.id || '';
+    const deletedAt = cardLifecycle.softDelete(state, entry);
     this.persist(state);
-    return { success: true, deletedId: entry.id, state };
+    return { success: true, deletedId: entry.id, deletedAt, state };
+  }
+
+  restoreCard(args) {
+    const state = this.state();
+    const entry = resolveCard(state, { ...args, include_deleted: true });
+    cardLifecycle.restore(entry);
+    this.persist(state);
+    return { success: true, item: clone(entry), state };
+  }
+
+  purgeCard(args) {
+    const state = this.state();
+    const entry = resolveCard(state, { ...args, include_deleted: true });
+    cardLifecycle.purge(state, entry);
+    this.persist(state);
+    return { success: true, deletedId: entry.id, permanent: true, state };
   }
 
   directAction(action, args, state) {
     return ({
-      list: () => ({ success: true, selectedId: state.selectedId, items: state.items.map(summarizeListedCard) }),
+      list: () => ({ success: true, selectedId: state.selectedId, items: state.items
+        .filter((item) => Boolean(item.deletedAt) === (args.include_deleted === true))
+        .map(summarizeListedCard) }),
       get: () => ({ success: true, item: clone(resolveCard(state, args)) }),
       write: () => this.writeCard(args), delete: () => this.deleteCard(args),
       clone: () => this.cloneCard(args), set_enabled: () => this.setEnabled(args),
+      restore: () => this.restoreCard(args), purge: () => this.purgeCard(args),
     })[action];
   }
 

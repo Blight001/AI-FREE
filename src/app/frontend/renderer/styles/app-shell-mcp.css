@@ -1,0 +1,82 @@
+#home-mcp:not([hidden]) {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  block-size: 100%;
+}
+
+#home-mcp-refresh {
+  display: grid;
+  place-items: center;
+  inline-size: 30px;
+  block-size: 30px;
+}
+
+#home-mcp-refresh svg {
+  inline-size: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+}
+
+#home-mcp-status, #home-mcp-tool-availability {
+  color: var(--shell-muted);
+  font-size: 12px;
+}
+
+.home-mcp-layout {
+  display: grid;
+  grid-template-columns: minmax(8rem, 28%) minmax(0, 1fr);
+  gap: 12px;
+  min-block-size: 0;
+  padding-block-start: 8px;
+}
+
+#home-mcp-tools, #home-mcp-details {
+  min-inline-size: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--shell-scrollbar) transparent;
+}
+
+#home-mcp-tools { border-inline-end: 1px solid var(--shell-border); padding-inline-end: 8px; }
+
+#home-mcp-tools button, #home-mcp-refresh {
+  border: 1px solid var(--shell-border);
+  border-radius: 6px;
+  background: var(--shell-panel);
+  color: var(--shell-text);
+  cursor: pointer;
+}
+
+#home-mcp-refresh:disabled { cursor: wait; opacity: .6; }
+
+#home-mcp-tools button {
+  display: block;
+  inline-size: 100%;
+  margin-block-end: 4px;
+  padding: 7px 8px;
+  text-align: start;
+  overflow-wrap: anywhere;
+  font: 12px/1.4 Consolas, monospace;
+}
+
+#home-mcp-tools button:hover, #home-mcp-tools button[aria-pressed="true"] {
+  border-color: var(--shell-accent);
+  background: color-mix(in srgb, var(--shell-accent) 12%, var(--shell-panel));
+}
+
+#home-mcp-details { padding-inline: 2px 8px; font-size: 13px; overflow-wrap: anywhere; }
+#home-mcp-details h2 { margin: 0; font: 600 16px/1.4 Consolas, monospace; }
+#home-mcp-details h3 { margin: 12px 0 4px; font-size: 13px; }
+#home-mcp-details p { margin: 4px 0 10px; }
+.home-mcp-schema summary { cursor: pointer; padding-block: 6px; border-block-start: 1px solid var(--shell-border); }
+#home-mcp-details pre {
+  margin: 4px 0 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--shell-border);
+  border-radius: 6px;
+  background: var(--shell-panel);
+  font: 12px/1.5 Consolas, monospace;
+  white-space: pre-wrap;
+  user-select: text;
+}

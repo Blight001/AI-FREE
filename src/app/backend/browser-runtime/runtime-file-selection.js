@@ -3,6 +3,8 @@
 const fs = require('fs');
 const path = require('path');
 const { findProfileIdByProcessId } = require('./runtime-input');
+const { sendPageCommand } = require('./runtime-page-binding');
+const { CONFIRMED_UPLOAD_FILES } = require('./chromium-upload-staging');
 
 const MAX_SELECTION_PATHS = 32;
 const FILE_SELECTION_MODES = new Set(['open', 'open-multiple', 'upload-folder']);
@@ -84,8 +86,9 @@ async function prepareRuntimeFileSelection(source = {}, options = {}) {
   assertPathsInSandbox(paths, options.sandboxDir);
   const mode = resolveMode(source, paths);
   await validatePathTypes(paths, mode);
+  const origin = source.pageUrl || source.origin;
   return {
-    origin: normalizeOrigin(source.pageUrl || source.origin),
+    ...(origin || options.expectedPageToken === undefined ? { origin: normalizeOrigin(origin) } : {}),
     paths,
     mode,
     ttlMs: Math.min(120000, Math.max(1000, Number(source.ttlMs) || 30000)),
@@ -94,9 +97,22 @@ async function prepareRuntimeFileSelection(source = {}, options = {}) {
 
 async function selectRuntimeFiles(runtime, profileId, source, options = {}) {
   const selection = await prepareRuntimeFileSelection(source, options);
-  return runtime.enqueueProfileOperation(profileId, () => (
-    runtime.getReadyInstance(profileId).commandClient.send('select-files', selection)
-  ));
+  return runtime.enqueueProfileOperation(profileId, async () => {
+    const instance = runtime.getReadyInstance(profileId);
+    const armSelection = (value) => sendPageCommand(instance.commandClient, 'select-files', value,
+      undefined, options.expectedPageToken);
+    const confirmed = source[CONFIRMED_UPLOAD_FILES];
+    if (!confirmed) return armSelection(selection);
+    const staged = await instance.resources.uploadStaging.stage(instance.child.pid, selection.paths, confirmed);
+    try {
+      const reply = await armSelection({ ...selection, paths: staged.paths });
+      if (!(reply?.result || reply)?.selectionId) staged.discard();
+      return reply;
+    } catch (error) {
+      staged.discard();
+      throw error;
+    }
+  });
 }
 
 async function selectRuntimeFilesByProcessId(runtime, processId, source, options = {}) {

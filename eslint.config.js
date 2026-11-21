@@ -79,8 +79,8 @@ module.exports = [
     },
   },
   {
-    // browser_automation 的 popup 模块是 ES modules
-    files: ['src/assets/extensions/browser_automation/popup/**/*.js'],
+    // 显式 .mjs 与 browser_automation popup 使用 ES modules，仍受浏览器脚本门禁约束。
+    files: ['src/app/frontend/renderer/**/*.mjs', 'src/assets/extensions/browser_automation/popup/**/*.js'],
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: 'module',

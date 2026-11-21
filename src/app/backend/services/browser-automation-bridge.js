@@ -110,7 +110,7 @@ class BrowserAutomationBridgeRuntime {
     const id = String(cardId || '').trim();
     if (!id) throw new Error('缺少要选择的自动化卡片 ID');
     const cached = this.cardCacheStore.read();
-    const item = cached.state.items.find((entry) => String(entry?.id || '').trim() === id);
+    const item = cached.state.items.find((entry) => String(entry?.id || '').trim() === id && !entry.deletedAt);
     if (!item) throw new Error(`自动化卡片不存在或已被删除: ${id}`);
     const state = this.cardCacheStore.write({ ...cached.state, selectedId: id });
     return { state, item };
@@ -145,6 +145,9 @@ class BrowserAutomationBridgeRuntime {
       list_run_steps: () => this.runManager.steps(runId),
       cancel_run: () => this.runManager.cancel(runId, input.reason),
       retry_run: () => this.runManager.retry(runId),
+      pause_run: () => this.runManager.pause(runId),
+      resume_run: () => this.runManager.resume(runId),
+      step_run: () => this.runManager.step(runId),
     })[action];
   }
 

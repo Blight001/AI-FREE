@@ -153,6 +153,41 @@ test('closed history keeps last site icon after the tab is gone', () => {
   assert.equal(store.browserHistory[0].lastClosedIconUrl, 'https://closed.test/next.png');
 });
 
+test('startup snapshot marks only browser records that are still open', () => {
+  store.browserHistory = [
+    { id: 'open-a', name: 'Open A', url: 'https://a.test', profileId: 'profile-a', settings: {} },
+    { id: 'open-b', name: 'Open B', url: 'https://b.test', profileId: 'profile-b', settings: {} },
+    { id: 'closed', name: 'Closed', url: 'https://closed.test', profileId: 'profile-c', settings: {} },
+  ];
+  const tabs = new Map([
+    ['profile-a', { id: 'profile-a', browserHistoryId: 'open-a', runtimeUrl: 'https://a.test' }],
+    ['profile-b', { id: 'profile-b', browserHistoryId: 'open-b', runtimeUrl: 'https://b.test' }],
+  ]);
+
+  assert.equal(historyService.persistOpenBrowserHistoryForStartup({ getTabs: () => tabs }), true);
+  assert.deepEqual(store.browserHistory.map((record) => [record.id, record.restoreOnStartup]), [
+    ['open-a', true],
+    ['open-b', true],
+    ['closed', false],
+  ]);
+});
+
+test('startup restores every marked browser record and skips closed history', async () => {
+  store.browserHistory = [
+    { id: 'one', name: 'One', profileId: 'profile-one', restoreOnStartup: true, settings: {} },
+    { id: 'two', name: 'Two', profileId: 'profile-two', restoreOnStartup: true, settings: {} },
+    { id: 'closed', name: 'Closed', profileId: 'profile-closed', restoreOnStartup: false, settings: {} },
+  ];
+  const restored = [];
+
+  await historyService.restoreOpenBrowserHistoryForStartup({
+    addTab: async (_url, options) => { restored.push(options.tabId); },
+    getTabs: () => new Map(),
+  }, { warn() {} });
+
+  assert.deepEqual(restored, ['profile-one', 'profile-two']);
+});
+
 test('open and edit reuse active tabs, persist settings, or restore closed profiles', async () => {
   store.browserHistory = [
     { id: 'open', name: 'Open', url: 'https://open.test', profileId: 'profile-open', settings: {}, createdAt: 1, lastOpenedAt: 1 },

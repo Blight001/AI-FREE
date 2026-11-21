@@ -5,6 +5,7 @@
 function aiPage() {
   const logos = Array.from(document.querySelectorAll('img[data-app-logo]'));
   return { logoCount: logos.length,
+    browserSelectorPresent: Boolean(document.querySelector('#ai-chat-browser, #ai-chat-target')),
     logosLoaded: logos.every((image) => image instanceof HTMLImageElement
       && image.complete && image.naturalWidth > 0 && image.naturalHeight > 0) };
 }

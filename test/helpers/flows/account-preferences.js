@@ -10,6 +10,10 @@ const controls = Object.freeze({
 });
 
 function readAccount() {
+  const heading = document.querySelector('#home-personal h1').getBoundingClientRect();
+  const tutorial = document.getElementById('browser-settings-tutorial').getBoundingClientRect();
+  const tutorialSharesHeadingRow = heading.width > 0 && tutorial.width > 0 && tutorial.left >= heading.right
+    && tutorial.top < heading.bottom && tutorial.bottom > heading.top;
   const get = (id) => document.getElementById(id);
   const settings = document.querySelector('details#account-general-settings');
   const options = [...document.querySelectorAll('.account-close-behavior-options label')];
@@ -21,6 +25,7 @@ function readAccount() {
     authSwitch: get('sidebar-auth-mode-label')?.textContent.trim(),
     hasModeArrow: get('sidebar-auth-mode-switch')?.querySelector('.sidebar-auth-mode-arrow')?.textContent === '→',
     settingsOpen: settings?.hasAttribute('open'),
+    tutorialSharesHeadingRow,
     settingsTitle: settings?.querySelector('summary')?.textContent.trim(),
     settingsBelowAnnouncement: get('announcement-bar')?.nextElementSibling === settings,
     compactCloseOptions: options.length === 3 && options[0].getBoundingClientRect().width > 0

@@ -10,11 +10,6 @@
   }
 
   function bindAiHeaderEvents() {
-    const resizeOpenBrowserMenu = () => {
-      updateBrowserMenuAvailableHeight(document.querySelector('.ai-browser-gear-select.open'));
-    };
-    window.addEventListener('resize', resizeOpenBrowserMenu);
-    window.visualViewport?.addEventListener?.('resize', resizeOpenBrowserMenu);
     el('ai-chat-redeem-gift')?.addEventListener('click', redeemGiftCode);
     el('ai-chat-gift-code')?.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
@@ -40,21 +35,6 @@
     el('ai-custom-api-clear')?.addEventListener('click', clearCustomApi);
     document.querySelectorAll('[data-ai-custom-api-close]').forEach((button) => {
       button.addEventListener('click', closeCustomApiDialog);
-    });
-    document.querySelectorAll('[data-ai-prompt-diagnostics-close]').forEach((button) => {
-      button.addEventListener('click', closePromptDiagnostics);
-    });
-    el('ai-prompt-diagnostics-refresh')?.addEventListener('click', refreshPromptDiagnostics);
-  }
-
-  function bindBrowserSelection() {
-    el('ai-chat-browser')?.addEventListener('change', (event) => {
-      state.currentBrowserIds = getSelectBrowserIds(event.target).slice(0, 1);
-      if (state.currentSession) {
-        state.currentSession.browserConnectionId = state.currentBrowserIds[0] || '';
-        state.currentSession.browserConnectionIds = [...state.currentBrowserIds];
-      }
-      notifyBrowserSelection();
     });
   }
 
@@ -127,18 +107,17 @@
         return;
       }
       loadModels();
-      loadBrowserConnections();
+      loadMcpTools();
       void bootstrapHistory();
     });
   }
 
   function startAiControlPolling() {
     loadModels();
-    loadBrowserConnections();
+    loadMcpTools();
     void bootstrapHistory();
-    // 保留连接离线发现速度；加载函数内部先比对快照，
-    // 数据未变化时不会重建菜单、欢迎页或重复广播主窗口状态。
-    window.setInterval(loadBrowserConnections, 750);
+    // 刷新 @ 菜单的数据源；对话的浏览器连接由主进程在每轮开始时读取。
+    window.setInterval(loadMcpTools, 750);
   }
 
   // 正常关闭/刷新时再做一次同步本地检查点；即使 IPC 来不及完成，消息也不会丢失。
@@ -153,7 +132,7 @@
     if (typeof initSidebarInputRouting === 'function') initSidebarInputRouting();
     initCustomSelects();
     bindAiHeaderEvents();
-    bindBrowserSelection();
+    bindChatUploadConfirmation();
     bindChatForm();
     bindChatInput();
     if (typeof bindChatWorkspace === 'function') bindChatWorkspace();

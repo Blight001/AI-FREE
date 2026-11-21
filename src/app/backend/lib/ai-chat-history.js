@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const path = require('path');
 const { app } = require('electron');
 const { readJsonFileSafe, writeJsonFileSafe } = require('../utils/json-store');
+const { normalizeFileArtifacts } = require('../features/ai-chat/workspace-file-artifacts');
 
 function accountScope(credentials = {}) {
   const key = String(credentials.key || credentials.credential || '').trim();
@@ -90,6 +91,9 @@ function sanitizeMessage(item) {
   if (role === 'user' && Array.isArray(item.attachmentPaths)) {
     message.attachmentPaths = item.attachmentPaths
       .map((value) => String(value || '').trim()).filter(Boolean).slice(0, 16);
+    const references = normalizeFileArtifacts(item.artifactReferences)
+      .filter((artifact) => message.attachmentPaths.includes(artifact.path));
+    if (references.length) message.artifactReferences = references;
   }
   return message;
 }
@@ -103,6 +107,8 @@ function appendAssistantHistory(message, item) {
   if (Array.isArray(item.trace_events)) {
     message.trace_events = item.trace_events.map(sanitizeTraceEvent);
   }
+  const artifacts = normalizeFileArtifacts(item.artifacts);
+  if (artifacts.length) message.artifacts = artifacts;
 }
 
 function compactHistoryValue(value) {

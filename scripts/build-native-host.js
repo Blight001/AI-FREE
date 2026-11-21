@@ -8,10 +8,6 @@ const { spawnSync } = require('child_process');
 const root = path.resolve(__dirname, '..');
 const nativeRoot = path.join(root, 'native', 'browser-host');
 const electronVersion = String(require(path.join(root, 'node_modules', 'electron', 'package.json')).version || '').trim();
-const outputDir = path.join(nativeRoot, 'build', 'Release');
-const outputFile = path.join(outputDir, 'browser_host.node');
-const dpiTestFile = path.join(outputDir, 'dpi_scaling_test.exe');
-
 function quote(value) {
   return `"${String(value).replace(/"/g, '""')}"`;
 }
@@ -55,7 +51,7 @@ function findElectronSdk() {
   return null;
 }
 
-function runNodeGyp() {
+function runNodeGyp(nativeRoot, outputFile) {
   const nodeGyp = path.join(root, 'node_modules', 'node-gyp', 'bin', 'node-gyp.js');
   const result = spawnSync(process.execPath, [
     nodeGyp,
@@ -66,7 +62,9 @@ function runNodeGyp() {
   return result.status === 0 && fs.existsSync(outputFile);
 }
 
-function runManualMsvcBuild() {
+function runManualMsvcBuild(nativeRoot, outputFile) {
+  const outputDir = path.dirname(outputFile);
+  const dpiTestFile = path.join(outputDir, 'dpi_scaling_test.exe');
   const vsRoot = findVsRoot();
   const sdk = findElectronSdk();
   if (!vsRoot || !sdk) {
@@ -134,18 +132,32 @@ function runManualMsvcBuild() {
   }
 }
 
-function buildNativeHost() {
+function buildNativeHost(source = nativeRoot) {
+  const outputFile = path.join(source, 'build', 'Release', 'browser_host.node');
   console.log(`[native-host] Electron target: ${electronVersion}`);
   if (findVsRoot() && findElectronSdk()) {
-    runManualMsvcBuild();
-  } else if (!runNodeGyp()) {
+    runManualMsvcBuild(source, outputFile);
+  } else if (!runNodeGyp(source, outputFile)) {
     throw new Error('Native Host 构建失败：未找到可用的 node-gyp 或 MSVC/Electron SDK 组合');
   }
   console.log(`[native-host] 构建完成: ${outputFile}`);
+  return outputFile;
+}
+
+function stagePackagedNativeHost(stage, resources, compile = buildNativeHost) {
+  const entry = resources.find((resource) => resource.to === 'native/browser-host/browser_host.node');
+  if (!entry) throw new Error('安装包缺少 browser_host.node 资源映射');
+  const source = path.join(stage, 'browser-host');
+  fs.mkdirSync(source);
+  for (const input of ['binding.gyp', 'src', 'test']) {
+    fs.cpSync(path.join(nativeRoot, input), path.join(source, input), { recursive: true });
+  }
+  const from = compile(source);
+  return resources.map((resource) => resource === entry ? { ...entry, from } : resource);
 }
 
 if (require.main === module) {
   buildNativeHost();
 }
 
-module.exports = { buildNativeHost };
+module.exports = { buildNativeHost, stagePackagedNativeHost };

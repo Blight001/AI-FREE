@@ -175,6 +175,26 @@ function verifyPackagedLogoResolution(extractDir, resourcesDir) {
   }
 }
 
+function verifyHomeDiagnosticsAssets(extractDir, appShell, sidebar) {
+  const appRoot = path.join(extractDir, 'src/app');
+  for (const file of ['styles/app-shell-console.css', 'controllers/pages/app-shell/shell-home-console.js',
+    'controllers/pages/app-shell/site-preference-transfer.js',
+    'styles/app-shell-site-data.css', 'controllers/pages/app-shell/site-data.js',
+    'styles/app-shell-mcp.css', 'controllers/pages/app-shell/shell-home-mcp.js']) {
+    assertFile(path.join(appRoot, 'frontend/renderer', file));
+    if (!appShell.includes(`"../renderer/${file}"`)) throw new Error(`首页未加载调试资源: ${file}`);
+  }
+  assertFile(path.join(appRoot, 'backend/features/browser/register-mcp-catalog-ipc.js'));
+  assertFile(path.join(appRoot, 'backend/features/browser/mcp-catalog-examples.js'));
+  if (!appShell.includes('id="home-mcp"') || /id="(?:home-mcp|ai-chat-browser(?:-trigger)?|ai-chat-target|ai-prompt-diagnostics-dialog)/.test(sidebar)) {
+    throw new Error('MCP 管理应只存在于主窗口首页，侧栏不应包含旧设置入口');
+  }
+  if (!appShell.includes('id="home-console"') || sidebar.includes('id="home-console"')
+    || fs.existsSync(path.join(appRoot, 'backend/views/dev-console.html'))) {
+    throw new Error('调试控制台应只存在于主窗口首页');
+  }
+}
+
 function verifyAsarIntegrity(projectDir, appOutDir) {
   const resourcesDir = path.join(appOutDir, 'resources');
   const archivePath = path.join(resourcesDir, 'app.asar');
@@ -221,6 +241,7 @@ function verifyAsarIntegrity(projectDir, appOutDir) {
     assertFile(logoResolverPath, 128);
     const sidebar = fs.readFileSync(sidebarPath, 'utf8');
     const appShell = fs.readFileSync(appShellPath, 'utf8');
+    verifyHomeDiagnosticsAssets(extractDir, appShell, sidebar);
     const logoResolver = fs.readFileSync(logoResolverPath, 'utf8');
     if ((sidebar.match(/<img[^>]*data-app-logo/g) || []).length !== 1
       || !sidebar.includes('<script src="./client/scripts/logo-assets.js"></script>')

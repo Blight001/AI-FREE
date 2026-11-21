@@ -97,3 +97,16 @@ test('声明 requestSchema 的 invoke 在进入业务 handler 前自动校验', 
   });
   assert.equal(called, 1, '非法输入不得触发业务 handler');
 });
+
+test('an individual invoke disposer cannot remove a newer registration', () => {
+  const ipcMain = fakeIpcMain();
+  const registry = createIpcRegistry(ipcMain);
+  const dispose = registry.handle(KNOWN_INVOKE, async () => 'old response');
+  dispose();
+  assert.equal(ipcMain.handlers.size, 0);
+  registry.handle(KNOWN_INVOKE, async () => 'new response');
+  dispose();
+  assert.equal(ipcMain.handlers.size, 1);
+  registry.dispose();
+  assert.equal(ipcMain.handlers.size, 0);
+});

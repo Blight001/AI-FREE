@@ -1,5 +1,7 @@
 (() => {
   let focusPersonalOnShow = false;
+  let syncConsole;
+  let syncMcp;
 
   function setVisible(tabs = []) {
     const home = document.getElementById('browser-empty-state');
@@ -8,15 +10,27 @@
     const status = String(activeTab?.runtimeStatus || '').trim().toLowerCase();
     const wasVisible = !home.hidden;
     home.hidden = status === 'ready' || status === 'hidden';
-    if (home.hidden && wasVisible) leavePersonal();
-    else if (focusPersonalOnShow) focusPersonal();
+    if (home.hidden && wasVisible) {
+      leaveAccounts();
+      clearPersonalTransientState();
+    } else if (focusPersonalOnShow) focusPersonal();
+    syncConsole?.();
+    syncMcp?.();
+  }
+
+  function leaveAccounts() {
+    document.getElementById('provider-category-menu')?.hidePopover();
+  }
+
+  function clearPersonalTransientState() {
+    closeAccountProfileMenu();
+    clearSidebarAuthPasswords();
   }
 
   function leavePersonal() {
-    closeVipBenefitsDialog();
-    closeAccountProfileMenu();
+    setAnnouncementMailOpen(false);
+    clearPersonalTransientState();
     vipPlansOpenRequested = false;
-    clearSidebarAuthPasswords();
     focusPersonalOnShow = false;
   }
 
@@ -24,7 +38,8 @@
     if (document.getElementById('browser-empty-state').hidden) return;
     focusPersonalOnShow = false;
     const vip = document.getElementById('vip-benefits-dialog');
-    const target = !vip.hidden ? vip.querySelector('.vip-benefits-close')
+    if (vipPlansOpenRequested && isSidebarAccountAuthenticated()) openVipBenefitsDialog();
+    const target = vip.open ? vip.querySelector('.vip-benefits-close')
       : document.getElementById(isSidebarAccountAuthenticated() ? 'home-personal' : 'sidebar-auth-username');
     target?.focus();
   }
@@ -48,16 +63,20 @@
   function bindHomeTabs() {
     const tabList = document.querySelector('.shell-home-tabs');
     if (!tabList) return;
-    const tabs = [...tabList.querySelectorAll('[role="tab"]')];
+    const tabs = [...tabList.querySelectorAll('[role="tab"]:not([hidden])')];
     const panels = tabs.map((tab) => document.getElementById(tab.getAttribute('aria-controls')));
     const select = (selected) => {
       if (panels[selected].id !== 'home-personal' && !document.getElementById('home-personal').hidden) leavePersonal();
+      if (panels[selected].id !== 'home-accounts') leaveAccounts();
+      if (tabs[selected].getAttribute('aria-selected') !== 'true') homeDialogs.reset();
       tabs.forEach((tab, index) => {
         const active = index === selected;
         tab.setAttribute('aria-selected', String(active));
         tab.tabIndex = active ? 0 : -1;
         panels[index].hidden = !active;
       });
+      syncConsole?.();
+      syncMcp?.();
     };
     tabList.addEventListener('click', (event) => {
       const index = tabs.indexOf(event.target.closest('[role="tab"]'));
@@ -75,17 +94,15 @@
   }
 
   function bind() {
+    if (new URLSearchParams(location.search).get('dev') === '1' && window.aiFree?.diagnostics) {
+      document.getElementById('home-console-tab').hidden = false;
+      syncConsole = bindHomeConsole();
+      document.getElementById('home-mcp-tab').hidden = false;
+      syncMcp = bindHomeMcp();
+    }
+    bindSiteData();
     bindHomeTabs();
-    const button = document.getElementById('browser-settings-dev-console');
-    button?.addEventListener('click', async () => {
-      button.disabled = true;
-      try {
-        const result = await window.aiFree.diagnostics.openConsole();
-        if (!result?.ok) throw new Error(result?.error?.message || '调试控制台打开失败');
-      } catch (error) {
-        window.MessageModal?.showErrorMessage?.(error.message);
-      } finally { button.disabled = false; }
-    });
+    window.AppShellAutomation?.bind();
   }
 
   window.AppShellHome = Object.freeze({ bind, setVisible, openPersonal });

@@ -2,11 +2,14 @@
 
 const { removeBrowserEnvironmentExtension } = require('./chromium-browser-environment-extension');
 
+const { ChromiumUploadStaging } = require('./chromium-upload-staging');
+
 // The launch operation owns this object until recordProfileInstance transfers
 // the same object to the instance. Environment files outlive an unconfirmed exit.
 class ChromiumLaunchResources {
   constructor(paths, windowBridge, logger) {
     this.paths = paths;
+    this.uploadStaging = new ChromiumUploadStaging(paths.root);
     this.windowBridge = windowBridge;
     this.logger = logger;
     this.hostHwnd = null;
@@ -26,7 +29,10 @@ class ChromiumLaunchResources {
           await this.proxyAuthBridge?.close();
           this.proxyAuthBridge = null;
         }
-        finally { removeBrowserEnvironmentExtension(this.paths.root, this.environmentExtensionDir); }
+        finally {
+          try { removeBrowserEnvironmentExtension(this.paths.root, this.environmentExtensionDir); }
+          finally { this.uploadStaging.close(); }
+        }
       })().catch((error) => {
         this.environmentCleanup = null;
         throw error;

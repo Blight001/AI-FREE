@@ -7,7 +7,9 @@ const {
   expiredObservedRefResult, mismatchedObservationResult, observedTarget, processObservationResult,
 } = require('./native-browser-observation');
 const { waitForBrowserCondition } = require('./native-browser-wait');
-const { browserFile, observedRef } = require('./native-browser-file');
+const { browserFile, resolvedFileAction } = require('./native-browser-file');
+const { PAGE_TOKEN, bindPage, bindingFailure, boundToolFailure, expectedPageToken, runtimeBindingFailure } = require('./native-browser-page-binding');
+const { resolveObservedTarget, recoverObservedTarget, rememberObservation } = require('./native-browser-ref-store');
 const { browserMedia } = require('./native-browser-media');
 const { executeBrowserTab } = require('./native-browser-tabs');
 const { BrowserWorkflow } = require('./browser-workflow');
@@ -21,19 +23,12 @@ const APP_INPUT_RESOURCE = 'app-window';
 const CONNECTION_PREFIX = 'native:';
 const READY_STATUSES = new Set(['ready', 'hidden']);
 const FILE_CHOOSER_ACTIONS = new Set(['click', 'double_click']);
-const OBSERVATION_HISTORY_LIMIT = 3;
-const OBSERVATION_HISTORY_TTL_MS = 30000;
 
 function text(value) { return String(value == null ? '' : value).trim(); }
 
-function nonNegativePoint(x, y) {
-  const point = { x: Number(x), y: Number(y) };
-  if (!Object.values(point).every(Number.isFinite)) return null;
-  return Math.min(point.x, point.y) >= 0 ? point : null;
-}
-
 function runtimeTarget(target) {
   const {
+    [PAGE_TOKEN]: _pageToken,
     observedTag: _observedTag,
     observedInputType: _observedInputType,
     requiresFileUpload: _requiresFileUpload,
@@ -54,26 +49,6 @@ function runtimeTarget(target) {
     ...input
   } = target;
   return input;
-}
-
-function normalizedComparable(value) {
-  return text(value).toLowerCase().replace(/\s+/g, ' ');
-}
-
-function recoveryMatches(previous, item) {
-  const selectorMatches = text(previous.selector) && text(previous.selector) === text(item.selector);
-  const stableRefMatches = text(previous.stableRef) && text(previous.stableRef) === text(item.stableRef);
-  if (!selectorMatches && !stableRefMatches) return false;
-  if (previous.observedTag && previous.observedTag !== normalizedComparable(item.tag)) return false;
-  if (previous.observedRole && previous.observedRole !== normalizedComparable(item.role)) return false;
-  const nextLabel = normalizedComparable(item.label || item.ariaLabel || item.placeholder || item.text);
-  return !previous.observedLabel || normalizedComparable(previous.observedLabel) === nextLabel;
-}
-
-function recoverableLocator(target) {
-  return target?.selectorUnique === true
-    && ['high', 'medium'].includes(text(target.selectorStability).toLowerCase())
-    && !!text(target.selector);
 }
 
 function selectorTargetsFileInput(value) {
@@ -233,7 +208,9 @@ class NativeBrowserAutomation {
   }
 
   async runtimeCommand(connection, command, input = {}) {
-    const response = await this.runtime.dispatchAutomationByProcessId(connection.browserProcessId, command, input);
+    const token = expectedPageToken(connection);
+    const options = token === undefined ? [] : [{ expectedPageToken: token }];
+    const response = await this.runtime.dispatchAutomationByProcessId(connection.browserProcessId, command, input, ...options);
     const result = response?.result || response || {};
     if (result?.errorCode === 'BROWSER_TAKEOVER_REQUIRED') void this.releasePointerSession(connection.id);
     return result;
@@ -283,7 +260,10 @@ class NativeBrowserAutomation {
   async dispatchPointerAction(connection, input) {
     try {
       return await this.pointerScheduler.run(connection.id, PRIMARY_POINTER, connection.id, () => {
-        if (!this.takeoverConnections.has(connection.id)) return takeoverRequired('browser_action', input);
+        if (!this.takeoverConnections.has(connection.id)) {
+          const failure = takeoverRequired('browser_action', input);
+          return expectedPageToken(connection) ? { ...failure, actionExecuted: false } : failure;
+        }
         return this.runtimeCommand(connection, 'perform-action', runtimeTarget(input));
       });
     } catch (error) {
@@ -369,94 +349,9 @@ class NativeBrowserAutomation {
 
   runtimeTarget(target) { return runtimeTarget(target); }
 
-  resolveObservedTarget(connection, args) {
-    const ref = observedRef(args);
-    const normalized = ref && !text(args.ref) ? { ...args, ref } : args;
-    if (text(normalized.selector) || !text(normalized.ref)) return normalized;
-    const target = this.observeTargets.get(connection.id)?.get(text(normalized.ref));
-    const requestedObservationId = text(normalized.observation_id ?? normalized.observationId);
-    if (target && (!requestedObservationId || requestedObservationId === target.observationId)) {
-      return this.mergeObservedTarget(target, normalized);
-    }
-    if (requestedObservationId) {
-      const historic = this.findHistoricTarget(connection.id, requestedObservationId, text(normalized.ref));
-      if (historic) return { ...normalized, observedRefRecoveryCandidate: historic };
-      return { ...normalized, observationMismatch: true };
-    }
-    return { ...normalized, observedRefExpired: true };
-  }
+  resolveObservedTarget(connection, args) { return resolveObservedTarget(this, connection, args); }
 
-  mergeObservedTarget(target, args) {
-    const resolved = { ...target, ...args };
-    if (!text(args.selector) && target.selector) resolved.selector = target.selector;
-    const explicitPoint = nonNegativePoint(args.x, args.y);
-    if (explicitPoint) Object.assign(resolved, explicitPoint);
-    else if (Number.isFinite(target.x) && Number.isFinite(target.y)) {
-      resolved.x = target.x;
-      resolved.y = target.y;
-    }
-    return resolved;
-  }
-
-  findHistoricTarget(connectionId, observationId, ref) {
-    this.pruneObservationHistory(connectionId);
-    return this.observationHistory.get(connectionId)?.find((snapshot) => (
-      snapshot.observationId === observationId
-    ))?.targets.get(ref) || null;
-  }
-
-  pruneObservationHistory(connectionId) {
-    const now = Date.now();
-    const history = (this.observationHistory.get(connectionId) || [])
-      .filter((snapshot) => now - snapshot.createdAt <= OBSERVATION_HISTORY_TTL_MS)
-      .slice(-OBSERVATION_HISTORY_LIMIT);
-    if (history.length) this.observationHistory.set(connectionId, history);
-    else this.observationHistory.delete(connectionId);
-  }
-
-  rememberObservation(connectionId, observationId, targets) {
-    const history = this.observationHistory.get(connectionId) || [];
-    history.push({ observationId, createdAt: Date.now(), targets });
-    this.observationHistory.set(connectionId, history.slice(-OBSERVATION_HISTORY_LIMIT));
-  }
-
-  async recoverObservedTarget(connection, input) {
-    const previous = input.observedRefRecoveryCandidate;
-    if (!recoverableLocator(previous)) {
-      return {
-        ...input, observedRefExpired: true, observedRefRecoveryCandidate: null,
-        observedRefRecoveryReason: 'LOCATOR_NOT_STABLE',
-        observedRefRecoveryError: '旧 ref 没有唯一且稳定的 selector，无法安全恢复；请重新执行 browser_observe。',
-      };
-    }
-    const current = await this.runtimeCommand(connection, 'observe-page', {
-      limit: 1000, includeText: true, includeMedia: true, showHighlights: false,
-    });
-    if (!previous.observedUrl || !text(current?.url) || text(current.url) !== previous.observedUrl) {
-      return {
-        ...input, observedRefExpired: true, observedRefRecoveryCandidate: null,
-        observedRefRecoveryReason: 'DOCUMENT_CHANGED',
-        observedRefRecoveryError: '页面身份无法确认或已发生导航，旧 ref 不再可信；请重新执行 browser_observe。',
-      };
-    }
-    const matches = (Array.isArray(current?.items) ? current.items : [])
-      .filter((item) => recoveryMatches(previous, item));
-    if (matches.length !== 1 || matches[0].selectorUnique !== true) {
-      return {
-        ...input, observedRefExpired: true, observedRefRecoveryCandidate: null,
-        observedRefRecoveryReason: matches.length > 1 ? 'LOCATOR_AMBIGUOUS' : 'TARGET_CHANGED',
-        observedRefRecoveryError: matches.length > 1
-          ? '旧 ref 在当前页面匹配到多个元素，已拒绝自动操作；请重新执行 browser_observe。'
-          : '旧 ref 对应元素已消失或语义发生变化；请重新执行 browser_observe。',
-      };
-    }
-    const recovered = observedTarget(matches[0], previous.observationId, { url: current.url });
-    if (!recovered) return { ...input, observedRefExpired: true, observedRefRecoveryCandidate: null };
-    return {
-      ...this.mergeObservedTarget(recovered[1], input),
-      observedRefRecoveryCandidate: null, observedRefRecovered: true,
-    };
-  }
+  recoverObservedTarget(connection, input) { return recoverObservedTarget(this, connection, input); }
 
   async browserObserve(connection, input) {
     if (NATIVE_SURFACES.has(input.surface)) {
@@ -472,8 +367,8 @@ class NativeBrowserAutomation {
     const decorated = processObservationResult(result, input, observationId);
     const targets = new Map(decorated.items
       .map((item) => observedTarget(item, observationId, { url: decorated.url })).filter(Boolean));
-    this.observeTargets.set(connection.id, targets);
-    this.rememberObservation(connection.id, observationId, targets);
+    for (const target of targets.values()) target[PAGE_TOKEN] = expectedPageToken(connection);
+    rememberObservation(this, connection.id, observationId, targets);
     return attachScreenshot(this, connection, decorated, input);
   }
 
@@ -494,6 +389,10 @@ class NativeBrowserAutomation {
     }
     const waitedMs = Math.min(120000, Math.max(0, Number(args.ms) || 1000));
     await new Promise((resolve) => setTimeout(resolve, waitedMs));
+    if (expectedPageToken(connection)) {
+      const current = await this.runtimeCommand(connection, 'automation-takeover', { action: 'status' });
+      if (current.success === false) return current;
+    }
     return { success: true, waitedMs, cardStep: { name: `等待 ${waitedMs}ms`, type: 'wait', timeout: waitedMs } };
   }
 
@@ -505,6 +404,7 @@ class NativeBrowserAutomation {
     const connection = this.requireConnection(connectionId);
     const input = args && typeof args === 'object' ? args : {};
     const toolName = normalizeToolName(tool);
+    if (options.expectedPageToken !== undefined) return this.dispatchBound(connection, toolName, input, options.expectedPageToken);
     if (appSurfaceDisallowed(input, options)) return appPointerUnavailable();
     const blocked = this.workflow.blocked(connection, toolName, input);
     if (blocked) return blocked;
@@ -522,6 +422,26 @@ class NativeBrowserAutomation {
       });
     }
     throw new Error(`未知的 Chromium 原生自动化工具: ${text(toolName) || '(空)'}`);
+  }
+
+  async dispatchBound(connection, tool, input, token) {
+    if (typeof token !== 'string' || !token.trim() || token.length > 256) {
+      return bindingFailure('BROWSER_TARGET_REQUIRED', '缺少有效的页面绑定');
+    }
+    const unsupported = boundToolFailure(tool, input, tool === 'browser_file' && resolvedFileAction(input));
+    if (unsupported) return unsupported;
+    const blocked = this.workflow.blocked(connection, tool, input);
+    if (blocked) return blocked;
+    if (!isReadOnlyTool(tool, input) && !this.takeoverConnections.has(connection.id)) {
+      return { ...takeoverRequired(tool, input), actionExecuted: false };
+    }
+    const bound = bindPage(connection, token);
+    try {
+      // Workflow retries and diagnostics are not part of the bound action contract.
+      return await (tool === 'browser_action' ? this.browserActionRaw(bound, input) : this.dispatchBasicTool(bound, tool, input));
+    } catch (error) {
+      return runtimeBindingFailure(error);
+    }
   }
 }
 

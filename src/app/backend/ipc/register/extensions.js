@@ -1,10 +1,8 @@
 const { BrowserWindow, dialog } = require('electron');
-const { createVipRequiredResult, resolveVipAccess } = require('../../utils/vip-access');
 
 function registerExtensionsIPC(ctx = {}) {
   const ipc = ctx.ipc.scope('register/extensions');
   const extensionManager = ctx.extensionManager || ctx.ui?.extensionManager || null;
-  const hasVipAccess = () => resolveVipAccess(ctx.licenseCache?.getSnapshot?.() || {}).isVip;
 
   function ensureManager() {
     if (!extensionManager) {
@@ -16,7 +14,7 @@ function registerExtensionsIPC(ctx = {}) {
   ipc.handle('get-extension-manager-state', async () => {
     const missing = ensureManager();
     if (missing) return missing;
-    return { ok: true, vipRequired: !hasVipAccess(), state: extensionManager.getPublicState() };
+    return { ok: true, vipRequired: false, state: extensionManager.getPublicState() };
   });
 
   ipc.handle('set-extension-enabled', async (_event, payload = {}) => {
@@ -42,9 +40,6 @@ function registerExtensionsIPC(ctx = {}) {
   ipc.handle('import-extension-plugin', async (_event) => {
     const missing = ensureManager();
     if (missing) return missing;
-    if (!hasVipAccess()) {
-      return { ...createVipRequiredResult('导入自定义插件'), state: extensionManager.getPublicState() };
-    }
     try {
       const owner = BrowserWindow.fromWebContents(_event.sender) || undefined;
       const selection = owner

@@ -4,14 +4,23 @@ function bindAccountDialogControls() {
   });
   document.querySelectorAll('[data-vip-benefits-close]').forEach((element) => element.addEventListener('click', closeVipBenefitsDialog));
   safeGetEl('account-profile-avatar')?.addEventListener('click', toggleAccountProfileMenu);
+  bindHomeAccountAvatar();
   safeGetEl('account-profile-menu')?.addEventListener('click', (event) => event.stopPropagation());
   document.addEventListener('click', closeAccountProfileMenu);
-  document.addEventListener('keydown', closeAccountDialogOnEscape);
 }
 
-function closeAccountDialogOnEscape(event) {
-  if (event.key !== 'Escape') return;
-  if (safeGetEl('vip-benefits-dialog')?.hidden === false) closeVipBenefitsDialog();
+function bindHomeAccountAvatar() {
+  const profile = safeGetEl('account-profile-avatar')?.querySelector('img');
+  const mirror = safeGetEl('home-personal-avatar')?.querySelector('img');
+  if (!profile || !mirror) return;
+  const sync = () => {
+    const source = profile.getAttribute('src');
+    if (source && profile.naturalWidth) mirror.setAttribute('src', source);
+    else mirror.removeAttribute('src');
+  };
+  profile.addEventListener('load', sync);
+  profile.addEventListener('error', sync);
+  if (profile.complete) sync();
 }
 
 function bindVipPlanControls() {

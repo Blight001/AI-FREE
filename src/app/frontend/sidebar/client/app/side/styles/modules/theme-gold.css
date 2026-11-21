@@ -177,18 +177,6 @@ html.theme-gold .ai-select-option-rename:hover {
   background: rgba(212, 183, 118, .12);
 }
 
-html.theme-gold .ai-browser-gear-select.open .ai-browser-gear-icon {
-  color: #e3cb92;
-}
-
-html.theme-gold .ai-browser-gear-select.has-selection .ai-browser-gear-trigger {
-  border-color: rgba(212, 183, 118, .52);
-  background: rgba(212, 183, 118, .12);
-}
-
-html.theme-gold .ai-browser-gear-select.has-selection .ai-browser-gear-icon {
-  color: #e0c584;
-}
 
 html.theme-gold .ai-browser-card-refresh {
   background: rgba(212, 183, 118, .12);

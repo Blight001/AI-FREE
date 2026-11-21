@@ -2,7 +2,9 @@
 
 更新时间：2026-08-10
 
-本文档记录当前软件实际向 AI 提供的 MCP 工具。常规浏览器对话至少提供 9 个工具；当最近用户消息明确涉及环境、指纹、代理、时区等配置时，额外注入体积较大的 `browser_environment` schema，工具数变为最多 10 个。
+AI-FREE 的完整浏览器 MCP 目录有 13 个工具。实际对话注入的工具随 Chromium 连接和对话意图变化；例如 `browser_environment` 在本地 AI 对话中按需注入。
+
+开发者模式下打开 **首页 → MCP 管理** 可查看当前目录、连接条件、JSON Schema、示例提示词及 JSON-RPC 请求和模拟返回。查看示例不会调用工具、读取会话或展示实际模型 Prompt。AI 对话不再受旧的累计 MCP 调用次数设置限制；停止、超时和单批异常请求保护保留。
 
 ## 总览
 
@@ -11,7 +13,7 @@
 | 外部软件栏目 | 1 | 软件运行期间始终可用 | [`ai-browser-window-tools.js`](../src/app/backend/services/ai-browser-window-tools.js) |
 | 浏览器高级环境 | 1 | 用户消息命中环境/指纹/代理等配置意图 | [`ai-browser-window-tools.js`](../src/app/backend/services/ai-browser-window-tools.js) |
 | AI 工作区命令 | 1 | 软件运行期间始终可用 | [`ai-sandbox-file-tools.js`](../src/app/backend/services/ai-sandbox-file-tools.js) |
-| 浏览器自动化 | 7 | 至少有一个已完成 Runtime Bridge 握手的内置 Chromium | [`native-browser-tool-definitions.js`](../src/app/backend/services/native-browser-tool-definitions.js) |
+| 浏览器自动化 | 10 | 页面工具需要已握手的内置 Chromium；外部网关可在未连接时执行 `browser_control overview` | [`native-browser-tool-definitions.js`](../src/app/backend/services/native-browser-tool-definitions.js) |
 
 AI-FREE 本地 AI 对话使用下表中的“内部名称”。连接 HeySure 后，设备向服务器注册时会统一添加 `aifree.` 前缀。
 
@@ -28,6 +30,8 @@ AI-FREE 本地 AI 对话使用下表中的“内部名称”。连接 HeySure �
 | `browser_screenshot` | `aifree.browser+screenshot` | 截取页面可视区或指定坐标区域 |
 | `browser_action` | `aifree.browser+action` | 点击、输入、滚动和发送按键 |
 | `browser_wait` | `aifree.browser+wait` | 等待元素、文本或 URL 条件成立，或等待指定时间 |
+| `browser_control` | `aifree.browser+control` | 浏览器总览以及页面接管、状态检查和释放 |
+| `browser_workflow` | `aifree.browser+workflow` | 执行、暂停、恢复及诊断多步自动化流程 |
 
 ## 外部软件栏目工具
 
@@ -166,6 +170,7 @@ Cookie 属于登录会话数据，不属于 `browser_environment.settings` 的�
 - `action`：必填，可用值为 `click`、`double_click`、`right_click`、`drag`、`scroll`、`type`、`insert_text`、`set_selection`、`press_key`。
 - 元素定位：优先同时传入 `browser_observe` 返回的 `observationId` 与 `ref`。原生连接会保存该元素的视口中心坐标，后续点击直接在该坐标注入鼠标事件，由 Chromium 命中测试选择坐标处最上层元素；selector 用于字符选区和坐标缺失时回退。显式传入的 `x`、`y` 会覆盖 `ref` 默认中心。应用短期保留最近 3 次观察（最长 30 秒）；旧 ref 只有在页面 URL 未变化、selector 唯一且稳定、当前元素的标签/角色/名称一致时才会重新定位，成功响应包含 `refRecovered=true`。导航、歧义或语义变化仍返回 `OBSERVED_REF_EXPIRED`，不会复用旧坐标。
 - 点击实现：Runtime Bridge 与 AI-FREE 建立连接后，Chromium Views 层的虚拟指针会默认悬浮在网页视口中央，并在连接期间常驻；`click`、`double_click`、`right_click` 复用该指针完成平滑移动、按下、抬起和点击反馈，点击结束后停留在最后位置。覆盖层不进入页面 DOM、不接收事件，也不移动 Windows 全局鼠标；RenderWidgetHost 正常执行坐标命中测试，不会穿透遮挡元素。断开 Runtime Bridge 或页面销毁时指针会清除。
+- 网页虚拟指针采用「01 棱镜」样式：白色箭尖、紫蓝渐变描边和近黑内芯由 Chromium 原生绘制。移动时的拖尾为连续曲线，向后收细，停止移动后淡出；真实鼠标与扩展手型动效不受影响。
 - 鼠标选文：`drag` 使用 `x`、`y` 作为起点，`to_x`、`to_y` 作为终点，真实发送移动、按下、拖动和抬起事件；虚拟指针同步显示拖动过程。
 - 字符级编辑：`set_selection` 使用 UTF-16 `start`、`end` 精确放置光标或选择 input、textarea、contenteditable 文本；`start=end` 表示光标。`type` 保持整段覆盖，`insert_text` 仅替换当前选区或从光标位置插入。
 - 键盘参数：`key` 支持字符键、方向键、Home/End、PageUp/PageDown、Backspace/Delete、Insert、F1–F24，以及 `Ctrl+A`、`Shift+ArrowLeft` 等组合键；也可用 `ctrl`、`shift`、`alt`、`meta` 显式指定修饰键，`repeat` 可重复 1–100 次。
@@ -183,7 +188,7 @@ Cookie 属于登录会话数据，不属于 `browser_environment.settings` 的�
 
 ## 多浏览器路由
 
-AI 对话和 HeySure 设备端都会发现当前所有已连接浏览器的工具，但任一时刻只维护一个“当前控制浏览器”，不允许同时控制多个目标。AI 控制栏的浏览器选择器也是单选。
+AI 对话和 HeySure 设备端都会发现当前所有已连接浏览器的工具，但任一时刻只维护一个“当前控制浏览器”，不允许同时控制多个目标。软件内 AI 按本轮任务选择浏览器。用户可以在消息里指定目标浏览器或网站。
 
 所有浏览器工具都会额外获得一个可选参数：
 
@@ -209,7 +214,7 @@ AI 对话和 HeySure 设备端都会发现当前所有已连接浏览器的工�
 - 注册同时上报 AI 用途说明“用于连接 AI-FREE，调用其中已启用的软件窗口、浏览器和自动化 MCP 工具”和 `catalogProtocolVersion=2`，让 HeySure AI 能把该设备与普通浏览器、桌面或 Android 执行器区分开；该说明仅是能力元数据，不是执行指令。
 - 外部调用目录由 [`browser-automation-external-gateway.js`](../src/app/backend/services/browser-automation-external-gateway.js) 汇总，并执行会员权限、浏览器路由和敏感参数限制。
 - 只有服务器实时校验为有效会员时，软件才会向 HeySure 注册为在线设备并接受调用。
-- 浏览器连接建立或断开后，设备会自动刷新工具目录。因此 HeySure 端可见工具数量可能在 9 个和 10 个之间变化（可选 `browser_environment`）。
+- 浏览器连接建立或断开后，设备会自动刷新工具目录；以实际注册的工具列表为准。
 - 本地 AI、本机 MCP 网关和 HeySure adapter 共用
   [`automation-tool-contract.js`](../src/app/backend/services/automation-tool-contract.js)
   中的 Schema、浏览器路由、超时、路由参数清理和错误规范化规则；三端仅保留各自的传输与鉴权适配。

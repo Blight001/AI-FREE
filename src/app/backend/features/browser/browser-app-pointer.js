@@ -4,7 +4,7 @@ const { setTimeout: delay } = require('node:timers/promises');
 
 const TARGETS = Object.freeze({
   shell: ['home-tab-btn', 'new-browser-window-btn', 'open-default-browser-settings', 'browser-settings-dialog-close'],
-  sidebar: ['ai-chat-attach', 'ai-chat-workspace-close', 'ai-chat-browser-trigger', 'ai-chat-model-trigger'],
+  sidebar: ['ai-chat-attach', 'ai-chat-workspace-close', 'ai-chat-model-trigger'],
 });
 const DELAY_MS = 16;
 const MOVE_FRAMES = 12;

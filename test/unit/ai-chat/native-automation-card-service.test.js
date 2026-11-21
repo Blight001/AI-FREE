@@ -200,6 +200,24 @@ test('flow node without an outgoing edge is terminal instead of falling through 
   assert.deepEqual(calls, ['browser_tab', 'browser_tab', 'browser_screenshot']);
 });
 
+test('flow back-edges execute bounded loops and stop at the configured transition limit', async () => {
+  const { service } = fixture();
+  const written = await service.execute({
+    action: 'write',
+    limits: { timeoutSeconds: 30, maxTransitions: 4 },
+    cardData: {
+      name: '有限循环',
+      steps: [{ id: 'tick', type: 'delay', delayMs: 0 }, { id: 'finish', type: 'end' }],
+      flow: { start: 'tick', edges: [{ from: 'tick', to: 'tick', label: 'next' }] },
+    },
+  });
+
+  await assert.rejects(service.execute({ action: 'run', id: written.item.id }, {
+    maxTransitions: 4,
+    dispatch: async () => ({ success: true }),
+  }), /超过安全步数限制/);
+});
+
 test('card metadata and immutable versions survive updates, validation, cloning and export', async () => {
   const { service } = fixture();
   const first = await service.execute({
@@ -226,6 +244,23 @@ test('card metadata and immutable versions survive updates, validation, cloning 
   assert.notEqual(cloned.item.id, second.item.id);
   const exported = await service.execute({ action: 'export', id: second.item.id });
   assert.equal(exported.card.latestVersionId, second.item.latestVersionId);
+});
+
+test('soft-deleted cards stay hidden by default and can be restored or permanently removed', async () => {
+  const { service, state } = fixture();
+  const written = await service.execute({
+    action: 'write', cardData: { name: 'Trash me', steps: [{ type: 'end' }] },
+  });
+  await service.execute({ action: 'delete', id: written.item.id });
+  assert.equal((await service.execute({ action: 'list' })).items.length, 0);
+  assert.equal((await service.execute({ action: 'list', include_deleted: true })).items.length, 1);
+  await assert.rejects(service.execute({ action: 'get', id: written.item.id }));
+  await service.execute({ action: 'restore', id: written.item.id });
+  assert.equal((await service.execute({ action: 'get', id: written.item.id })).item.deletedAt, null);
+  await service.execute({ action: 'delete', id: written.item.id });
+  const purged = await service.execute({ action: 'purge', id: written.item.id });
+  assert.equal(purged.permanent, true);
+  assert.equal(state().items.length, 0);
 });
 
 test('delay and end steps support progress, retries and cooperative cancellation', async () => {

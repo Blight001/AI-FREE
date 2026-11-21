@@ -1,6 +1,7 @@
 'use strict';
 
 const { limitAiControlMessages } = require('../../lib/ai-control-message-window');
+const { isLocalCommand, commandMetadata } = require('./chat-local-command');
 
 function compactToolValue(value) {
   return value;
@@ -41,6 +42,20 @@ function takeInsertedMessages(activeRun, modelMessages, emit, notify = true) {
   return true;
 }
 
+function sessionMessage(message) {
+  return message?.ai_free_card_context !== true && message?.ai_free_transient_image !== true
+    && message?.ai_free_attachment_context !== true;
+}
+
+function persistedMessages(messages) {
+  return limitAiControlMessages(messages.filter(sessionMessage).map((message) => {
+    if (message.role !== 'tool' || !isLocalCommand(message.name)) return message;
+    let result;
+    try { result = JSON.parse(message.content); } catch (_) { result = {}; }
+    return { ...message, content: JSON.stringify(commandMetadata(result)) };
+  }));
+}
+
 function buildStoppedResult(context) {
   takeInsertedMessages(context.activeRun, context.modelMessages, context.emit, false);
   const partialReasoning = String(context.streamedRoundReasoning || '');
@@ -49,8 +64,7 @@ function buildStoppedResult(context) {
     ? [...context.traceEvents, { type: 'reasoning', round: context.traceEvents.length, content: partialReasoning }]
     : [...context.traceEvents];
   const cleanMessages = context.modelMessages
-    .filter((message) => message?.ai_free_card_context !== true
-      && message?.ai_free_transient_image !== true && message?.role !== 'tool')
+    .filter((message) => sessionMessage(message) && message?.role !== 'tool')
     .map((message) => message?.role === 'assistant'
       ? { role: 'assistant', content: String(message.content || '') }
       : message)
@@ -61,6 +75,7 @@ function buildStoppedResult(context) {
     reasoning: `${context.reasoningLog}${context.reasoningLog && partialReasoning ? '\n\n' : ''}${partialReasoning}`,
     tool_events: context.toolEvents,
     trace_events: stoppedTraceEvents,
+    artifacts: context.artifacts || [],
     stopped: true,
   };
   if (partialContent.trim() || stoppedMessage.reasoning.trim() || context.toolEvents.length) {
@@ -79,11 +94,10 @@ function buildStoppedResult(context) {
 
 function finishAfterToolFailure(context, failureMessage) {
   const detail = String(failureMessage || context.unresolvedToolFailure || 'Chromium 原生控制执行失败').trim().slice(0, 1000);
-  const content = `浏览器原生操作失败：${detail}\n\n当前对话已保留，你可以检查浏览器连接或调整操作后重试。`;
-  const finalMessages = limitAiControlMessages([
-    ...context.modelMessages.filter((message) => (
-      message?.ai_free_card_context !== true && message?.ai_free_transient_image !== true
-    )),
+  const content = context.uploadState?.unverified ? detail
+    : `浏览器原生操作失败：${detail}\n\n当前对话已保留，你可以检查浏览器连接或调整操作后重试。`;
+  const finalMessages = persistedMessages([
+    ...context.modelMessages,
     { role: 'assistant', content },
   ]);
   const result = {
@@ -94,6 +108,7 @@ function finishAfterToolFailure(context, failureMessage) {
     message: {
       role: 'assistant', content, reasoning: context.reasoningLog,
       tool_events: context.toolEvents, trace_events: context.traceEvents,
+      artifacts: context.artifacts || [],
     },
   };
   context.emit({ type: 'done', message: result.message, quota: result.quota });
@@ -105,6 +120,7 @@ module.exports = {
   compactToolValue,
   finishAfterToolFailure,
   isChatStopped,
+  persistedMessages,
   takeInsertedMessages,
   waitForChatAbort,
 };

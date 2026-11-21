@@ -82,7 +82,9 @@ function normalizeChatOptions(input) {
       .map((value) => String(value || '').trim()).filter(Boolean))].slice(0, 16),
     connectionIds: [...new Set(rawIds.map((value) => String(value || '').trim()).filter(Boolean))].slice(0, 1),
     disableTools: input.disableTools === true,
+    artifactReferences: input.artifactReferences || [],
     initialMessages: Array.isArray(input.messages) ? input.messages : [],
+    localInteraction: input.localInteraction === true,
     mentions: Array.isArray(input.mentions) ? input.mentions : [],
     requestId: String(input.requestId || '').trim(),
     useStream: input.stream === true,
@@ -97,7 +99,14 @@ function resolveConnections(deps, options) {
     .filter(Boolean);
   const availableIds = new Set(connections.map((item) => String(item?.id || '')).filter(Boolean));
   const preferred = (options.connectionIds || []).find((id) => availableIds.has(id));
-  const controlledConnectionId = preferred || String(connections[0]?.id || '');
+  if (options.localInteraction && options.connectionIds?.length && !preferred) {
+    return { error: { ok: false, errorCode: 'BROWSER_ROUTE_NOT_FOUND', message: '所选浏览器已离线，请重新选择' } };
+  }
+  const controlledConnectionId = preferred || (options.localInteraction && connections.length > 1 ? '' : String(connections[0]?.id || ''));
+  return namedChatConnections(deps, connections, controlledConnectionId);
+}
+
+function namedChatConnections(deps, connections, controlledConnectionId) {
   try {
     return {
       controlledConnectionId,
@@ -132,13 +141,12 @@ function prepareChatRequest(deps, event, input, chatRuns, getWindowTools) {
   const access = resolveChatAccess(deps, input);
   if (access.error) return access;
   const options = normalizeChatOptions(input);
-  const started = options.useStream && options.requestId ? chatRuns.begin(event, options.requestId) : {};
   const resolvedConnections = resolveConnections(deps, options);
-  if (resolvedConnections.error) return { ...resolvedConnections, ...started };
+  if (resolvedConnections.error) return resolvedConnections;
   const resolvedCards = resolveAutomationCards(deps, options);
   const windowTools = options.disableTools ? null : getWindowTools();
   const attachmentMessages = buildAttachmentMessages(
-    deps.aiSandboxDir, options.attachmentPaths, options.mentions,
+    deps.aiSandboxDir, options.attachmentPaths, options.mentions, options.artifactReferences,
   );
   const toolContext = buildChatToolContext({
     connections: resolvedConnections.connections,
@@ -147,12 +155,15 @@ function prepareChatRequest(deps, event, input, chatRuns, getWindowTools) {
     automationCards: resolvedCards.automationCards,
     initialMessages: options.initialMessages,
     attachmentMessages,
+    localInteraction: options.localInteraction,
   });
+  const started = options.useStream && options.requestId ? chatRuns.begin(event, options.requestId) : {};
   return {
     ...access,
     ...options,
     ...started,
     bridge: deps.browserAutomationBridge,
+    workspaceDir: deps.aiSandboxDir,
     connections: resolvedConnections.connections,
     controlledConnectionId: resolvedConnections.controlledConnectionId || '',
     emit: createChatEmitter(event, options),

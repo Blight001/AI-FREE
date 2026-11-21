@@ -1,0 +1,65 @@
+.home-automation { height: 100%; min-height: 0; display: flex; flex-direction: column; }
+.home-automation .shell-home-heading { flex: 0 0 auto; }
+.home-automation-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.home-automation-actions label { color: var(--shell-muted); font-size: 12px; }
+.home-automation button, .home-automation select, .automation-editor button { min-height: 30px; padding: 5px 9px; border: 1px solid var(--shell-border); border-radius: 5px; background: var(--shell-panel); color: var(--shell-text); font: inherit; font-size: 12px; cursor: pointer; }
+.home-automation button:hover, .automation-editor button:hover { border-color: var(--shell-accent); }
+.home-automation button:disabled { opacity: .5; cursor: not-allowed; }
+.home-automation select { max-width: 190px; }
+.automation-status { min-height: 18px; margin: 0 0 6px; color: var(--shell-muted); font-size: 12px; }
+.automation-status[data-error="true"] { color: var(--shell-danger); }
+.automation-workspace-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(260px, .8fr); gap: 10px; min-height: 0; flex: 1; }
+.automation-list-section, .automation-runs-section { min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+.automation-list-section > header, .automation-runs-section > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 34px; border-bottom: 1px solid var(--shell-border); }
+.automation-list-section h2, .automation-runs-section h2 { margin: 0; font-size: 14px; }
+.automation-list-section > header > span { color: var(--shell-muted); font-size: 11px; }
+.automation-card-list, .automation-run-list { display: grid; align-content: start; gap: 6px; min-height: 0; padding: 7px 0; overflow: auto; }
+.automation-card-row, .automation-run-row { min-width: 0; padding: 8px; border: 1px solid var(--shell-border); border-radius: 5px; background: color-mix(in srgb, var(--shell-panel) 82%, transparent); }
+.automation-card-row { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; }
+.automation-card-summary { flex: 1 1 170px; min-width: 0; }
+.automation-card-summary strong, .automation-card-summary small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.automation-card-summary strong { font-size: 12px; }
+.automation-card-summary small, .automation-run-row p { margin: 3px 0 0; color: var(--shell-muted); font-size: 11px; }
+.home-automation .automation-primary-action, .automation-editor-footer #automation-editor-save { border-color: #16836c; color: #fff; background: #16836c; }
+.automation-run-row > header { display: flex; justify-content: space-between; gap: 6px; font-size: 12px; }
+.automation-run-row > header span { color: var(--shell-muted); }
+.automation-run-row.status-running > header span { color: #0f9f84; }
+.automation-run-row.status-failed > header span, .automation-run-row.status-timed_out > header span { color: var(--shell-danger); }
+.automation-run-row ol { max-height: 125px; overflow: auto; margin: 7px 0; padding-inline-start: 22px; color: var(--shell-muted); font-size: 11px; }
+.automation-run-row details { margin: 6px 0; color: var(--shell-muted); font-size: 11px; }
+.automation-run-row details pre { max-height: 160px; overflow: auto; padding: 6px; background: var(--shell-bg); white-space: pre-wrap; overflow-wrap: anywhere; }
+.automation-empty { margin: 0; padding: 14px 8px; color: var(--shell-muted); font-size: 12px; }
+.automation-editor { width: 1200px; height: 760px; padding: 0; border: 1px solid var(--shell-border); border-radius: 7px; background: var(--shell-bg); color: var(--shell-text); }
+.automation-editor-frame { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; width: 100%; height: 100%; margin: 0; }
+.automation-editor-header, .automation-editor-footer { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--shell-border); }
+.automation-editor-header h2 { margin: 0 auto 0 0; font-size: 15px; }
+.automation-editor-header input { width: min(260px, 35%); min-width: 100px; height: 29px; padding: 4px 8px; border: 1px solid var(--shell-border); border-radius: 4px; background: var(--shell-bg); color: var(--shell-text); }
+.automation-editor-header button { width: 32px; padding: 2px; font-size: 17px; }
+.automation-editor-body { display: grid; grid-template-columns: 142px minmax(260px, 1fr) 230px; min-height: 0; }
+.automation-node-tools, .automation-node-properties { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 10px; overflow: auto; }
+.automation-node-tools { border-inline-end: 1px solid var(--shell-border); }
+.automation-node-tools p { color: var(--shell-muted); font-size: 11px; line-height: 1.5; }
+.automation-canvas-wrap { display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+.automation-canvas-toolbar { display: flex; align-items: center; gap: 6px; padding: 6px; border-bottom: 1px solid var(--shell-border); }
+.automation-canvas-toolbar span { min-width: 0; overflow: hidden; color: var(--shell-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.automation-canvas { position: relative; flex: 1; min-height: 0; overflow: auto; background-color: color-mix(in srgb, var(--shell-bg) 92%, #4b5563); background-image: radial-gradient(var(--shell-border) .8px, transparent .8px); background-size: 18px 18px; }
+.automation-canvas svg { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+.automation-edge { fill: none; stroke: var(--shell-muted); stroke-width: 2; }
+.automation-edge-label { fill: var(--shell-text); font: 10px var(--app-ui-font); paint-order: stroke; stroke: var(--shell-bg); stroke-width: 4px; stroke-linejoin: round; }
+.automation-node { position: absolute; z-index: 1; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; width: 150px; height: 58px; padding: 7px 9px !important; border: 1px solid var(--node-color) !important; border-inline-start-width: 4px !important; text-align: left; touch-action: none; box-shadow: 0 3px 10px rgba(0, 0, 0, .16); }
+.automation-node small { color: var(--node-color); font-size: 9px; }
+.automation-node strong { max-width: 100%; overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.automation-node.is-selected { outline: 2px solid var(--node-color); outline-offset: 2px; }
+.automation-node-properties { border-inline-start: 1px solid var(--shell-border); }
+.automation-node-properties h3 { margin: 0 0 4px; font-size: 13px; }
+.automation-node-properties label { color: var(--shell-muted); font-size: 11px; }
+.automation-node-properties textarea { flex: 1; min-height: 130px; resize: vertical; padding: 7px; border: 1px solid var(--shell-border); border-radius: 4px; background: var(--shell-bg); color: var(--shell-text); font: 11px/1.45 Consolas, monospace; }
+.automation-property-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.automation-editor-footer { justify-content: flex-end; border-top: 1px solid var(--shell-border); border-bottom: 0; }
+.automation-editor-footer span { flex: 1; min-width: 0; overflow: hidden; color: var(--shell-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 860px) {
+  .automation-workspace-grid { grid-template-columns: minmax(0, 1fr); overflow: auto; }
+  .automation-list-section, .automation-runs-section { min-height: 180px; }
+  .automation-editor-body { grid-template-columns: 112px minmax(200px, 1fr); }
+  .automation-node-properties { grid-column: 1 / -1; max-height: 185px; border-inline-start: 0; border-top: 1px solid var(--shell-border); }
+}

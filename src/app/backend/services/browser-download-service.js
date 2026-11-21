@@ -270,7 +270,7 @@ function createBrowserDownloadService(options = {}) {
     return { success: true, action: 'save_session', file_name: path.basename(targetPath), relative_path: path.relative(sandboxDir, targetPath), absolute_path: targetPath, cookie_count: Array.isArray(input.session.cookies) ? input.session.cookies.length : 0 };
   }
 
-  async function downloadElement(input, trigger) {
+  async function downloadElement(input, trigger, { preserveNativeFailure = false } = {}) {
     if (typeof trigger !== 'function') throw new Error('Chromium 元素下载通道不可用');
     const timeoutMs = Math.min(300000, Math.max(1000, Number(input.timeout_ms) || 120000));
     const maxBytes = Math.min(MAX_ALLOWED_BYTES, Math.max(1, Number(input.max_bytes) || DEFAULT_MAX_BYTES));
@@ -279,7 +279,10 @@ function createBrowserDownloadService(options = {}) {
     const stagingPath = path.join(directory.target, `.${path.basename(targetPath)}.${process.pid}.${crypto.randomBytes(5).toString('hex')}.native-download`);
     try {
       const nativeResult = await trigger(stagingPath);
-      if (nativeResult?.success === false) throw new Error(nativeResult.error || 'Chromium 未能启动元素下载');
+      if (nativeResult?.success === false) {
+        if (preserveNativeFailure) return nativeResult;
+        throw new Error(nativeResult.error || 'Chromium 未能启动元素下载');
+      }
       const stat = await waitForNativeDownload(stagingPath, timeoutMs);
       if (stat.size > maxBytes) throw new Error(`下载文件超过大小限制 ${maxBytes} bytes`);
       const sha256 = await hashFile(stagingPath);

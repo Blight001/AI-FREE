@@ -4,13 +4,12 @@ class AiFreeBrowserHistoryView {
 constructor({
   el,
   getBrowserHistory,
-  getBrowserProfileAudit,
   openBrowserHistory,
   selectBrowserHistory,
 }) {
-    Object.assign(this, { el, getBrowserHistory, getBrowserProfileAudit, openBrowserHistory, selectBrowserHistory });
+    Object.assign(this, { el, getBrowserHistory, openBrowserHistory, selectBrowserHistory });
     for (const name of [
-      'renderBrowserHistory', 'renderHistoryFailure', 'renderBrowserProfileAudit', 'formatBrowserHistoryDateTime',
+      'renderBrowserHistory', 'renderHistoryFailure', 'formatBrowserHistoryDateTime',
     ]) this[name] = this[name].bind(this);
   }
 
@@ -32,61 +31,12 @@ constructor({
     }
   }
 
-  renderRelatedList(id, entries, emptyText, renderEntry) {
-    const list = this.el(id);
-    if (!list) return;
-    if (entries.length) {
-      list.replaceChildren(...entries.map(renderEntry));
-      return;
-    }
-    const empty = document.createElement('div');
-    empty.className = 'shell-home-record-empty';
-    empty.textContent = emptyText;
-    list.replaceChildren(empty);
-  }
-
-  renderRecord(title, subtitle, action, onClick) {
-    const row = document.createElement('div');
-    row.className = 'shell-home-record-row';
-    const label = document.createElement('div');
-    label.className = 'shell-home-record-label';
-    const heading = document.createElement('strong');
-    heading.textContent = title;
-    label.append(heading);
-    if (subtitle) {
-      const detail = document.createElement('small');
-      detail.textContent = subtitle;
-      label.append(detail);
-    }
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'browser-history-action';
-    button.textContent = action;
-    button.setAttribute('aria-label', `${action}：${title}`);
-    button.addEventListener('click', () => void onClick(button));
-    row.append(label, button);
-    return row;
-  }
-
-  renderRelatedLists(history, failed = false) {
-    const accounts = history.filter((item) => item.accountDisplayName);
-    this.renderRelatedList('home-account-list', accounts, failed ? '关联账号读取失败' : '暂无关联的浏览器账号',
-      (item) => this.renderRecord(item.accountDisplayName,
-        [item.name, item.accountTypeLabel].filter(Boolean).join(' · '), '打开浏览器',
-        (button) => this.openBrowserHistory(item.id, button)));
-    this.renderRelatedList('home-cookie-list', history, failed ? '浏览器记录读取失败' : '暂无浏览器记录',
-      (item) => this.renderRecord(item.name || '未命名浏览器', item.accountDisplayName, '编辑 Cookie',
-        () => this.selectBrowserHistory(item.id, { openDialog: true, focusId: 'browser-cookies' })));
-  }
-
   renderHistoryFailure() {
-    this.renderRelatedLists([], true);
     const list = this.el('browser-history-list');
     if (list) list.innerHTML = '<div class="browser-history-empty">浏览器记录读取失败</div>';
   }
 
   renderBrowserHistory() {
-    this.renderRelatedLists(this.getBrowserHistory());
     const list = this.el('browser-history-list');
     if (!list) return;
     list.replaceChildren();
@@ -144,21 +94,16 @@ constructor({
       edit.textContent = '编辑';
       edit.title = '编辑名称、参数或删除浏览器';
       edit.addEventListener('click', () => void this.selectBrowserHistory(item.id, { openDialog: true }));
-      actions.append(edit);
+      const sites = document.createElement('button');
+      sites.type = 'button';
+      sites.className = 'browser-history-action browser-history-sites';
+      sites.textContent = '网站数据';
+      sites.setAttribute('aria-haspopup', 'dialog');
+      sites.setAttribute('aria-label', `网站数据：${name.textContent}`);
+      actions.append(sites, edit);
       row.append(main, actions);
       list.appendChild(row);
     });
-  }
-  
-  renderBrowserProfileAudit() {
-    const audit = this.el('browser-profile-audit');
-    const totalCount = Number(this.getBrowserProfileAudit()?.totalCount || 0);
-    if (audit) {
-      audit.hidden = !this.getBrowserProfileAudit();
-      audit.textContent = this.getBrowserProfileAudit()
-        ? `环境 ${totalCount}`
-        : '';
-    }
   }
   
   formatBrowserHistoryDateTime(value) {

@@ -1,8 +1,5 @@
 function closeVipBenefitsDialog() {
-  const dialog = safeGetEl('vip-benefits-dialog');
-  if (!dialog || dialog.hidden) return;
-  dialog.hidden = true;
-  dialog.setAttribute('aria-hidden', 'true');
+  homeDialogs.close(safeGetEl('vip-benefits-dialog'));
 }
 
 function applyVipComparisonColumns(element, tierCount) {
@@ -162,18 +159,15 @@ function openVipBenefitsDialog() {
     openSidebarAccountAuth('login');
     return;
   }
+  if (!homeDialogs.open(dialog, { focus: dialog.querySelector('.vip-benefits-close') })) return;
   vipPlansOpenRequested = false;
-  dialog.hidden = false;
-  dialog.setAttribute('aria-hidden', 'false');
   selectVipPlan(selectedVipPlanCode);
   void loadVipPlans();
-  setTimeout(() => dialog.querySelector('.vip-benefits-close')?.focus?.(), 0);
 }
 
 function openVipAccountCenter() {
   if (safeGetEl('browser-empty-state').hidden) window.aiFree.shell.switchTab(null);
   vipPlansOpenRequested = true;
-  if (isSidebarAccountAuthenticated()) openVipBenefitsDialog();
   window.AppShellHome.openPersonal();
 }
 

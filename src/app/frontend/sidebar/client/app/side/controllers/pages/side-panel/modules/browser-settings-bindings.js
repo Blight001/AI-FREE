@@ -35,7 +35,6 @@
     bindElement(deps, 'extract-ai-free-proxy', 'click', () => void deps.extractProxy());
     bindElement(deps, 'refresh-browser-history', 'click', () => void deps.refreshBrowserHistory({keepSelection:true}));
     bindElement(deps, 'open-default-browser-settings', 'click', () => void deps.openDefaultBrowserSettings());
-    bindElement(deps, 'open-default-cookie-settings', 'click', () => void deps.openDefaultBrowserSettings('browser-cookies'));
     bindElement(deps, 'delete-browser-record', 'click', () => {
       const item = deps.getBrowserHistory().find((entry) => entry.id === deps.getSelectedHistoryId());
       if (item) void deps.deleteBrowserHistory(item, { closeDialogOnSuccess: true });
@@ -51,11 +50,6 @@
     if (panelTab) panelTab.addEventListener('click', () => void deps.loadSettings());
     ['onTabsUpdated', 'onHistoryChanged', 'onAccountListUpdated']
       .forEach((methodName) => subscribeBrowserRefresh(deps, methodName));
-    document.addEventListener('keydown', (event) => {
-      if (event.key !== 'Escape') return;
-      const dialog = deps.el('browser-settings-dialog');
-      if (dialog && !dialog.hidden) deps.closeBrowserSettingsDialog();
-    });
   }
 
   window.bindAiFreeBrowserSettingsEvents = (deps) => {

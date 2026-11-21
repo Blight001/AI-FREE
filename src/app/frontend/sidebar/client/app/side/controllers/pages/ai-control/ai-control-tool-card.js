@@ -64,16 +64,16 @@
     container.append(label, pre);
   }
 
-  function commandResultDetails(result) {
-    const parsed = parseToolArguments(result);
-    return {
-      directory: String(parsed.directory || parsed.cwd || ''),
-      exitCode: parsed.exit_code ?? parsed.exitCode ?? null,
-      stderr: String(parsed.stderr || ''),
-      stdout: String(parsed.stdout || ''),
-      success: parsed.success !== false,
-      timedOut: parsed.timed_out === true || parsed.timedOut === true,
-    };
+  const COMMAND_STATE_LABELS = Object.freeze({
+    running: '运行中', stopping: '正在停止', exited: '执行完成', failed: '执行失败',
+    timed_out: '已超时', stopped: '已停止', termination_unconfirmed: '无法确认终止',
+  });
+
+  function commandState(tool, snapshot) {
+    if (Object.hasOwn(COMMAND_STATE_LABELS, snapshot.state)) return snapshot.state;
+    if (snapshot.timed_out === true || snapshot.timedOut === true) return 'timed_out';
+    if (snapshot.success === false || tool.status === 'error') return 'failed';
+    return tool.status === 'running' ? 'running' : 'exited';
   }
 
   function appendCommandCard(container, args) {
@@ -84,7 +84,9 @@
     const cwd = document.createElement('span');
     cwd.textContent = String(args.cwd || args.directory || '.');
     const timeout = document.createElement('span');
-    timeout.textContent = args.timeout_seconds ? `超时 ${args.timeout_seconds}s` : '';
+    const timeoutMs = args.timeout_ms ?? (args.timeout_seconds ? Number(args.timeout_seconds) * 1000 : null);
+    const duration = timeoutMs ? formatDuration(timeoutMs) : '';
+    timeout.textContent = duration ? `超时 ${duration}` : '';
     const command = document.createElement('div');
     command.className = 'ai-chat-command-code';
     const prompt = document.createElement('span');
@@ -97,23 +99,43 @@
     container.appendChild(card);
   }
 
-  function appendCommandResult(container, result) {
-    const parsed = commandResultDetails(result);
+  function createCommandOutput(container, label, error = false) {
+    const title = document.createElement('div');
+    title.className = `ai-chat-tool-detail-label${error ? ' error' : ''}`;
+    const pre = document.createElement('pre');
+    pre.className = `ai-chat-tool-detail-body${error ? ' error' : ''}`;
+    container.append(title, pre);
+    return (value, truncated) => {
+      title.hidden = pre.hidden = !value && !truncated;
+      const nextTitle = truncated ? `${label}（已截断）` : label;
+      if (title.textContent !== nextTitle) title.textContent = nextTitle;
+      if (pre.textContent !== value) pre.textContent = value;
+    };
+  }
+
+  function appendCommandResult(container, tool) {
     const card = document.createElement('section');
-    card.className = `ai-chat-command-result${parsed.success ? '' : ' error'}`;
     const heading = document.createElement('div');
     heading.className = 'ai-chat-command-result-heading';
     const status = document.createElement('strong');
-    status.textContent = parsed.success ? '执行完成' : '执行失败';
     const code = document.createElement('span');
-    code.textContent = parsed.exitCode === null ? '' : `退出码 ${parsed.exitCode}`;
-    const timeout = document.createElement('span');
-    timeout.textContent = parsed.timedOut ? '已超时' : '';
-    heading.append(status, code, timeout);
+    heading.append(status, code);
     card.appendChild(heading);
-    appendToolSection(card, '标准输出', parsed.stdout || '命令未返回文本输出');
-    appendToolSection(card, '错误输出', parsed.stderr, true);
+    const stdout = createCommandOutput(card, '标准输出');
+    const stderr = createCommandOutput(card, '错误输出', true);
+    const failure = createCommandOutput(card, '错误原因', true);
     container.appendChild(card);
+    return (snapshot) => {
+      const state = commandState(tool, snapshot);
+      card.className = `ai-chat-command-result${['running', 'stopping', 'exited'].includes(state) ? '' : ' error'}`;
+      status.textContent = COMMAND_STATE_LABELS[state];
+      const exitCode = snapshot.exit_code ?? snapshot.exitCode;
+      code.textContent = exitCode == null ? '' : `退出码 ${exitCode}`;
+      const empty = state === 'exited' && !snapshot.stderr ? '命令未返回文本输出' : '';
+      stdout(String(snapshot.stdout || empty), snapshot.stdout_truncated === true);
+      stderr(String(snapshot.stderr || ''), snapshot.stderr_truncated === true);
+      failure(String(snapshot.error || ''), false);
+    };
   }
 
   function appendToolDetails(detail, tool) {
@@ -128,9 +150,10 @@
     detail.appendChild(copy);
     const doc = document.createElement('div');
     doc.className = 'ai-chat-tool-detail-doc';
-    if (tool.name === 'run_command' && args.command) {
-      appendCommandCard(doc, args);
-      if (tool.result !== undefined && tool.result !== '') appendCommandResult(doc, tool.result);
+    detail.appendChild(doc);
+    if (tool.name === 'run_command') {
+      if (args.command) appendCommandCard(doc, args);
+      const updateOutput = appendCommandResult(doc, tool);
       const raw = document.createElement('details');
       raw.className = 'ai-chat-tool-raw';
       const summary = document.createElement('summary');
@@ -139,23 +162,33 @@
       appendToolSection(raw, '参数', tool.arguments);
       appendToolSection(raw, '结果', tool.result);
       doc.appendChild(raw);
+      return updateOutput;
     } else {
       appendToolSection(doc, '参数', tool.arguments);
       appendToolSection(doc, tool.status === 'error' ? '错误' : '结果', tool.result, tool.status === 'error');
     }
-    detail.appendChild(doc);
+    return null;
   }
 
-  function updateToolSummary(summary, tool) {
+  function updateToolSummary(summary, tool, snapshot) {
     const status = String(tool.status || 'running');
-    const duration = formatDuration(tool.duration_ms);
-    summary.querySelector('.ai-chat-tool-state').textContent =
-      status === 'running' ? '调用中' : status === 'error' ? '调用失败' : '调用';
+    const duration = formatDuration(snapshot.duration_ms ?? tool.duration_ms);
+    const genericState = toolStateLabel(status, snapshot);
+    const label = tool.name === 'run_command' ? COMMAND_STATE_LABELS[commandState(tool, snapshot)] : genericState;
+    summary.querySelector('.ai-chat-tool-state').textContent = label;
     const name = summary.querySelector('.ai-chat-tool-name');
     name.textContent = String(tool.name || 'MCP 工具');
     name.title = toolDisplayName(tool);
     summary.querySelector('.ai-chat-tool-duration').textContent = duration;
-    summary.setAttribute('aria-label', `${toolDisplayName(tool)}，${status === 'error' ? '调用失败' : status === 'running' ? '调用中' : '调用成功'}${duration ? `，耗时 ${duration}` : ''}`);
+    summary.setAttribute('aria-label', `${toolDisplayName(tool)}，${label}${duration ? `，耗时 ${duration}` : ''}`);
+  }
+
+  function toolStateLabel(status, snapshot) {
+    if (snapshot.uploadVerification === 'file_selected') return '文件已选入控件';
+    if (snapshot.errorCode === 'UPLOAD_OUTCOME_UNVERIFIED') return '结果待核验';
+    if (snapshot.errorCode === 'UPLOAD_NOT_CONFIRMED') return '上传已取消';
+    if (status === 'running') return '调用中';
+    return status === 'error' ? '调用失败' : '调用';
   }
 
   function createToolActivity(tool = {}) {
@@ -168,12 +201,24 @@
     detail.className = 'ai-chat-tool-detail';
     card.append(summary, detail);
     const disclosure = enableDetailsAnimation(card, detail);
-    const update = (next = {}) => {
+    let updateOutput = null;
+    let snapshot = {};
+    card.addEventListener('toggle', () => { if (card.open) updateOutput?.(snapshot); });
+    const update = ({ progress, ...next } = {}) => {
+      if (progress) {
+        if (tool.name !== 'run_command' || (tool.status && tool.status !== 'running')) return;
+        snapshot = progress;
+        updateToolSummary(summary, tool, snapshot);
+        if (card.open) updateOutput?.(snapshot);
+        return;
+      }
       Object.assign(tool, next);
       card.className = `ai-chat-tool ${tool.status || 'running'}`;
-      updateToolSummary(summary, tool);
+      snapshot = ['run_command', 'browser_file'].includes(tool.name) ? parseToolArguments(tool.result) : {};
+      updateToolSummary(summary, tool, snapshot);
       detail.innerHTML = '';
-      appendToolDetails(detail, tool);
+      updateOutput = appendToolDetails(detail, tool);
+      updateOutput?.(snapshot);
     };
     update(tool);
     return { card, tool, update, setOpen: disclosure.setOpen };

@@ -104,32 +104,6 @@ test('长对话只压缩模型请求副本，返回的持久化历史保持完�
   assert.equal(result.messages[0].content, history[0].content);
 });
 
-test('提示词诊断返回下一次预览和最近一次实际发送的完整请求', async () => {
-  const client = {
-    sendAIControlMessage: async () => ({
-      ok: true,
-      message: { role: 'assistant', content: '完成' },
-    }),
-  };
-  const service = createService(client);
-  await service.chat(eventFixture().event, {
-    modelId: 'builtin',
-    messages: [{ role: 'user', content: '检查提示词' }],
-    disableTools: true,
-  });
-
-  const diagnostics = service.getPromptDiagnostics(eventFixture().event, {
-    modelId: 'builtin',
-    messages: [{ role: 'user', content: '下一条消息' }],
-  });
-
-  assert.equal(diagnostics.ok, true);
-  assert.equal(diagnostics.preview.messages.at(-1).content, '下一条消息');
-  assert.equal(diagnostics.lastRequest.modelId, 'builtin');
-  assert.equal(diagnostics.lastRequest.messages.at(-1).content, '检查提示词');
-  assert.equal(Array.isArray(diagnostics.lastRequest.tools), true);
-});
-
 test('额度耗尽时不调用模型服务', async () => {
   let calls = 0;
   const service = createService({ sendAIControlMessage: async () => { calls += 1; return { ok: true }; } });

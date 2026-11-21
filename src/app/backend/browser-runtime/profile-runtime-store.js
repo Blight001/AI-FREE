@@ -24,6 +24,23 @@ function safeProfileId(value) {
   return `${readablePrefix}--${digest}`;
 }
 
+function openProfileLockFile(paths) {
+  try { return fs.openSync(paths.lock, 'wx'); } catch (error) {
+    if (error?.code !== 'EEXIST') throw error;
+  }
+  const lock = JSON.parse(fs.readFileSync(paths.lock, 'utf8'));
+  const pid = Number(lock.pid);
+  if (!Number.isSafeInteger(pid) || pid <= 0) throw new Error(`Profile ${paths.id} 的锁无效`);
+  try {
+    process.kill(pid, 0);
+    throw new Error(`Profile ${paths.id} 已被进程 ${pid} 使用`);
+  } catch (error) {
+    if (error?.code !== 'ESRCH') throw error;
+  }
+  fs.unlinkSync(paths.lock);
+  return fs.openSync(paths.lock, 'wx');
+}
+
 class ProfileRuntimeStore {
   constructor(options = {}) {
     this.rootDir = path.resolve(String(options.rootDir || 'chromium-profiles'));
@@ -89,6 +106,9 @@ class ProfileRuntimeStore {
 
   ensureProfile(profile = {}) {
     const businessProfileId = normalizeProfileId(profile.profileId || profile.id);
+    if (this.locks.get(safeProfileId(businessProfileId))?.offlineTransfer) {
+      throw new Error('网站数据复制期间不能启动浏览器');
+    }
     const paths = this.migrateLegacyProfile(businessProfileId);
     for (const dir of [paths.root, paths.chromiumData, paths.downloads, paths.crashpad, paths.logs]) {
       fs.mkdirSync(dir, { recursive: true });
@@ -118,35 +138,29 @@ class ProfileRuntimeStore {
   }
 
   acquireLock(profileId, metadata = {}) {
-    const paths = this.ensureProfile({ profileId });
-    if (this.locks.has(paths.id)) return this.locks.get(paths.id);
-    let fd;
-    try {
-      fd = fs.openSync(paths.lock, 'wx');
-    } catch (error) {
-      if (error?.code !== 'EEXIST') throw error;
-      let lock = {};
-      try { lock = JSON.parse(fs.readFileSync(paths.lock, 'utf8')); } catch (_) {}
-      const pid = Number(lock.pid || 0);
-      let alive = false;
-      if (pid > 0) {
-        try { process.kill(pid, 0); alive = true; } catch (_) {}
-      }
-      if (alive) throw new Error(`Profile ${paths.id} 已被进程 ${pid} 使用`);
-      try { fs.unlinkSync(paths.lock); } catch (_) {}
-      fd = fs.openSync(paths.lock, 'wx');
+    const existing = metadata.offlineTransfer ? this.getProfilePaths(profileId) : this.migrateLegacyProfile(profileId);
+    const lease = this.locks.get(existing.id);
+    if (lease) {
+      if (lease.offlineTransfer || metadata.offlineTransfer) throw new Error('Profile 正在使用');
+      return lease;
     }
+    if (metadata.offlineTransfer && !fs.existsSync(existing.config)) throw new Error('Profile 尚未初始化');
+    const paths = fs.existsSync(existing.config) ? existing : this.ensureProfile({ profileId });
+    const fd = openProfileLockFile(paths);
     const lockData = { pid: process.pid, acquiredAt: Date.now(), ...metadata };
-    fs.writeFileSync(fd, JSON.stringify(lockData), 'utf8');
-    const lock = { fd, path: paths.lock, profileId: paths.id };
+    try { fs.writeFileSync(fd, JSON.stringify(lockData), 'utf8'); } catch (error) {
+      try { fs.closeSync(fd); } finally { fs.unlinkSync(paths.lock); }
+      throw error;
+    }
+    const lock = { fd, path: paths.lock, profileId: paths.id, offlineTransfer: metadata.offlineTransfer === true };
     this.locks.set(paths.id, lock);
     return lock;
   }
 
-  releaseLock(profileId) {
+  releaseLock(profileId, lease = null) {
     const id = safeProfileId(profileId);
     const lock = this.locks.get(id);
-    if (!lock) return false;
+    if (!lock || (lock.offlineTransfer && lock !== lease)) return false;
     try { fs.closeSync(lock.fd); } catch (_) {}
     try { fs.unlinkSync(lock.path); } catch (_) {}
     this.locks.delete(id);

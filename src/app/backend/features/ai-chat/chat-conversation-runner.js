@@ -1,6 +1,5 @@
 'use strict';
 
-const { getAiControlMcpCallLimit } = require('../../utils/ai-control-settings');
 const { sendCustomAIControlMessage } = require('../../services/custom-ai-api');
 const { limitAiControlMessages } = require('../../lib/ai-control-message-window');
 const { fitAiControlContext } = require('../../lib/ai-control-context-budget');
@@ -11,6 +10,7 @@ const {
   compactToolValue,
   finishAfterToolFailure,
   isChatStopped,
+  persistedMessages,
   takeInsertedMessages,
   waitForChatAbort,
 } = require('./chat-execution-state');
@@ -24,7 +24,7 @@ const STREAMED_TOOL_PREFIXES = [
 ];
 const IMAGE_INPUT_UNSUPPORTED_PATTERN = /不支持图片输入|未启用图片输入|不支持视觉|不支持图像输入/i;
 
-function createConversationState(request, readStoreConfigSafe) {
+function createConversationState(request) {
   return {
     ...request,
     modelMessages: request.toolContext.modelMessages,
@@ -37,13 +37,14 @@ function createConversationState(request, readStoreConfigSafe) {
     streamedRoundReasoning: '',
     toolEvents: [],
     traceEvents: [],
-    mcpCallLimit: getAiControlMcpCallLimit(readStoreConfigSafe()),
-    mcpCallCount: 0,
     unresolvedToolFailure: '',
     textToolContinuationPending: false,
     textToolSessionRecoveryAttempted: false,
     imageInputFallbackAttempted: false,
     browserControl: { connectionId: String(request.controlledConnectionId || '') },
+    browserTargets: new Map(),
+    uploadState: { unverified: false, recoveryMessage: '' },
+    artifacts: [],
   };
 }
 
@@ -94,22 +95,10 @@ function receiveStreamEvent(state, round, event) {
   if (visibleEvent && !['result', 'error'].includes(visibleEvent?.type)) state.emit({ ...visibleEvent, round });
 }
 
-function capturePromptSnapshot(state, round, tools, messages) {
-  state.capturePromptSnapshot?.({
-    modelId: state.modelId,
-    useCustomApi: state.useCustomApi === true,
-    runId: state.runId,
-    round,
-    messages,
-    tools,
-  });
-}
-
 async function requestModelRound(state, round) {
   const tools = state.toolContext.tools;
   const messages = fitAiControlContext(state.modelMessages, tools);
   const signal = state.run?.controller.signal;
-  capturePromptSnapshot(state, round, tools, messages);
   if (state.useCustomApi) {
     return sendCustomAIControlMessage(state.customApi, messages, { tools, signal });
   }
@@ -174,7 +163,7 @@ function isImageInputUnsupported(result) {
 }
 
 function replaceUnsupportedImageToolResult(message, failure) {
-  if (message?.role !== 'tool' || message?.name !== 'browser_screenshot') return message;
+  if (message?.role !== 'tool') return message;
   try {
     const content = JSON.parse(String(message.content || ''));
     if (content?.image_attached !== true) return message;
@@ -185,7 +174,7 @@ function replaceUnsupportedImageToolResult(message, failure) {
         image_attached: false,
         image_input_unsupported: true,
         warning: failure,
-        instruction: '当前模型无法读取本次截图。请直接向用户说明模型不支持图片输入，不要再次调用截图。',
+        instruction: '当前模型无法读取工具图像。使用已有的结构化结果继续用户任务；只有任务确实依赖图像时才说明限制。不要重试截图。',
       }),
     };
   } catch (_) {
@@ -220,12 +209,7 @@ function applyResultMetadata(state, result, round) {
 function finishWithoutTools(state, result) {
   state.modelMessages.push({ role: 'assistant', content: String(result.message?.content || '') });
   if (drainInserted(state)) return null;
-  const messages = limitAiControlMessages(
-    state.modelMessages.filter((message) => (
-      message?.ai_free_card_context !== true && message?.ai_free_transient_image !== true
-      && message?.ai_free_attachment_context !== true
-    )),
-  );
+  const messages = persistedMessages(state.modelMessages);
   const finalResult = {
     ...result,
     quota: state.latestQuota,
@@ -235,6 +219,7 @@ function finishWithoutTools(state, result) {
       reasoning: state.reasoningLog,
       tool_events: state.toolEvents,
       trace_events: state.traceEvents,
+      artifacts: state.artifacts,
     },
     browserConnectionId: String(state.browserControl?.connectionId || ''),
   };
@@ -262,14 +247,6 @@ function validateToolRound(state, toolCalls) {
   if (toolCalls.length >= MAX_AI_CONTROL_TOOL_CALLS_PER_ROUND) {
     return toolFailureResult(state, `模型单轮请求了 ${toolCalls.length} 个浏览器工具，超过可安全处理的数量`);
   }
-  if (state.mcpCallCount + toolCalls.length > state.mcpCallLimit) {
-    return {
-      ok: false,
-      message: `MCP 工具调用次数已达到上限（${state.mcpCallLimit} 次），已停止本轮任务`,
-      quota: state.latestQuota,
-      messages: state.modelMessages,
-    };
-  }
   return null;
 }
 
@@ -282,25 +259,30 @@ async function executeToolRound(state, result, toolCalls, round) {
   resetStreamedRound(state);
   const content = String(result.message?.content || '').trim();
   if (content) state.traceEvents.push({ type: 'step', round, content });
-  state.mcpCallCount += toolCalls.length;
   const execution = await executeToolCalls({
+    approval: state.run?.approval,
+    artifacts: state.artifacts,
+    artifactReferences: state.artifactReferences,
+    browserTargets: state.browserTargets,
     bridge: state.bridge,
     browserControl: state.browserControl,
     compactToolValue,
     connections: state.connections,
     describeConnections: state.toolContext.describeConnections,
     emit: state.emit,
-    findConnectionByRef: state.toolContext.findConnectionByRef,
     isStopped: (error) => isChatStopped(state.run, error),
+    localInteraction: state.localInteraction,
     modelMessages: state.modelMessages,
     round,
     toolCalls,
     toolEvents: state.toolEvents,
     toolDefinitions: state.toolContext.tools,
     traceEvents: state.traceEvents,
+    uploadState: state.uploadState,
     signal: state.run?.controller.signal,
     waitForAbort: (promise) => waitForChatAbort(state.run, promise),
     windowTools: state.windowTools,
+    workspaceDir: state.workspaceDir,
   });
   if (execution.unresolvedToolFailure) state.unresolvedToolFailure = execution.unresolvedToolFailure;
   return execution;
@@ -371,13 +353,16 @@ async function runChatRound(state, round) {
     state.textToolSessionRecoveryAttempted = false;
   }
   const execution = await executeToolRound(state, requested.result, toolCalls, round);
+  if (state.uploadState.unverified) {
+    return { done: true, result: toolFailureResult(state, state.uploadState.recoveryMessage) };
+  }
   if (execution.stopped) return { done: true, result: stoppedResult(state) };
   drainInserted(state);
   return { done: false };
 }
 
-async function runChatConversation(request, readStoreConfigSafe) {
-  const state = createConversationState(request, readStoreConfigSafe);
+async function runChatConversation(request) {
+  const state = createConversationState(request);
   for (let round = 0; ; round += 1) {
     const outcome = await runChatRound(state, round);
     if (outcome.done) return outcome.result;
@@ -386,7 +371,6 @@ async function runChatConversation(request, readStoreConfigSafe) {
 
 module.exports = {
   applyResultMetadata,
-  capturePromptSnapshot,
   classifyStreamedContent,
   createConversationState,
   executeToolRound,

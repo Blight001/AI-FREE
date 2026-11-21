@@ -7,7 +7,6 @@ const { createChatRunRegistry } = require('./chat-run-registry');
 const { prepareChatRequest } = require('./chat-request-context');
 const { runChatConversation } = require('./chat-conversation-runner');
 const { enrichBrowserConnectionNames } = require('./connection-names');
-const { clonePromptValue, createPromptDiagnostics } = require('./chat-prompt-diagnostics');
 
 function namedBrowserConnections(deps) {
   const bridge = deps.browserAutomationBridge;
@@ -38,12 +37,10 @@ async function waitForBrowserConnection(deps, target = {}, timeoutMs = 20000) {
 
 function createAiChatService(deps = {}) {
   const {
-    readStoreConfigSafe,
     licenseCache,
     logger = console,
   } = deps;
     const chatRuns = createChatRunRegistry();
-    let lastPromptRequest = null;
 
     // 软件端默认的“外层”浏览器窗口控制工具与 Chromium 原生连接分别管理窗口和页面，
     // 每次对话都会注入，让 AI 能列出/打开/新建/重命名/关闭软件的浏览器窗口。
@@ -83,13 +80,10 @@ function createAiChatService(deps = {}) {
       let activeRunKey = '';
       try {
         const request = prepareChatRequest(deps, _event, input, chatRuns, getAiBrowserWindowTools);
-        request.capturePromptSnapshot = (snapshot) => {
-          lastPromptRequest = clonePromptValue(snapshot);
-        };
         activeRunKey = request.key || '';
         activeRun = request.run || null;
         if (request.error) return request.error;
-        return await runChatConversation(request, readStoreConfigSafe);
+        return await runChatConversation(request);
       } catch (error) {
         if (activeRun?.stopped || error?.name === 'AbortError' || error?.code === 'ERR_CANCELED') {
           return { ok: true, stopped: true, messages: [], message: { role: 'assistant', content: '' } };
@@ -100,13 +94,10 @@ function createAiChatService(deps = {}) {
       }
     }
 
-    function getPromptDiagnostics(_event, input = {}) {
-      return createPromptDiagnostics(
-        deps, input, getAiBrowserWindowTools, lastPromptRequest,
-      );
-    }
-
-    return { chat, getPromptDiagnostics, getWindowTools: getAiBrowserWindowTools, insert, stop };
+    return {
+      chat, getWindowTools: getAiBrowserWindowTools, insert, stop,
+      decide: (event, input) => chatRuns.decide(event, input.requestId, input.id, input.accepted),
+    };
 }
 
 module.exports = { createAiChatService, namedBrowserConnections, waitForBrowserConnection };

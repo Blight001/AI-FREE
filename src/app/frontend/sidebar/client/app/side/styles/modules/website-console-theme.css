@@ -285,23 +285,14 @@ html.theme-light .ai-chat-composer textarea {
   font-size: 20px;
 }
 .ai-chat-attach:hover { color: var(--site-accent) !important; background: var(--site-accent-soft) !important; }
-.ai-chat-footer-bar .ai-browser-gear-trigger,
 .ai-chat-footer-bar .ai-model-inline-select .ai-select-trigger {
   color: var(--site-muted);
   border-color: transparent;
   background: transparent;
 }
-.ai-chat-footer-bar .ai-browser-gear-trigger:hover,
 .ai-chat-footer-bar .ai-model-inline-select .ai-select-trigger:hover:not(:disabled) {
   color: var(--site-text-soft);
   background: var(--site-panel-soft);
-}
-.ai-chat-footer-bar .ai-browser-gear-select .ai-browser-gear-trigger,
-.ai-chat-footer-bar .ai-browser-gear-select.has-selection .ai-browser-gear-trigger,
-.ai-chat-footer-bar .ai-browser-gear-select .ai-browser-gear-trigger:hover {
-  border: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
 }
 .ai-chat-footer-bar .ai-chat-model-field { flex: 0 1 auto; max-width: 176px; }
 .ai-chat-footer-bar .ai-model-inline-select .ai-select-trigger {
@@ -408,7 +399,6 @@ html.theme-light .ai-chat-composer textarea {
   background: var(--site-panel-soft);
 }
 .settings-danger-btn { color: #e11d48; border-color: #fecdd3; background: var(--site-danger-soft); }
-.browser-settings-dialog-backdrop { background: rgba(24, 24, 27, .48); }
 
 @media (max-width: 519px) {
   .tab-nav { padding-inline: 7px; }

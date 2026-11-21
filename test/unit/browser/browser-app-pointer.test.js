@@ -7,12 +7,12 @@ const { createBrowserAppPointer } = require('../../../src/app/backend/features/b
 function fixture(overrides = {}) {
   const events = [];
   let focused = true;
-  let point = { x: 90, y: 60, label: 'AI 控制设置' };
+  let point = { x: 90, y: 60, label: '选择模型' };
   let url = 'file:///app/src/app/frontend/sidebar/ai-control.html';
   const contents = {
     mainFrame: {}, isDestroyed: () => false, isLoadingMainFrame: () => false, getURL: () => url,
     async executeJavaScriptInIsolatedWorld(_world, [{ code }]) {
-      if (code.includes('function readControl')) return code.endsWith('("ai-chat-browser-trigger")') ? point : null;
+      if (code.includes('function readControl')) return code.endsWith('("ai-chat-model-trigger")') ? point : null;
       if (code.includes('function drawPointer')) events.push('draw');
       else events.push('hide');
     },
@@ -33,7 +33,7 @@ function fixture(overrides = {}) {
 test('the app pointer moves before dispatching a real Electron input sequence', async () => {
   const { adapter, events } = fixture();
   const observed = await adapter.observe('profile', 'sidebar');
-  assert.deepEqual(observed.items, [{ ref: 'ai-chat-browser-trigger', label: 'AI 控制设置' }]);
+  assert.deepEqual(observed.items, [{ ref: 'ai-chat-model-trigger', label: '选择模型' }]);
   const state = { position: null };
   const result = await adapter.click('profile', 'sidebar', observed.items[0].ref, state, new AbortController().signal);
   assert.equal(result.actionExecuted, true);
@@ -44,7 +44,7 @@ test('the app pointer moves before dispatching a real Electron input sequence', 
 
 test('the app pointer stops when its target moves during animation', async () => {
   const { adapter, events, move } = fixture();
-  const work = adapter.click('profile', 'sidebar', 'ai-chat-browser-trigger', { position: null }, new AbortController().signal);
+  const work = adapter.click('profile', 'sidebar', 'ai-chat-model-trigger', { position: null }, new AbortController().signal);
   await Promise.resolve();
   move();
   const result = await work;
@@ -63,7 +63,7 @@ test('the sidebar shares the native overlay and verifies hit testing before inpu
       hide: () => observations.push('hide'),
     }),
   });
-  const result = await adapter.click('profile', 'sidebar', 'ai-chat-browser-trigger', {}, new AbortController().signal);
+  const result = await adapter.click('profile', 'sidebar', 'ai-chat-model-trigger', {}, new AbortController().signal);
   assert.equal(result.errorCode, 'APP_CONTROL_MOVED');
   assert.deepEqual(observations, [{ x: 390, y: 160 }, 'hide']);
   assert.deepEqual(events, []);

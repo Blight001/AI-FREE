@@ -115,121 +115,20 @@
     }
   }
 
-  function createBrowserConnectionOption(connection) {
-    const option = document.createElement('option');
-    option.value = String(connection.id || '');
-    const browserName = String(connection.browserName || connection.name || 'AI自动化浏览器');
-    option.textContent = `${browserName} · ${Number(connection.toolCount || 0)} 个工具`;
-    option.title = browserName;
-    return option;
-  }
-
-  function resolveBrowserSelection(connections, previousIds) {
-    const allIds = normalizeBrowserIds(connections.map((item) => String(item.id || '')));
-    const availableIds = new Set(allIds);
-    const survivingId = previousIds.find((id) => availableIds.has(id)) || '';
-    const previousAvailableIds = new Set(state.availableBrowserIds);
-    const newIds = state.browserConnectionsInitialized
-      ? allIds.filter((id) => !previousAvailableIds.has(id))
-      : [];
-    const selectedId = survivingId || newIds.at(-1) || allIds[0] || '';
-    return { allIds, selectedIds: selectedId ? [selectedId] : [] };
-  }
-
-  function syncBrowserSessionSelection() {
-    if (!state.currentSession || currentMessages().length) return;
-    state.currentSession.browserConnectionId = state.currentBrowserIds[0] || '';
-    state.currentSession.browserConnectionIds = [...state.currentBrowserIds];
-  }
-
-  function applyBrowserConnections(select, connections, previousIds) {
-    state.browserConnectionsSnapshot = browserConnectionsSnapshot(connections);
-    state.browserConnectionsError = '';
-    state.browserConnectionProfileById = Object.fromEntries(connections.map((connection) => [
-      String(connection?.id || ''),
-      String(connection?.profileId || ''),
-    ]));
-    select.innerHTML = '<option value="">由 AI 自主选择浏览器</option>';
-    connections.forEach((connection) => select.appendChild(createBrowserConnectionOption(connection)));
-    const { allIds, selectedIds } = resolveBrowserSelection(connections, previousIds);
-    const selectionChanged = selectedIds.join(',') !== state.currentBrowserIds.join(',')
-      || allIds.join(',') !== state.availableBrowserIds.join(',');
-    state.availableBrowserIds = allIds;
-    state.browserConnectionsInitialized = true;
-    state.browserSelectionExplicitlyDisabled = false;
-    setSelectBrowserIds(select, selectedIds);
-    state.currentBrowserIds = selectedIds;
-    syncBrowserSessionSelection();
-    select.title = connections.length
-      ? `已连接 ${connections.length} 个 Chromium 原生控制通道，由 AI 自主选择目标`
-      : '未发现可用的 Chromium 原生控制通道，请先打开 AI-FREE 浏览器';
-    syncSelectUi(select);
-    notifyBrowserSelection();
-    if (selectionChanged && !currentMessages().length) renderWelcome();
-  }
-
-  function clearBrowserConnections(select, errorMessage) {
-    const selectionChanged = Boolean(state.currentBrowserIds.length);
-    select.innerHTML = '<option value="">未发现原生浏览器连接</option>';
-    state.currentBrowserIds = [];
-    state.availableBrowserIds = [];
-    state.browserConnectionsInitialized = false;
-    state.browserConnectionsSnapshot = '';
-    state.browserConnectionsError = errorMessage;
-    state.browserConnectionProfileById = {};
-    syncBrowserSessionSelection();
-    syncSelectUi(select);
-    notifyBrowserSelection();
-    if (selectionChanged && !currentMessages().length) renderWelcome();
-    console.warn('[AI 控制] 浏览器连接读取失败:', errorMessage);
-  }
-
-  function shouldDeferDynamicDataRefresh() {
-    if (!aiInputHasActiveDraft()) return false;
-    state.dynamicDataRefreshQueued = true;
-    return true;
-  }
-
-  function canLoadBrowserConnections(select) {
-    return Boolean(select && getBrowserConnectionsApi() && !state.browserConnectionsLoading);
-  }
-
-  function shouldApplyBrowserConnections(connections) {
-    const snapshot = browserConnectionsSnapshot(connections);
-    return !state.browserConnectionsInitialized
-      || snapshot !== state.browserConnectionsSnapshot
-      || Boolean(state.browserConnectionsError);
-  }
-
-  function shouldClearBrowserConnections(errorMessage) {
-    return state.browserConnectionsInitialized
-      || Boolean(state.currentBrowserIds.length)
-      || state.browserConnectionsError !== errorMessage;
-  }
-
-  async function loadBrowserConnections() {
-    const select = el('ai-chat-browser');
-    const getConnections = getBrowserConnectionsApi();
-    if (!canLoadBrowserConnections(select)) return;
-    if (shouldDeferDynamicDataRefresh()) return;
-    state.browserConnectionsLoading = true;
-    const previousIds = normalizeBrowserIds([...getSelectBrowserIds(select), ...state.currentBrowserIds]);
+  async function loadMcpTools() {
+    const getConnections = window.aiFree?.ai?.getBrowserConnections;
+    if (!getConnections || state.mcpToolsLoading) return;
+    state.mcpToolsLoading = true;
     try {
-      const result = requireAiDataResult(await getConnections(), '浏览器连接读取失败');
+      const result = requireAiDataResult(await getConnections(), 'MCP 工具目录读取失败');
       state.mcpTools = Array.isArray(result.mcpTools) ? result.mcpTools : [];
-      if (shouldDeferDynamicDataRefresh()) return;
-      const connections = Array.isArray(result.connections) ? result.connections : [];
-      // 心跳轮询只负责发现连接变化。列表内容没变时不重建 select/menu，
-      // 也不重复广播到主窗口，避免打断 textarea 的中文输入法合成状态。
-      if (!shouldApplyBrowserConnections(connections)) return;
-      applyBrowserConnections(select, connections, previousIds);
+      state.mcpToolsError = '';
     } catch (error) {
-      if (shouldDeferDynamicDataRefresh()) return;
-      const errorMessage = aiDataErrorMessage(error);
-      if (!shouldClearBrowserConnections(errorMessage)) return;
-      clearBrowserConnections(select, errorMessage);
+      const message = aiDataErrorMessage(error);
+      if (state.mcpToolsError !== message) console.warn('[AI 控制] MCP 工具目录读取失败:', message);
+      state.mcpToolsError = message;
     } finally {
-      state.browserConnectionsLoading = false;
+      state.mcpToolsLoading = false;
     }
   }
 
@@ -249,9 +148,3 @@
   function getGiftCodeApi() {
     return window.aiFree?.ai?.redeemGiftCode;
   }
-
-  function getBrowserConnectionsApi() {
-    return window.aiFree?.ai?.getBrowserConnections;
-  }
-
-

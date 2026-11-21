@@ -12,18 +12,21 @@ test('AI 控制页装配上传、工作文件和 @ 引用资源', () => {
   for (const id of [
     'ai-chat-attach', 'ai-chat-attachment-chips', 'ai-chat-workspace-panel',
     'ai-chat-workspace-upload', 'ai-chat-workspace-files', 'ai-chat-workspace-preview',
-    'ai-chat-mention-menu',
+    'ai-chat-mention-menu', 'ai-chat-upload-confirmation',
   ]) {
     assert.match(html, new RegExp(`id=["']${id}["']`));
   }
   for (const relativePath of [
     'client/app/side/controllers/pages/ai-control/ai-control-files.js',
+    'client/app/side/controllers/pages/ai-control/ai-control-browser-target.js',
     'client/app/side/styles/modules/ai-control-files.css',
+    'client/app/side/styles/modules/ai-control-browser-target.css',
     'client/app/side/styles/modules/website-console-theme.css',
   ]) {
     assert.equal(fs.existsSync(path.join(sidebarRoot, relativePath)), true, relativePath);
     assert.match(html, new RegExp(relativePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
+  assert.doesNotMatch(html, /id="(?:ai-chat-browser|ai-chat-target)"/);
   const fileCss = fs.readFileSync(path.join(
     sidebarRoot, 'client/app/side/styles/modules/ai-control-files.css',
   ), 'utf8');
@@ -54,7 +57,6 @@ test('AI 控制与个人中心装配网站控制台统一主题', () => {
   assert.match(aiCss, /#ai-chat-send\s*\{/);
   assert.match(themeCss, /font-family:\s*var\(--app-ui-font, Inter, "Segoe UI", "Microsoft YaHei", sans-serif\)/);
   assert.match(themeCss, /\.ai-model-inline-select \.ai-select-trigger\s*\{[^}]*display:\s*flex/s);
-  assert.match(themeCss, /\.ai-browser-gear-select \.ai-browser-gear-trigger[\s\S]*?border:\s*0\s*!important;[\s\S]*?background:\s*transparent\s*!important;/);
 });
 
 test('AI 控制页不再提供手动工作模式栏', () => {

@@ -63,6 +63,28 @@ test('用户消息保留工作区附件相对路径', () => {
   );
 });
 
+test('history restores bounded artifact metadata without absolute paths, URL or file contents', () => {
+  const data = fixture();
+  const artifact = {
+    path: 'Downloads/pixel.png', name: 'pixel.png', kind: 'image', size: 21,
+    sha256: 'a'.repeat(64), toolName: 'browser_file', toolCallId: 'dl-1',
+  };
+  const unfiltered = { ...artifact, absolutePath: 'private', dataUrl: 'inline bytes', sourceUrl: 'secret URL' };
+  data.repository.saveSession({}, {
+    id: 'artifacts',
+    messages: [
+      { role: 'user', content: 'old attachment', attachmentPaths: ['Uploads/notes.md'] },
+      { role: 'assistant', content: '', artifacts: [unfiltered, unfiltered, { ...unfiltered, path: '../outside' }] },
+      { role: 'user', content: 'reuse', attachmentPaths: [artifact.path], artifactReferences: [unfiltered] },
+    ],
+  });
+  const messages = data.repository.getSession({}, 'artifacts').session.messages;
+  assert.deepEqual(messages[0], { role: 'user', content: 'old attachment', attachmentPaths: ['Uploads/notes.md'] });
+  assert.deepEqual(messages[1].artifacts, [artifact]);
+  assert.deepEqual(messages[2].artifactReferences, [artifact]);
+  assert.doesNotMatch(JSON.stringify(data.read()), /absolutePath|dataUrl|sourceUrl/);
+});
+
 test('工具协议和活动时间线在保存后完整恢复', () => {
   const data = fixture();
   const tool = {

@@ -68,16 +68,12 @@ html.browser-settings-page .settings-container {
   padding-inline: 18px;
 }
 
-html:not(.development-mode) [data-dev-only] { display: none !important; }
 
 .settings-container { width: 100%; max-width: var(--content-max); margin: 0 auto; padding: 8px 2px 24px; box-sizing: border-box; }
 .browser-default-settings-btn { min-height: 36px; padding: 0 14px; border: 1px solid rgba(91, 116, 153, .52); border-radius: 9px; color: #c7d6e9; background: rgba(29, 38, 53, .8); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
 .browser-default-settings-btn:hover { border-color: var(--brand); color: #fff; }
 
-.browser-settings-dialog[hidden] { display: none !important; }
-.browser-settings-dialog { position: fixed; inset: 0; z-index: 1300; display: grid; place-items: center; padding: 12px; box-sizing: border-box; }
-.browser-settings-dialog-backdrop { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; background: rgba(3, 8, 16, .76); backdrop-filter: blur(7px); -webkit-backdrop-filter: blur(7px); }
-.browser-settings-dialog-panel { position: relative; z-index: 1; display: flex; flex-direction: column; width: min(720px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow: hidden; border: 1px solid rgba(91, 116, 153, .46); border-radius: 16px; background: #151b25; box-shadow: 0 24px 70px rgba(0, 0, 0, .48); }
+.browser-settings-dialog-panel { display: flex; flex-direction: column; width: 720px; padding: 0; overflow: hidden; border: 1px solid rgba(91, 116, 153, .46); border-radius: 16px; background: #151b25; box-shadow: 0 24px 70px rgba(0, 0, 0, .48); }
 .browser-settings-dialog-header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 15px; border-bottom: 1px solid rgba(91, 116, 153, .28); }
 .browser-settings-dialog-header h2 { margin: 0; color: #eef4ff; font-size: 15px; }
 .browser-settings-dialog-close { width: 30px; height: 30px; padding: 0; border: 0; border-radius: 8px; color: #9cacc1; background: rgba(255, 255, 255, .04); font: inherit; font-size: 22px; line-height: 1; cursor: pointer; }
@@ -92,7 +88,6 @@ html:not(.development-mode) [data-dev-only] { display: none !important; }
 .browser-record-name-field input { flex: 1 1 auto; min-width: 0; }
 .browser-settings-dialog-footer { flex: 0 0 auto; padding: 0 12px 11px; border-top: 1px solid rgba(91, 116, 153, .24); background: rgba(13, 18, 27, .72); }
 .browser-settings-dialog-footer .settings-apply-options { margin-top: 10px; }
-body.browser-settings-dialog-open { overflow: hidden; }
 
 .settings-network-tools { position: relative; z-index: 2; margin: 0 4px 18px; padding: 0; border: 0; background: transparent; box-shadow: none; }
 .settings-network-tools-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
@@ -108,12 +103,11 @@ body.browser-settings-dialog-open { overflow: hidden; }
 .browser-history-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
 .browser-history-heading h2 { margin: 0; color: #eef3ff; font-size: 17px; }
 .browser-history-heading-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 6px; }
-.browser-profile-audit { color: #8492a8; font-size: 13px; white-space: nowrap; }
 .browser-history-refresh { position: relative; width: 28px; height: 28px; padding: 0; border: 1px solid rgba(91, 116, 153, .52); border-radius: 7px; color: #aebdd2; background: rgba(29, 38, 53, .8); font: inherit; font-size: 15px; cursor: pointer; transition: border-color .16s ease, color .16s ease, background .16s ease, transform .16s ease; }
 .browser-history-refresh:hover { border-color: var(--brand); color: #fff; transform: translateY(-1px); }
 .browser-history-refresh:active { transform: scale(.92); }
 .browser-history-refresh:focus-visible { outline: 2px solid rgba(77, 156, 255, .72); outline-offset: 2px; }
-.browser-history-list { display: grid; gap: 7px; max-height: clamp(238px, calc(100vh - 360px), 620px); overflow: auto; }
+.browser-history-list { display: grid; gap: 7px; overflow: auto; }
 .browser-history-empty { padding: 18px 10px; color: #8290a5; font-size: 16px; text-align: center; animation: browser-history-empty-in .2s ease-out both; }
 .browser-history-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: clamp(5px, 1.5vw, 10px); min-height: 54px; padding: 12px 9px; border: 1px solid rgba(78, 99, 132, .42); border-radius: 9px; background: rgba(13, 18, 27, .55); transform-origin: center; transition: border-color .16s ease, background .16s ease, box-shadow .16s ease, transform .16s ease, opacity .16s ease; }
 .browser-history-item:hover { transform: translateY(-1px); box-shadow: 0 5px 14px rgba(0, 0, 0, .14); }
@@ -242,7 +236,6 @@ html.theme-light .tab-button:hover { color: #223549; }
 html.theme-light .tab-button.active { color: var(--brand); }
 html.theme-light .ai-free-settings-panel { color: #213349; }
 html.theme-light .browser-default-settings-btn { border-color: rgba(88, 126, 173, .24); color: #48647f; background: rgba(245, 249, 253, .96); }
-html.theme-light .browser-settings-dialog-backdrop { background: rgba(31, 48, 70, .5); }
 html.theme-light .browser-settings-dialog-panel { border-color: rgba(78, 116, 166, .2); background: #fff; box-shadow: 0 24px 65px rgba(32, 54, 83, .26); }
 html.theme-light .browser-settings-dialog-header { border-color: rgba(78, 116, 166, .16); }
 html.theme-light .browser-settings-dialog-header h2 { color: #203448; }
@@ -302,8 +295,6 @@ html.theme-light .settings-danger-btn { border-color: rgba(190, 62, 62, .32); co
   .browser-record-name-field { align-items: stretch; flex-direction: column; gap: 6px; }
   .browser-record-name-field span { flex-basis: auto; }
   .browser-default-settings-btn { max-width: 170px; padding: 0 9px; font-size: 12px; }
-  .browser-settings-dialog { padding: 7px; }
-  .browser-settings-dialog-panel { width: calc(100vw - 14px); max-height: calc(100vh - 14px); }
   .browser-settings-dialog-body { padding: 8px; }
   .browser-settings-dialog-footer { padding-inline: 8px; }
   .browser-history-item { grid-template-columns: minmax(0, 1fr) auto; padding-inline: 7px; }

@@ -125,6 +125,10 @@ async function cleanupPersistentRuntime(deps) {
 
 async function runShutdownCleanup(deps, pendingUpdate) {
   const isUpdateExit = Boolean(pendingUpdate.target);
+  await attemptAsync(deps.logger, 'persist browser startup session', async () => {
+    const persisted = await deps.persistBrowserSessionForStartup?.();
+    if (persisted === false) throw new Error('browser session snapshot write returned false');
+  });
   await stopRuntimeProcesses(deps);
   closePlatformResources(deps);
   if (isUpdateExit) {

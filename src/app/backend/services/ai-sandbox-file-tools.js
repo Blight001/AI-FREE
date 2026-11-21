@@ -1,14 +1,13 @@
 'use strict';
 
-const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { runCommandProcess } = require('./ai-command-process');
 
 const RUN_COMMAND_TOOL_NAME = 'run_command';
 const LEGACY_TOOL_NAME = 'sandbox_files';
 const DEFAULT_TIMEOUT_MS = 30000;
 const MAX_TIMEOUT_MS = 120000;
-const MAX_OUTPUT_BYTES = 64 * 1024;
 const TOOL_SCHEMA = {
   name: RUN_COMMAND_TOOL_NAME,
   destructive: true,
@@ -34,38 +33,10 @@ function resolveInside(rootDir, relativeDirectory = '') {
   return { root, target, relative };
 }
 
-function commandProcess(command, shell) {
-  const selected = String(shell || 'default').trim().toLowerCase();
-  if (selected === 'powershell') {
-    return { executable: 'powershell.exe', args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', command] };
-  }
-  if (process.platform === 'win32' || selected === 'cmd') {
-    return { executable: process.env.ComSpec || 'cmd.exe', args: ['/d', '/s', '/c', command] };
-  }
-  return { executable: process.env.SHELL || '/bin/sh', args: ['-c', command] };
-}
-
 function commandEnvironment(root) {
   const allowed = ['PATH', 'PATHEXT', 'SystemRoot', 'WINDIR', 'ComSpec', 'TEMP', 'TMP'];
   const env = Object.fromEntries(allowed.filter((key) => process.env[key]).map((key) => [key, process.env[key]]));
   return { ...env, HOME: root, USERPROFILE: root, AI_WORKSPACE: root };
-}
-
-function appendOutput(state, chunk) {
-  const remaining = Math.max(0, MAX_OUTPUT_BYTES - state.bytes);
-  const source = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-  if (remaining) state.chunks.push(source.subarray(0, remaining));
-  state.bytes += source.length;
-  if (source.length > remaining) state.truncated = true;
-}
-
-function stopProcessTree(child) {
-  if (!child?.pid) return;
-  if (process.platform === 'win32') {
-    spawnSync('taskkill.exe', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
-    return;
-  }
-  child.kill('SIGKILL');
 }
 
 function resolveWorkingDirectory(root, directory) {
@@ -76,33 +47,18 @@ function resolveWorkingDirectory(root, directory) {
   return { ...working, target: realTarget };
 }
 
-function executeCommand(root, input) {
+/** @param {string} root @param {{command?: unknown, directory?: string, timeout_ms?: unknown, shell?: unknown}} input
+ * @param {Parameters<typeof runCommandProcess>[1]} [options]
+ */
+function executeCommand(root, input, options) {
   const command = String(input.command || '').trim();
   if (!command) throw new Error('run_command 缺少 command');
   const working = resolveWorkingDirectory(root, input.directory);
   const timeoutMs = Math.min(MAX_TIMEOUT_MS, Math.max(1000, Number(input.timeout_ms) || DEFAULT_TIMEOUT_MS));
-  const processSpec = commandProcess(command, input.shell);
-  return new Promise((resolve, reject) => {
-    const stdout = { chunks: [], bytes: 0, truncated: false };
-    const stderr = { chunks: [], bytes: 0, truncated: false };
-    const child = spawn(processSpec.executable, processSpec.args, {
-      cwd: working.target, env: commandEnvironment(root), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    let timedOut = false;
-    const timer = setTimeout(() => { timedOut = true; stopProcessTree(child); }, timeoutMs);
-    child.stdout.on('data', (chunk) => appendOutput(stdout, chunk));
-    child.stderr.on('data', (chunk) => appendOutput(stderr, chunk));
-    child.once('error', (error) => { clearTimeout(timer); reject(error); });
-    child.once('close', (code, signal) => {
-      clearTimeout(timer);
-      resolve({
-        success: code === 0 && !timedOut, command, directory: working.relative || '.',
-        exit_code: Number.isInteger(code) ? code : null, signal: signal || null, timed_out: timedOut,
-        stdout: Buffer.concat(stdout.chunks).toString('utf8'), stderr: Buffer.concat(stderr.chunks).toString('utf8'),
-        stdout_truncated: stdout.truncated, stderr_truncated: stderr.truncated,
-      });
-    });
-  });
+  return runCommandProcess({
+    text: command, directory: working.relative || '.', cwd: working.target,
+    shell: String(input.shell || 'default').trim().toLowerCase(), timeoutMs, env: commandEnvironment(root),
+  }, options);
 }
 
 function createAiSandboxFileTools(options = {}) {
@@ -112,9 +68,9 @@ function createAiSandboxFileTools(options = {}) {
   return {
     tools: [TOOL_SCHEMA],
     has: (name) => [RUN_COMMAND_TOOL_NAME, LEGACY_TOOL_NAME].includes(String(name || '')),
-    execute: async (name, args = {}) => {
+    execute: async (name, args = {}, executionOptions = undefined) => {
       if (![RUN_COMMAND_TOOL_NAME, LEGACY_TOOL_NAME].includes(String(name || ''))) throw new Error(`未知的命令工具: ${name}`);
-      return executeCommand(sandboxDir, args && typeof args === 'object' ? args : {});
+      return executeCommand(sandboxDir, args && typeof args === 'object' ? args : {}, executionOptions);
     },
   };
 }

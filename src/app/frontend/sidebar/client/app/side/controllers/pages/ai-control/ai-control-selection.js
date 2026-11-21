@@ -4,47 +4,10 @@
       .filter(Boolean))];
   }
 
-  function browserConnectionsSnapshot(connections) {
-    return JSON.stringify((Array.isArray(connections) ? connections : []).map((connection) => ({
-      id: String(connection?.id || ''),
-      profileId: String(connection?.profileId || ''),
-      browserName: String(connection?.browserName || connection?.name || ''),
-      toolCount: Number(connection?.toolCount || 0),
-    })));
-  }
-
   function sessionBrowserIds(session) {
     return normalizeBrowserIds(Array.isArray(session?.browserConnectionIds)
       ? session.browserConnectionIds
       : (session?.browserConnectionId ? [session.browserConnectionId] : [])).slice(0, 1);
-  }
-
-  function getSelectBrowserIds(select) {
-    return Array.from(select?.selectedOptions || [])
-      .map((option) => String(option.value || ''))
-      .filter(Boolean)
-      .slice(0, 1);
-  }
-
-  function setSelectBrowserIds(select, ids) {
-    if (!select) return;
-    const wanted = new Set(normalizeBrowserIds(ids).slice(0, 1));
-    Array.from(select.options).forEach((option) => {
-      option.selected = Boolean(option.value) && wanted.has(option.value);
-    });
-  }
-
-  function notifyBrowserSelection() {
-    const connectionIds = normalizeBrowserIds(state.currentBrowserIds);
-    const profileIds = normalizeBrowserIds(
-      connectionIds.map((id) => String(state.browserConnectionProfileById[id] || '')),
-    );
-    window.aiFree?.ai?.emitBrowserSelectionChanged?.({
-      connectionId: connectionIds[0] || '',
-      connectionIds,
-      profileId: profileIds[0] || '',
-      profileIds,
-    });
   }
 
   function currentMessages() {
@@ -59,19 +22,10 @@
 
   function flushDeferredAiControlRefresh() {
     if (aiInputHasActiveDraft()) return;
-    if (state.dynamicUiRefreshPending) {
-      state.dynamicUiRefreshPending = false;
-      syncSelectUi(el('ai-chat-browser'));
-      if (!currentMessages().length) renderWelcome();
-    }
-    if (state.dynamicDataRefreshQueued) {
-      state.dynamicDataRefreshQueued = false;
-      void loadBrowserConnections();
-    }
     if (state.accountSessionRefreshQueued) {
       state.accountSessionRefreshQueued = false;
       void loadModels();
-      void loadBrowserConnections();
+      void loadMcpTools();
       void bootstrapHistory();
     }
   }

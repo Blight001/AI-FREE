@@ -13,6 +13,20 @@ const {
   wrapLegacyIpcPayload,
 } = require(path.join(root, 'src', 'app', 'contracts', 'ipc-payloads.js'));
 
+test('provider account save accepts optional notes and validates type and length', () => {
+  const channel = 'provider-accounts-save';
+  const input = { provider: 'google', email: 'fixture@example.test', password: 'fixture-only' };
+  assert.deepEqual(validateIpcPayload(channel, input), input);
+  for (const extra of [{ note: '备用账号' }, { smsUrl: 'https://sms.example.test/inbox' }]) {
+    const payload = { ...input, ...extra };
+    assert.deepEqual(validateIpcPayload(channel, payload), payload);
+  }
+  for (const note of [123, 'x'.repeat(2049)]) {
+    assert.throws(() => validateIpcPayload(channel, { ...input, note }),
+      (error) => error instanceof IpcPayloadError && error.details.path === 'note');
+  }
+});
+
 test('AI 历史 ID schema 接受兼容对象并拒绝错误字段类型', () => {
   const input = { id: 'session-1', compatibilityField: true };
   assert.equal(validateIpcPayload('ai-control-history-get', input), input);
@@ -116,12 +130,7 @@ test('AI 工作流 schema 允许报告详情开关', () => {
   );
 });
 
-test('AI 设置与自定义 API schema 兼容数字字符串并限制敏感字段形状', () => {
-  assert.deepEqual(validateIpcPayload('set-ai-control-settings', { mcpCallLimit: '100' }), { mcpCallLimit: '100' });
-  assert.throws(
-    () => validateIpcPayload('set-ai-control-settings', { mcpCallLimit: 'not-a-number' }),
-    (error) => error instanceof IpcPayloadError && error.details.path === 'mcpCallLimit',
-  );
+test('自定义 API schema 限制敏感字段形状', () => {
   assert.throws(
     () => validateIpcPayload('set-ai-control-custom-api', { apiKey: { raw: 'secret' } }),
     (error) => error instanceof IpcPayloadError && error.details.path === 'apiKey',

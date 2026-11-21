@@ -302,14 +302,6 @@
   cursor: not-allowed;
   pointer-events: none;
 }
-/* 浏览器目标为单选：勾选标记当前唯一控制窗口 */
-.ai-browser-gear-select .ai-select-option[aria-selected="true"]:not(.ai-browser-card-option)::after {
-  content: '✓';
-  flex: 0 0 auto;
-  margin-left: auto;
-  color: var(--brand);
-  font-weight: 700;
-}
 
 /* 底部紧凑模型下拉 */
 .ai-select-sm .ai-select-trigger {
@@ -350,7 +342,7 @@
   overflow: visible;
 }
 
-/* ---- 输入框下方：齿轮 + 额度圆环 + 右侧模型 ---- */
+/* ---- 输入框下方：附件、额度与模型 ---- */
 .ai-chat-footer-bar {
   display: flex;
   align-items: center;
@@ -358,176 +350,6 @@
   flex: 0 0 auto;
   min-width: 0;
 }
-.ai-chat-browser-gear-field {
-  flex: 0 0 28px;
-  width: 28px;
-  min-width: 28px;
-}
-.ai-browser-gear-select {
-  width: 28px;
-}
-.ai-browser-gear-trigger.ai-select-trigger {
-  width: 28px;
-  height: 26px;
-  padding: 0;
-  justify-content: center;
-  border-radius: 8px;
-}
-.ai-browser-gear-icon {
-  width: 15px;
-  height: 15px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.7;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  color: #91a5c2;
-  transition: color .15s ease, transform .18s ease;
-}
-.ai-browser-gear-select.open .ai-browser-gear-icon {
-  color: #8bc0ff;
-  transform: rotate(24deg);
-}
-.ai-browser-gear-select.has-selection .ai-browser-gear-trigger {
-  border-color: rgba(77, 163, 255, .52);
-  background: rgba(77, 163, 255, .12);
-}
-.ai-browser-gear-select.has-selection .ai-browser-gear-icon {
-  color: #70b2ff;
-}
-.ai-browser-gear-value {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-}
-.ai-browser-gear-select .ai-select-menu {
-  left: 0;
-  right: auto;
-  width: min(280px, calc(100vw - 40px));
-  min-width: 220px;
-  max-height: var(--ai-browser-menu-available-height, none);
-}
-.ai-browser-menu-setting {
-  list-style: none;
-}
-.ai-browser-card-setting {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin: 5px 2px 0;
-  padding: 7px 6px 4px;
-  border-top: 1px solid rgba(120, 150, 200, .16);
-  color: #b9c8dc;
-  font-size: 11px;
-  font-weight: 650;
-}
-.ai-browser-card-refresh {
-  flex: 0 0 auto;
-  height: 23px;
-  padding: 0 8px;
-  border: 1px solid rgba(120, 150, 200, .24);
-  border-radius: 7px;
-  color: #c9d8ec;
-  background: rgba(77, 163, 255, .12);
-  font: inherit;
-  font-size: 10px;
-  cursor: pointer;
-}
-.ai-browser-card-refresh:hover:not(:disabled) { border-color: var(--brand); color: #fff; }
-.ai-browser-card-refresh:disabled { opacity: .58; cursor: wait; }
-.ai-browser-card-option { min-height: 30px; }
-.ai-browser-card-empty {
-  padding: 6px 8px 8px;
-  color: #8da0b9;
-  font-size: 10.5px;
-}
-.ai-browser-card-empty[data-type='error'] { color: #ff8f99; }
-.ai-browser-target-label {
-  padding: 4px 8px 3px;
-  color: #8295ae;
-  font-size: 9.5px;
-  font-weight: 650;
-  letter-spacing: .04em;
-}
-.ai-browser-mcp-setting {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 5px 8px;
-  margin: 0 2px 5px;
-  padding: 7px 6px 9px;
-  border-bottom: 1px solid rgba(120, 150, 200, .16);
-  color: #b9c8dc;
-  font-size: 11px;
-}
-.ai-browser-mcp-setting > label { font-weight: 650; }
-.ai-browser-mcp-setting-editor { display: flex; align-items: center; gap: 5px; }
-.ai-browser-mcp-setting-editor input {
-  width: 62px;
-  height: 27px;
-  box-sizing: border-box;
-  padding: 3px 6px;
-  border: 1px solid rgba(120, 150, 200, .28);
-  border-radius: 6px;
-  outline: none;
-  color: #e8f1ff;
-  background: rgba(7, 12, 21, .56);
-  font: inherit;
-  font-size: 11px;
-}
-.ai-browser-mcp-setting-editor input:focus { border-color: var(--brand); box-shadow: 0 0 0 2px var(--brand-soft); }
-.ai-browser-mcp-setting-editor button {
-  height: 27px;
-  padding: 0 8px;
-  border: 0;
-  border-radius: 6px;
-  color: #fff;
-  background: var(--brand);
-  font: inherit;
-  font-size: 10.5px;
-  cursor: pointer;
-}
-.ai-browser-mcp-setting-editor button:disabled, .ai-browser-mcp-setting-editor input:disabled { opacity: .58; cursor: wait; }
-.ai-browser-mcp-setting-status { grid-column: 1 / -1; min-height: 0; color: #8da0b9; font-size: 9.5px; text-align: right; }
-.ai-browser-mcp-setting-status:empty { display: none; }
-.ai-browser-mcp-setting-status[data-type='success'] { color: #6fd4aa; }
-.ai-browser-mcp-setting-status[data-type='error'] { color: #ff8f99; }
-.ai-browser-mcp-setting > .ai-prompt-diagnostics-open {
-  grid-column: 1 / -1;
-  width: 100%;
-  height: 28px;
-  border: 1px solid rgba(77, 163, 255, .28);
-  border-radius: 7px;
-  color: #86bfff;
-  background: rgba(77, 163, 255, .1);
-  font: inherit;
-  font-size: 10.5px;
-  cursor: pointer;
-}
-.ai-browser-mcp-setting > .ai-prompt-diagnostics-open:hover { color: #fff; border-color: var(--brand); }
-.ai-prompt-diagnostics-dialog[hidden] { display: none !important; }
-.ai-prompt-diagnostics-dialog { position: fixed; inset: 0; z-index: 1600; display: grid; place-items: center; padding: 12px; box-sizing: border-box; }
-.ai-prompt-diagnostics-panel { position: relative; z-index: 1; display: flex; flex-direction: column; width: min(820px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow: hidden; border: 1px solid rgba(91, 116, 153, .46); border-radius: 16px; background: #151b25; box-shadow: 0 24px 70px rgba(0, 0, 0, .48); }
-.ai-prompt-diagnostics-panel h2 { margin: 0; color: #eef4ff; font-size: 15px; }
-.ai-prompt-diagnostics-body { flex: 1 1 auto; min-height: 0; overflow: auto; display: grid; gap: 12px; padding: 14px 16px; }
-.ai-prompt-diagnostics-body section { min-width: 0; }
-.ai-prompt-diagnostics-body h3 { margin: 0 0 6px; color: #dce9fa; font-size: 12px; }
-.ai-prompt-diagnostics-body section > p { margin: -2px 0 6px; color: #8295ae; font-size: 10px; }
-.ai-prompt-request-tabs { display: flex; gap: 5px; margin: 8px 0; }
-.ai-prompt-request-tabs button { height: 27px; padding: 0 9px; border: 1px solid rgba(120,150,200,.22); border-radius: 7px; color: #8fa3bd; background: rgba(255,255,255,.035); font: inherit; font-size: 10px; cursor: pointer; }
-.ai-prompt-request-tabs button[aria-selected='true'] { border-color: var(--brand); color: #fff; background: color-mix(in srgb, var(--brand) 24%, transparent); }
-.ai-prompt-diagnostics-body .ai-prompt-request-metrics { margin: 0 0 7px; color: #9bb0c9; font-variant-numeric: tabular-nums; }
-.ai-prompt-diagnostics-body pre { min-height: 100px; max-height: 310px; margin: 0; overflow: auto; padding: 10px; border: 1px solid rgba(120, 150, 200, .2); border-radius: 8px; color: #c8d8ec; background: rgba(5, 9, 15, .64); font: 10px/1.5 Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
-.ai-prompt-diagnostics-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 11px 16px 14px; border-top: 1px solid rgba(91, 116, 153, .24); }
-.ai-prompt-diagnostics-footer button { height: 31px; padding: 0 12px; border: 1px solid rgba(120, 150, 200, .24); border-radius: 8px; color: #c9d8ec; background: rgba(255,255,255,.05); font: inherit; font-size: 11px; cursor: pointer; }
-.ai-prompt-diagnostics-footer button:first-child { color: #fff; border-color: var(--brand); background: var(--brand); }
-body.ai-prompt-diagnostics-open { overflow: hidden; }
 .ai-chat-model-field {
   flex: 0 1 auto;
   min-width: 0;
@@ -1491,11 +1313,6 @@ html.theme-light .ai-select-option-new-icon {
 html.theme-light .ai-select-option-divider {
   background: rgba(86, 121, 165, .16);
 }
-html.theme-light .ai-browser-gear-icon { color: #627b99; }
-html.theme-light .ai-browser-gear-select.has-selection .ai-browser-gear-trigger {
-  border-color: rgba(52, 123, 211, .38);
-  background: rgba(52, 123, 211, .1);
-}
 html.theme-light .ai-select-trigger {
   color: #31465f;
   border-color: rgba(86, 121, 165, .24);
@@ -1521,19 +1338,6 @@ html.theme-light .ai-select-menu {
     0 12px 28px rgba(40, 70, 110, .14),
     0 0 0 1px rgba(255, 255, 255, .6) inset;
 }
-html.theme-light .ai-browser-mcp-setting { border-bottom-color: rgba(86, 121, 165, .16); color: #526b85; }
-html.theme-light .ai-browser-mcp-setting-editor input { border-color: rgba(86, 121, 165, .24); color: #203449; background: #f7faff; }
-html.theme-light .ai-prompt-diagnostics-panel { border-color: rgba(78,116,166,.2); background: #fff; }
-html.theme-light .ai-prompt-diagnostics-panel h2,
-html.theme-light .ai-prompt-diagnostics-body h3 { color: #203448; }
-html.theme-light .ai-prompt-diagnostics-body pre { border-color: rgba(86,121,165,.2); color: #28425e; background: #f7f9fc; }
-html.theme-light .ai-prompt-request-tabs button { border-color: rgba(86,121,165,.22); color: #5d748e; background: #f7f9fc; }
-html.theme-light .ai-prompt-request-tabs button[aria-selected='true'] { color: #174c83; background: rgba(52,123,211,.12); }
-html.theme-light .ai-browser-card-setting { border-top-color: rgba(86, 121, 165, .16); color: #526b85; }
-html.theme-light .ai-browser-card-refresh { border-color: rgba(86, 121, 165, .22); color: #466783; background: rgba(52, 123, 211, .08); }
-html.theme-light .ai-browser-card-empty { color: #71869d; }
-html.theme-light .ai-browser-card-empty[data-type='error'] { color: #d8515d; }
-html.theme-light .ai-browser-target-label { color: #71869d; }
 html.theme-light .ai-select-option { color: #2b3d59; }
 html.theme-light .ai-select-option:hover,
 html.theme-light .ai-select-option:focus-visible {

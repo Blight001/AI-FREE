@@ -164,7 +164,6 @@ test('侧边栏启动时主动读取并渲染浏览器记录', async () => {
       },
       createAiFreeBrowserHistoryView: (deps) => ({
         renderBrowserHistory: () => { renderedHistory = deps.getBrowserHistory(); },
-        renderBrowserProfileAudit: () => {},
         formatBrowserHistoryDateTime: () => '',
       }),
       bindAiFreeBrowserSettingsEvents: () => {},

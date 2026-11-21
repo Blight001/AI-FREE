@@ -2,11 +2,9 @@
   let loaded = false;
   let current = {};
   let browserHistory = [];
-  let browserProfileAudit = null;
   let selectedHistoryId = '';
   let historyRefreshTimer = null;
   let browserHistoryRefreshCount = 0;
-  let browserSettingsPreviousFocus = null;
   let editingDefaultSettings = false;
   const el = (id) => document.getElementById(id);
   const value = (id, fallback = '') => el(id)?.value ?? fallback;
@@ -51,19 +49,6 @@
     list?.setAttribute('aria-busy', active ? 'true' : 'false');
   }
 
-  function renderBrowserCapacity(capacity) {
-    const target = el('browser-capacity-status');
-    if (!target) return;
-    const snapshot = capacity?.snapshot || {};
-    const labels = { normal: '资源正常', warning: '资源紧张', critical: '资源不足' };
-    if (!capacity) {
-      target.textContent = '设备容量暂不可用';
-      return;
-    }
-    target.textContent = `${snapshot.activeProfiles || 0} / ${snapshot.profileLimit || 0} · ${labels[snapshot.pressure] || '资源未知'}`;
-    target.dataset.pressure = snapshot.pressure || 'unknown';
-  }
-
   function animateBrowserHistoryRemoval(historyIds) {
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return Promise.resolve();
     const ids = new Set((Array.isArray(historyIds) ? historyIds : [historyIds]).map(String));
@@ -74,35 +59,23 @@
     return new Promise((resolve) => setTimeout(resolve, 190));
   }
 
-  function openBrowserSettingsDialog(title = '浏览器参数配置', focusId = 'browser-settings-dialog-close') {
+  function openBrowserSettingsDialog(title, focusId = 'browser-settings-dialog-close', resolveFocus) {
     const dialog = el('browser-settings-dialog');
-    if (!dialog) return;
-    browserSettingsPreviousFocus = document.activeElement;
-    const titleElement = el('browser-settings-dialog-title');
-    if (titleElement) titleElement.textContent = title;
-    dialog.hidden = false;
-    document.body.classList.add('browser-settings-dialog-open');
-    setTimeout(() => { if (!dialog.hidden) el(focusId)?.focus(); }, 0);
+    el('browser-settings-dialog-title').textContent = title;
+    homeDialogs.open(dialog, { focus: el(focusId), resolveFocus });
   }
 
   function closeBrowserSettingsDialog() {
-    const dialog = el('browser-settings-dialog');
-    if (!dialog || dialog.hidden) return;
-    dialog.hidden = true;
-    document.body.classList.remove('browser-settings-dialog-open');
-    browserSettingsPreviousFocus?.focus?.();
-    browserSettingsPreviousFocus = null;
+    homeDialogs.close(el('browser-settings-dialog'));
   }
 
   const {
     renderBrowserHistory,
     renderHistoryFailure,
-    renderBrowserProfileAudit,
     formatBrowserHistoryDateTime,
   } = window.createAiFreeBrowserHistoryView({
     el,
     getBrowserHistory: () => browserHistory,
-    getBrowserProfileAudit: () => browserProfileAudit,
     openBrowserHistory,
     selectBrowserHistory,
   });
@@ -122,13 +95,8 @@
       const response = await window.aiFree.browser.getHistory();
       requireOk(response, '读取浏览器记录失败');
       browserHistory = Array.isArray(response.history) ? response.history : [];
-      browserProfileAudit = response.profileAudit && typeof response.profileAudit === 'object'
-        ? response.profileAudit
-        : null;
-      renderBrowserCapacity(response.capacity);
       updateBrowserHistorySelection(options);
       renderBrowserHistory();
-      renderBrowserProfileAudit();
       return browserHistory;
     } catch (error) {
       renderHistoryFailure();
@@ -141,6 +109,7 @@
 
   async function selectBrowserHistory(historyId, options = {}) {
     editingDefaultSettings = false;
+    el('browser-cookie-config-row').hidden = false;
     selectedHistoryId = String(historyId || '');
     const item = browserHistory.find((entry) => entry.id === selectedHistoryId);
     const recordFields = el('browser-record-edit-fields');
@@ -150,7 +119,9 @@
     setValue('browser-record-name', text(item && item.name, '新建窗口'));
     if (el('save-ai-free-settings')) el('save-ai-free-settings').textContent = '保存修改';
     if (options.openDialog === true) {
-      openBrowserSettingsDialog(item ? `编辑浏览器 · ${item.name}` : '编辑浏览器', options.focusId);
+      openBrowserSettingsDialog(item ? `编辑浏览器 · ${item.name}` : '编辑浏览器', options.focusId, () => document.querySelector(
+        `#browser-history-list [data-history-id="${CSS.escape(historyId)}"] .browser-history-edit`,
+      ));
     }
     setStatus('正在读取独立浏览器参数…');
     try {
@@ -165,6 +136,7 @@
 
   async function openDefaultBrowserSettings(focusId) {
     editingDefaultSettings = true;
+    el('browser-cookie-config-row').hidden = true;
     selectedHistoryId = '';
     if (el('browser-record-edit-fields')) el('browser-record-edit-fields').hidden = true;
     if (el('delete-browser-record')) el('delete-browser-record').hidden = true;
@@ -203,29 +175,28 @@
     const message = item?.isOpen
       ? `确认关闭“${name}”并删除该条浏览器记录？`
       : `确认删除“${name}”的浏览器记录？`;
-    if (!window.MessageModal?.showConfirmDialog) {
-      setStatus('软件确认弹窗未就绪', 'error');
-      return;
-    }
-    window.MessageModal.showConfirmDialog(message, async () => {
-      setStatus(`正在删除“${name}”…`);
-      try {
-        const response = await window.aiFree.browser.deleteHistory( { historyId: item.id });
-        if (!response?.ok) throw new Error(response?.error || '删除失败');
-        clearTimeout(historyRefreshTimer);
-        await animateBrowserHistoryRemoval(item.id);
-        if (selectedHistoryId === item.id) selectedHistoryId = '';
-        await refreshBrowserHistory({ silent: true, animate: false });
-        if (options.closeDialogOnSuccess === true) {
-          closeBrowserSettingsDialog();
-        } else if (selectedHistoryId) {
-          await selectBrowserHistory(selectedHistoryId);
-        }
-        setStatus(`已删除“${response.name || name}”`, 'success');
-      } catch (error) {
-        setStatus(error?.message || String(error), 'error');
+    if (!await homeDialogs.confirm(message)) return;
+    await removeBrowserHistory(item.id, name, options.closeDialogOnSuccess === true);
+  }
+
+  async function removeBrowserHistory(historyId, name, closeOnSuccess) {
+    setStatus(`正在删除“${name}”…`);
+    try {
+      const response = await window.aiFree.browser.deleteHistory({ historyId });
+      if (!response?.ok) throw new Error(response?.error || '删除失败');
+      clearTimeout(historyRefreshTimer);
+      await animateBrowserHistoryRemoval(historyId);
+      if (selectedHistoryId === historyId) selectedHistoryId = '';
+      await refreshBrowserHistory({ silent: true, animate: false });
+      if (closeOnSuccess) {
+        closeBrowserSettingsDialog();
+      } else if (selectedHistoryId) {
+        await selectBrowserHistory(selectedHistoryId);
       }
-    }, null, 'warning');
+      setStatus(`已删除“${response.name || name}”`, 'success');
+    } catch (error) {
+      setStatus(error?.message || String(error), 'error');
+    }
   }
 
   function scheduleBrowserHistoryRefresh() {

@@ -13,6 +13,9 @@ const { checkDesktopShortcutAndPrompt } = require('../utils/shortcut');
 const { resolveAppIconPath } = require('../utils/app-icon');
 const { initializeAccountCleanup } = require('../utils/accountCleanup');
 const {
+  restoreOpenBrowserHistoryForStartup,
+} = require('../features/browser/browser-history-service');
+const {
   DREAM_TARGET_URL,
   setDreamTargetUrl,
   getDreamTargetUrl,
@@ -45,8 +48,6 @@ function buildAppShellDeps({
     applyPluginSettings,
     isDevMode,
     sendToSide,
-    getAppConsoleHistory,
-    getDebugConsoleHistory,
     appUpdater,
     licenseStore,
     tabHelpers,
@@ -123,12 +124,18 @@ function buildAppShellDeps({
     cleanupUpdateStorageRoot: appUpdater.cleanupUpdateStorageRoot,
     getAppVersion: () => app.getVersion(),
     getTabs: () => tabs,
+    restoreBrowserSession: () => restoreOpenBrowserHistoryForStartup({
+      addTab: late.getAddTab(),
+      getTabs: () => tabs,
+      getActiveTabId: appRuntime.getActiveTabId,
+      switchTab: late.getSwitchTab(),
+      sendToSide,
+      updateTabs: tabHelpers.updateTabs,
+    }, console),
     getMainWindow: appRuntime.getMainWindow,
     setMainWindow: appRuntime.setMainWindow,
     getSideView: appRuntime.getSideView,
     setSideView: appRuntime.setSideView,
-    getDevConsoleWindow: appRuntime.getDevConsoleWindow,
-    setDevConsoleWindow: appRuntime.setDevConsoleWindow,
     getControlPanelWindow: appRuntime.getControlPanelWindow,
     setControlPanelWindow: appRuntime.setControlPanelWindow,
     getLicenseWindow: appRuntime.getLicenseWindow,
@@ -156,8 +163,6 @@ function buildAppShellDeps({
     shortcutManager,
     extIdBySession,
     clearInjectionRecord,
-    getAppConsoleHistory,
-    getDebugConsoleHistory,
     statePluginGetter: () => state.pluginSettings,
     setRuntimeTcpConfig,
     setRuntimeServerBase,

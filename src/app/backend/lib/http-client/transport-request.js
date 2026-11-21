@@ -33,7 +33,8 @@ async function executeHttpRequest({
   }
 
   const upperMethod = String(method || 'POST').toUpperCase();
-  writeDebugConsoleOnly('info', `[HTTP] 请求地址: ${upperMethod} ${url}`);
+  // Request paths and query strings can contain credentials or opaque tokens.
+  writeDebugConsoleOnly('info', `[HTTP] 请求目标: ${upperMethod} ${URL.parse(url)?.origin || '未知'}`);
   const response = upperMethod === 'GET'
     ? await getJson(url, timeoutMs)
     : await postJson(url, data, timeoutMs);

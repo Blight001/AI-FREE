@@ -79,3 +79,90 @@ test('run manager enforces the persisted overall timeout', async (t) => {
   const timedOut = await eventually(() => manager.get(run.id).run, (item) => item.status === 'timed_out');
   assert.equal(timedOut.error.code, 'RUN_TIMED_OUT');
 });
+
+test('run manager pauses at step boundaries and single-step releases only one step', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-runs-step-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const dispatched = [];
+  let finishFirstStep;
+  let markFirstStepStarted;
+  const firstStepStarted = new Promise((resolve) => { markFirstStepStarted = resolve; });
+  const manager = createAutomationRunManager({
+    dataDir: root,
+    execute: async (_request, context) => {
+      for (const id of ['one', 'two', 'three']) {
+        await context.beforeStep();
+        if (id === 'one') {
+          markFirstStepStarted();
+          await new Promise((resolve) => { finishFirstStep = resolve; });
+        }
+        dispatched.push(id);
+        context.onProgress({ stepId: id, phase: 'succeeded' });
+      }
+      return { success: true };
+    },
+  });
+  const run = manager.start({ id: 'card-controls' });
+  await firstStepStarted;
+  manager.pause(run.id);
+  finishFirstStep();
+  await eventually(() => manager.get(run.id).run, (item) => item.status === 'paused');
+  const countAtPause = dispatched.length;
+  manager.step(run.id);
+  await eventually(() => manager.get(run.id).run, (item) => item.status === 'paused' && dispatched.length > countAtPause);
+  assert.equal(dispatched.length, countAtPause + 1);
+  manager.resume(run.id);
+  const completed = await eventually(() => manager.get(run.id).run, (item) => item.status === 'succeeded');
+  assert.equal(completed.steps.length, 3);
+});
+
+test('cancelling a paused run releases its boundary gate', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-runs-paused-cancel-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  let releaseStep;
+  let markStepStarted;
+  const stepStarted = new Promise((resolve) => { markStepStarted = resolve; });
+  const manager = createAutomationRunManager({
+    dataDir: root,
+    execute: async (_request, context) => {
+      await context.beforeStep();
+      markStepStarted();
+      await new Promise((resolve) => { releaseStep = resolve; });
+      await context.beforeStep();
+      return { success: true };
+    },
+  });
+  const run = manager.start({ id: 'card-paused-cancel' });
+  await stepStarted;
+  manager.pause(run.id);
+  releaseStep();
+  await eventually(() => manager.get(run.id).run, (item) => item.status === 'paused');
+  assert.equal(manager.cancel(run.id).run.status, 'cancelled');
+});
+
+test('restored paused runs are marked interrupted and are not replayed', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-runs-restart-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  let releaseStep;
+  let markStepStarted;
+  const stepStarted = new Promise((resolve) => { markStepStarted = resolve; });
+  const manager = createAutomationRunManager({
+    dataDir: root,
+    execute: async (_request, context) => {
+      await context.beforeStep();
+      markStepStarted();
+      await new Promise((resolve) => { releaseStep = resolve; });
+      await context.beforeStep();
+      return { success: true };
+    },
+  });
+  const run = manager.start({ id: 'card-restart' });
+  await stepStarted;
+  manager.pause(run.id);
+  releaseStep();
+  await eventually(() => manager.get(run.id).run, (item) => item.status === 'paused');
+  const restored = createAutomationRunManager({ dataDir: root, execute: async () => { throw new Error('must not replay'); } });
+  assert.equal(restored.get(run.id).run.status, 'failed');
+  assert.equal(restored.get(run.id).run.error.code, 'RUN_INTERRUPTED');
+  manager.cancel(run.id, 'test cleanup');
+});

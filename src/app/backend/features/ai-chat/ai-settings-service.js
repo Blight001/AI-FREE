@@ -1,13 +1,8 @@
 'use strict';
 
 const {
-  DEFAULT_AI_CONTROL_MCP_CALL_LIMIT,
-  MIN_AI_CONTROL_MCP_CALL_LIMIT,
-  MAX_AI_CONTROL_MCP_CALL_LIMIT,
   getCustomAiApiConfig,
-  getAiControlMcpCallLimit,
   normalizeCustomAiApiConfig,
-  normalizeAiControlMcpCallLimit,
   toPublicCustomAiApiConfig,
 } = require('../../utils/ai-control-settings');
 
@@ -43,25 +38,6 @@ function validateCustomApiConfig(config, clear) {
 }
 
 function createAiSettingsService(deps = {}) {
-  function getSettings() {
-    return {
-      ok: true,
-      settings: { mcpCallLimit: getAiControlMcpCallLimit(deps.readStore()) },
-      defaults: { mcpCallLimit: DEFAULT_AI_CONTROL_MCP_CALL_LIMIT },
-      limits: { mcpCallLimit: { min: MIN_AI_CONTROL_MCP_CALL_LIMIT, max: MAX_AI_CONTROL_MCP_CALL_LIMIT } },
-    };
-  }
-
-  function setSettings(payload = {}) {
-    const rawLimit = payload.mcpCallLimit;
-    if (!Number.isFinite(Number(rawLimit))) throw new Error('MCP 调用上限必须是有效数字');
-    const mcpCallLimit = normalizeAiControlMcpCallLimit(rawLimit);
-    if (!deps.writeStore(mergeAiControlSettings(deps.readStore(), { mcpCallLimit }))) {
-      throw new Error('AI 控制设置未能写入本地配置');
-    }
-    return { ok: true, settings: { mcpCallLimit } };
-  }
-
   function getCustomApi() {
     return { ok: true, config: toPublicCustomAiApiConfig(getCustomAiApiConfig(deps.readStore())) };
   }
@@ -77,7 +53,7 @@ function createAiSettingsService(deps = {}) {
     return { ok: true, config: toPublicCustomAiApiConfig(next) };
   }
 
-  return { getCustomApi, getSettings, setCustomApi, setSettings };
+  return { getCustomApi, setCustomApi };
 }
 
 module.exports = { buildCustomApiConfig, createAiSettingsService, mergeAiControlSettings, validateCustomApiConfig };

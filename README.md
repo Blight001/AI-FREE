@@ -2,23 +2,11 @@
 
 English | [简体中文](README_zh-CN.md)
 
-AI-FREE is a multi-profile AI browser workspace for Windows. Electron provides the desktop shell, account and license flows, networking, and environment controls. All web content runs in the bundled **AI-FREE Chromium Fork**, embedded into the main window through a native Win32 host.
+AI-FREE is a browser automation workspace for Windows. Create an isolated Chromium environment for each task, then browse it yourself, run a saved workflow, or ask AI to operate the page in plain language.
 
-The canonical Windows launchers are `run.bat` for the configured default HeySure server and `run-local.bat` for `http://127.0.0.1:3000`. Their forced profiles override inherited `HEYSURE_SERVER` values and remembered HeySure addresses. Direct npm launches can still use `HEYSURE_SERVER`, which takes priority over remembered and default addresses.
-
-The version is maintained in the root `package.json` `version` field.
-
-> This is no longer a conventional Electron webview application. Production mode requires `resources/chromium/ai-free-browser.exe` and an authenticated Runtime Bridge named-pipe handshake. It does not fall back to Electron web content or a system Chrome/Edge installation.
-
-## Key Features
-
-- **Multiple browser environments**: isolated profiles, tabs, browser history, session and cookie import, restart, data clearing, and environment removal.
-- **Browser environment controls**: proxy, homepage, cookies, User Agent, locale, timezone, WebRTC, geolocation, resolution, Canvas, WebGL, WebGPU, AudioContext, hardware identity, and launch arguments.
-- **Account and licensing**: sign-in, registration, license state, redemption codes, traffic and AI quota displays, remote announcements, and application updates.
-- **Bundled proxy runtime**: Mihomo/Clash Mini integration with latency checks, automatic and manual node selection, system-proxy recovery, and proxied-traffic accounting.
-- **Automatic extension injection**: configurable AI automation, watermark-removal, and translation extensions are loaded into Chromium environments.
-- **AI browser control**: in-app conversations can select a connected browser and use local tools for observation, clicking, typing, navigation, waiting, cookie capture, and automation cards.
-- **Background automation protection**: reduces timer, socket, and script throttling when the window is minimized, occluded, or unfocused.
+- **Isolated browser environments**: Each environment has its own browser process and profile, with separate cookies, login sessions, and browsing history. Set the proxy, language, and timezone per environment.
+- **Reusable workflows**: In the Automation section of the home screen, connect steps such as navigation, clicks, text entry, and waits. Choose a browser environment to run a saved workflow, review past runs, or import and export workflows as JSON.
+- **AI-driven automation**: Select a connected browser in the AI sidebar and describe the task. AI can inspect the current page before deciding what to do next, or run the same workflows you saved in Automation.
 
 ## Runtime Architecture
 
@@ -61,7 +49,7 @@ npm ci
 npm start
 ```
 
-On Windows, use `run.bat` for the default HeySure server or `run-local.bat` for local HeySure integration. The compatible `v-start.bat` entry is equivalent to `run.bat` and continues to verify that Electron was installed correctly.
+After installing dependencies, you can also double-click `v-start.bat` for a normal launch.
 
 ### Launch Commands
 
@@ -72,10 +60,7 @@ On Windows, use `run.bat` for the default HeySure server or `run-local.bat` for 
 | `npm run start:dev` | Starts the Electron development shell; browser pages still use bundled Chromium |
 | `npm run start:electron` | Same as `start:dev` |
 | `npm run start:prototype` | Chromium integration diagnostics with prototype handshake; never use for releases |
-| `run.bat` | Canonical launch: production account backend and configured default HeySure server |
-| `run-local.bat` | Local HeySure launch at `127.0.0.1:3000`; the account backend remains production |
-| `v-start.bat` | Compatibility alias for `run.bat`; its internal `--local` option is used by `run-local.bat` |
-| `v-debug.bat` | Compatible full-local HTTP debug: account backend at `127.0.0.1:58111`, HeySure at `127.0.0.1:3000` |
+| `v-debug.bat` | Debug against local services over HTTP; not needed for normal use |
 
 `start:dev` does not provide a hot-reload server. Restart the app after changing main-process or preload code; rebuild or reload the relevant browser environment after changing a bundled extension.
 
@@ -89,7 +74,7 @@ $env:ELECTRON_MIRROR = "https://npmmirror.com/mirrors/electron/"
 npm install
 ```
 
-## Configuration
+## Development Configuration
 
 The root-level `platforms-config.json` is the entry point for packaging and default runtime settings.
 
@@ -120,7 +105,7 @@ Common development environment variables:
 | `FORCE_HTTP_COMPAT_MODE=1` | Disables the TCP channel and uses HTTP compatibility mode |
 | `DEBUG=1` | Enables debug behavior and additional logging |
 
-`run.bat` and `run-local.bat` switch only the HeySure device server and preserve the account-backend semantics. Every connection logs in to the selected server for a fresh token and Socket URL; the encrypted remembered-login file stores only the server, account, password, and device name. Use `v-debug.bat` only when the legacy account HTTP backend must also run locally.
+For device-service development, `v-start.bat` forces the production HeySure address by default. Pass `--local` to switch only the device service; the account backend stays in production. With no environment overrides, `npm start` uses the address from settings, then falls back to the default.
 
 ## Bundled Extensions
 

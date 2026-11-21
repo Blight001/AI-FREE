@@ -1,3 +1,10 @@
+  function restoredToolActivity(tool) {
+    if (tool?.name === 'run_command' && tool.status === 'running') {
+      return { ...tool, status: 'error', result: { state: 'termination_unconfirmed' } };
+    }
+    return tool || {};
+  }
+
   function createActivityGroup() {
     const element = document.createElement('details');
     element.className = 'ai-chat-activity';
@@ -303,6 +310,10 @@
       const roundId = Number(round) || 0;
       const id = String(tool?.id || tool?.name || this.toolViews.size);
       let view = this.toolViews.get(id);
+      if (tool?.progress) {
+        view?.update(tool);
+        return;
+      }
       if (!view) {
         this.discardEmptyThinking(roundId);
         this.finishThinking(roundId);
@@ -325,7 +336,7 @@
         if (event?.type === 'reasoning') {
           this.addReasoning(event.content, round);
           this.finishThinking(round);
-        } else if (event?.type === 'tool') this.upsertTool(event.tool || {}, round);
+        } else if (event?.type === 'tool') this.upsertTool(restoredToolActivity(event.tool), round);
         else if (event?.type === 'step') this.appendStep(event.content);
       });
     }
@@ -339,7 +350,7 @@
         this.addReasoning(reasoning, 0);
         this.finishThinking(0);
       }
-      toolEvents.forEach((tool, index) => this.upsertTool(tool, index + 1));
+      toolEvents.forEach((tool, index) => this.upsertTool(restoredToolActivity(tool), index + 1));
     }
 
     finalize() {

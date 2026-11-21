@@ -374,8 +374,8 @@ class ChromiumRuntime extends EventEmitter {
     return dispatchRuntimeInputByProcessId(this, processId, source);
   }
 
-  async dispatchAutomationByProcessId(processId, command, source) {
-    return dispatchRuntimeAutomationByProcessId(this, processId, command, source);
+  async dispatchAutomationByProcessId(processId, command, source, options = {}) {
+    return dispatchRuntimeAutomationByProcessId(this, processId, command, source, options);
   }
 
   async importSession(profileId, rawSession = {}) {

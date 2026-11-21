@@ -203,7 +203,7 @@ class AppShellRuntime {
     this.removeWindowMenu(window, '控制页窗口');
     const htmlPath = this.resolveControlPanelHtmlPath();
     if (!htmlPath) return this.closeMissingControlPanel(window);
-    window.loadFile(htmlPath, { query: { dev: this.deps.isDevMode ? '1' : '0' } });
+    window.loadFile(htmlPath);
     this.showWindowWhenReady(window, '控制页窗口', true);
     window.on('closed', () => this.clearControlPanelWindow());
     this.logWindowLoadFailure(window, '控制页', { controlPanelPath: htmlPath });

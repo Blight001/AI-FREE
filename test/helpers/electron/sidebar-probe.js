@@ -155,23 +155,9 @@ app.whenReady().then(async () => {
       const image = await win.webContents.capturePage();
       fs.writeFileSync(process.env.AI_FREE_WORKSPACE_CAPTURE, image.toPNG());
     }
-    const devWin = new BrowserWindow({ show: false, webPreferences: { sandbox: false } });
-    const devPage = path.join(__dirname, '..', '..', '..', 'src', 'app', 'frontend', 'sidebar', 'ai-control.html');
-    await devWin.webContents.loadFile(devPage, { query: { dev: '1' } });
-    const devModeApplied = await devWin.webContents.executeJavaScript(
-      `document.documentElement.classList.contains('development-mode')`,
-    );
-    const devConsolePage = path.join(__dirname, '..', '..', '..', 'src', 'app', 'backend', 'views', 'dev-console.html');
-    await devWin.webContents.loadFile(devConsolePage);
-    const devConsoleLoaded = await devWin.webContents.executeJavaScript(`(
-      document.title === '调试控制台' && document.getElementById('panel-title')?.textContent === '全部信息'
-    )`);
-    devWin.destroy();
     result = {
       loaded: true,
       ...report,
-      devModeApplied,
-      devConsoleLoaded,
       consoleErrors: consoleErrors.slice(0, 5),
     };
   } catch (error) {

@@ -64,8 +64,6 @@ test('sidebar logos use the runtime asset resolver in source and packaged apps',
   const index = fs.readFileSync(path.join(sidebarRoot, 'index.html'), 'utf8');
   const aiControlPage = fs.readFileSync(path.join(sidebarRoot, 'ai-control.html'), 'utf8');
   assert.equal(fs.existsSync(path.join(sidebarRoot, 'account-center.html')), false);
-  const devConsolePage = fs.readFileSync(path.join(__dirname, '../../src/app/backend/views/dev-console.html'), 'utf8');
-  const appShellSource = fs.readFileSync(path.join(__dirname, '../../src/app/backend/services/app-shell.js'), 'utf8');
   const appShell = fs.readFileSync(path.join(__dirname, '../../src/app/frontend/views/app-shell.html'), 'utf8');
   const layoutCss = fs.readFileSync(
     path.join(sidebarRoot, 'client/app/side/styles/modules/layout.css'),
@@ -88,17 +86,22 @@ test('sidebar logos use the runtime asset resolver in source and packaged apps',
   }
   assert.ok(aiControl.includes('window.aiFreeLogoAssets.url'));
   assert.equal(appShell.includes('id="account-center-btn"'), false);
-  assert.ok(aiControlPage.includes('data-dev-only'));
-  assert.match(appShell, /id="browser-settings-dev-console"[^>]*data-dev-only[^>]*hidden/);
-  assert.match(
-    fs.readFileSync(
-      path.join(sidebarRoot, 'client/app/side/styles/modules/browser-settings.css'),
-      'utf8',
-    ),
-    /html:not\(\.development-mode\) \[data-dev-only\]/,
-  );
-  assert.ok(devConsolePage.includes('../../frontend/sidebar/ai-control.html?dev=1'));
-  assert.equal(appShellSource.includes('createDevConsoleWindow'), false);
+  assert.equal(fs.existsSync(path.join(sidebarRoot, '../../backend/views/dev-console.html')), false);
+  assert.doesNotMatch(aiControlPage, /id="home-console/);
+  assert.match(appShell, /id="home-console-tab"[^>]*hidden/);
+  assert.match(appShell, /id="home-mcp-tab"[^>]*hidden/);
+  assert.doesNotMatch(aiControlPage, /id="(?:home-mcp|ai-chat-browser(?:-trigger)?|ai-chat-target|ai-prompt-diagnostics-dialog)/);
+  for (const file of ['styles/app-shell-console.css', 'controllers/pages/app-shell/shell-home-console.js',
+    'styles/app-shell-flow-studio.css', 'controllers/pages/app-shell/automation-canvas.js',
+    'controllers/pages/app-shell/shell-home-automation.js',
+    'controllers/pages/app-shell/site-preference-transfer.js',
+    'styles/app-shell-site-data.css', 'controllers/pages/app-shell/site-data.js',
+    'controllers/pages/app-shell/home-dialogs.js',
+    'styles/app-shell-mcp.css', 'controllers/pages/app-shell/shell-home-mcp.js']) {
+    const relative = `../renderer/${file}`;
+    assert.ok(appShell.includes(`"${relative}"`));
+    assert.ok(fs.statSync(path.resolve(sidebarRoot, relative)).size > 0);
+  }
   assert.ok(appShell.includes('../sidebar/client/scripts/logo-assets.js'));
   assert.ok(appShell.includes('app-shell-network-magic.css'));
   assert.ok(appShell.includes('shell-network-magic.js'));
@@ -122,7 +125,8 @@ test('sidebar logos use the runtime asset resolver in source and packaged apps',
   assert.equal(appShell.includes('shell-automation-canvas.js'), false);
   assert.equal(appShell.includes('shell-automation-workbench.js'), false);
   assert.equal(appShell.includes('app-shell-automation-canvas.css'), false);
-  assert.equal(appShell.includes('app-shell-automation.css'), false);
+  assert.ok(appShell.includes('id="home-automation-tab"'));
+  assert.ok(appShell.includes('id="home-automation"'));
   assert.match(layoutCss, /#browser-empty-state::\-webkit-scrollbar-thumb/);
 });
 

@@ -4,11 +4,18 @@ const path = require('path');
 const { attachContextMenu } = require('../../../src/app/backend/utils/removeWatermark');
 const { applicationLayout, runtimeArgument } = require('../../helpers/flows/app-layout');
 const { accountPreferencesDrivers } = require('../../helpers/flows/account-preferences');
-const { homeWorkspaceDrivers } = require('../../helpers/flows/home-workspace');
+const { homeWorkspaceDrivers, checkBrowserHistoryResize } = require('../../helpers/flows/home-workspace');
+const { checkProviderAccountDialog, bindProviderAccountFixture } = require('../../helpers/electron/provider-account-dialog');
 const { checkHomeAccountIntegration } = require('../../helpers/electron/home-account-integration');
+const { checkHomeDialogScope } = require('../../helpers/electron/home-dialog-scope');
+const { checkHomeConsole } = require('../../helpers/electron/home-console');
+const { checkHomeMcp } = require('../../helpers/electron/home-mcp');
 const { runFlow } = require('../../helpers/flows/runner');
 const { emitFlowReport } = require('../../../scripts/verification/flow-reports');
-const layout = applicationLayout(runtimeArgument(process.argv, 'source'));
+const appOutIndex = process.argv.indexOf('--app-out-dir');
+const layout = applicationLayout(runtimeArgument(process.argv, 'source'), {
+  appOutDir: appOutIndex < 0 ? undefined : process.argv[appOutIndex + 1],
+});
 const performanceProbeStartedAt = process.hrtime.bigint();
 
 let browserHistoryOpenRequests = 0;
@@ -20,6 +27,7 @@ let mcpCopyRequests = 0;
 let accountSession = { authenticated: false };
 let windowCloseBehavior = 'ask';
 let startupSettings = { openAtLogin: false, startMinimized: false };
+require('../../helpers/electron/site-data').bindSiteDataFixture(ipcMain, () => BrowserWindow.getAllWindows()[0], layout.root);
 ipcMain.handle('open-browser-history', (_event, payload = {}) => {
   browserHistoryOpenRequests += 1;
   return { ok: true, historyId: payload.historyId, name: '平台 A' };
@@ -63,15 +71,6 @@ ipcMain.handle('get-ai-free-browser-settings', () => ({
   settings: require('../../../src/app/backend/utils/ai-free-browser-settings').normalizeAiFreeBrowserSettings({}),
   runtimeInfo: { chromiumVersion: process.versions.chrome, electronVersion: process.versions.electron },
   activeTab: null,
-}));
-ipcMain.handle('get-ai-control-settings', () => ({
-  ok: true,
-  settings: { mcpCallLimit: 100 },
-  limits: { mcpCallLimit: { min: 1, max: 1000 } },
-}));
-ipcMain.handle('set-ai-control-settings', (_event, payload = {}) => ({
-  ok: true,
-  settings: { mcpCallLimit: Number(payload.mcpCallLimit) },
 }));
 ipcMain.handle('set-sidebar-width', () => ({ ok: true, width: 280 }));
 ipcMain.handle('ai-control-manage-automation-card', () => ({
@@ -117,6 +116,8 @@ for (const [channel, response] of /** @type {Array<[string, any]>} */ ([
   ['get-network-magic-proxy-mode', { ok: true, mode: 'port' }],
   ['get-browser-history', {
     ok: true,
+    capacity: { snapshot: { activeProfiles: 1, profileLimit: 5, pressure: 'normal' } },
+    profileAudit: { totalCount: 13 },
     history: [{
       id: 'shared-browser',
       name: '平台 A',
@@ -127,7 +128,11 @@ for (const [channel, response] of /** @type {Array<[string, any]>} */ ([
       isOpen: false,
       isActive: false,
       lastOpenedAt: 1_900_000_000_000,
-    }],
+    }, ...Array.from({ length: 24 }, (_, index) => ({
+      id: `fixture-browser-${index}`,
+      name: `Fixture browser ${index + 1}`,
+      lastOpenedAt: 1_800_000_000_000 - index,
+    }))],
   }],
   ['get-proxy-traffic-quota', { ok: false }],
   ['ai-control-get-browser-connections', {
@@ -168,7 +173,7 @@ function checkAccountPreferences(win) {
     () => ({ closeBehavior: windowCloseBehavior, ...startupSettings })));
 }
 
-async function clickTaskbarCorner(contents) {
+async function clickTaskbarCorner(contents, expectedRequests) {
   const target = await contents.executeJavaScript(`(() => {
     const home = document.getElementById('home-tab-btn');
     const { width, height } = home.getBoundingClientRect();
@@ -184,14 +189,38 @@ async function clickTaskbarCorner(contents) {
     await contents.debugger.sendCommand('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
   }
   await new Promise((resolve) => setTimeout(resolve, 30));
-  if (homeSwitchRequests !== before + 1) throw new Error('Bottom-left pixel did not activate Home exactly once');
+  if (homeSwitchRequests !== before + expectedRequests) {
+    throw new Error(`Expected ${expectedRequests} Home switch requests, got ${homeSwitchRequests - before}`);
+  }
+}
+
+async function checkHomeButtonPreservesEditor(contents) {
+  await contents.executeJavaScript(`(() => {
+    document.getElementById('home-automation-tab').click();
+    document.getElementById('automation-create').click();
+    document.getElementById('automation-editor-name').value = '未保存的流程';
+  })()`);
+  try {
+    await clickTaskbarCorner(contents, 0);
+    const preserved = await contents.executeJavaScript(`(() => {
+      return document.getElementById('automation-editor').open
+        && document.getElementById('automation-editor-name').value === '未保存的流程'
+        && document.getElementById('home-automation-tab').getAttribute('aria-selected') === 'true';
+    })()`);
+    if (!preserved) throw new Error('Home click discarded the open editor or its draft');
+  } finally {
+    await contents.executeJavaScript(`(() => {
+      document.getElementById('automation-editor-close').click();
+      document.getElementById('home-browsers-tab').click();
+    })()`);
+  }
 }
 
 async function checkTaskbarHomeButton(win) {
   const contents = win.webContents;
   contents.debugger.attach();
   try {
-    await clickTaskbarCorner(contents);
+    await checkHomeButtonPreservesEditor(contents);
     contents.send('update-tabs', Array.from({ length: 16 }, (_, index) => ({
       id: `corner-fixture-${index}`, title: `Browser ${index + 1}`, runtimeStatus: 'ready', isActive: index === 0,
     })));
@@ -205,7 +234,7 @@ async function checkTaskbarHomeButton(win) {
       return false;
     })()`);
     if (!scrolled) throw new Error('Expected overflow tabs to scroll');
-    await clickTaskbarCorner(contents);
+    await clickTaskbarCorner(contents, 1);
   } finally {
     contents.send('update-tabs', []);
     contents.debugger.detach();
@@ -254,6 +283,27 @@ app.whenReady().then(async () => {
     show: !!process.env.AI_FREE_UI_CAPTURE,
     webPreferences: { contextIsolation: true, preload: path.join(layout.root, 'src/app/backend/preload.js') },
   });
+  bindProviderAccountFixture(layout, win.webContents);
+  if (process.argv.includes('--mcp-only')) {
+    try {
+      await checkHomeMcp(win, layout);
+      console.log(`home MCP UI checks passed (${layout.runtime})`);
+    } finally {
+      win.destroy();
+    }
+    app.quit();
+    return;
+  }
+  if (process.argv.includes('--console-only')) {
+    try {
+      await checkHomeConsole(win, layout);
+      console.log(`home console UI checks passed (${layout.runtime})`);
+    } finally {
+      win.destroy();
+    }
+    app.quit();
+    return;
+  }
   if (process.argv.includes('--account-only')) {
     try {
       await win.loadFile(layout.pages.shell);
@@ -266,14 +316,39 @@ app.whenReady().then(async () => {
   }
   attachContextMenu(win.webContents);
   await win.loadFile(layout.pages.shell);
+  if (process.argv.includes('--site-data-only')) {
+    const home = require('../flows/home-workspace.json');
+    const start = home.steps.findIndex(step => step.id === 'openSites');
+    const end = home.steps.findIndex(step => step.id === 'editorClosed');
+    await checkScenario({ ...home, id: 'site-data-workspace', steps: home.steps.slice(start, end + 1) },
+      homeWorkspaceDrivers(win.webContents, () => ({ count: accountCenterRequests })));
+    win.destroy();
+    app.quit();
+    return;
+  }
+  await checkProviderAccountDialog(win.webContents);
+  if (process.argv.includes('--provider-accounts-only')) {
+    win.destroy();
+    console.log(`provider account dialog UI checks passed (${layout.runtime})`);
+    app.quit();
+    return;
+  }
+  await checkHomeDialogScope(win.webContents);
+  if (process.argv.includes('--home-dialogs-only')) {
+    win.destroy();
+    app.quit();
+    return;
+  }
   await new Promise((resolve) => setTimeout(resolve, 120));
   const firstSidebarReadyMs = Number(process.hrtime.bigint() - performanceProbeStartedAt) / 1e6;
   await checkNewWindowButtonHover(win.webContents);
   await checkTaskbarHomeButton(win);
+  await checkBrowserHistoryResize(win);
   await checkScenario(require('../flows/home-workspace.json'),
     homeWorkspaceDrivers(win.webContents, () => ({ count: accountCenterRequests })));
   accountCenterRequests = 0;
   if (process.argv.includes('--home-only')) {
+    await checkHomeConsole(win, layout);
     win.destroy();
     console.log(`home workspace UI checks passed (${layout.runtime})`);
     app.quit();
@@ -292,7 +367,8 @@ app.whenReady().then(async () => {
     await new Promise((resolve) => setTimeout(resolve, 30));
     await new Promise((resolve) => setTimeout(resolve, 120));
     const panel = document.getElementById('ai-free-settings-panel');
-    const labels = Array.from(panel.querySelectorAll('.vb-label')).map((item) => item.textContent.trim());
+    const settingsForm = document.getElementById('ai-free-settings-form');
+    const labels = Array.from(settingsForm.querySelectorAll('.vb-label')).map((item) => item.textContent.trim());
     const animationProbe = buildVpnNodeSelectorButton('动画测试节点', 0, { delay: null }, '');
     document.getElementById('vpn-node-selector-grid')?.appendChild(animationProbe);
     const nodeAnimationName = getComputedStyle(animationProbe).animationName;
@@ -370,6 +446,17 @@ app.whenReady().then(async () => {
       && !document.getElementById('automation-workbench-open')
       && !document.querySelector('.automation-workbench-launcher')
       && !document.getElementById('automation-flow-canvas');
+    const providerTabs = [...document.querySelectorAll('#home-accounts .provider-account-tabs [role="tab"]')];
+    const providerPanels = [...document.querySelectorAll('#home-accounts [data-provider]')];
+    const providerTabsReady = providerTabs.length === 2
+      && providerTabs[0].textContent.includes('Google')
+      && providerTabs[1].textContent.includes('Microsoft')
+      && !!document.querySelector('#provider-account-form [name="password"]')
+      && !!document.querySelector('#provider-account-form [name="note"]');
+    providerTabs[1]?.click();
+    const providerSwitchWorks = providerTabs[1]?.getAttribute('aria-selected') === 'true'
+      && providerPanels[1]?.hidden === false && providerPanels[0]?.hidden === true;
+    providerTabs[0]?.click();
     return {
       active: panel.classList.contains('active'),
       dedicatedSettingsPage: document.documentElement.classList.contains('browser-settings-page'),
@@ -402,13 +489,12 @@ app.whenReady().then(async () => {
       navRemoved: navTops.length === 0,
       accountCenterEmbedded: !!document.querySelector('#home-personal #sidebar-account-auth'),
       standaloneLoginRemoved: !document.getElementById('account-center-panel'),
-      rows: panel.querySelectorAll('.vb-row').length,
+      rows: settingsForm.querySelectorAll('.vb-row').length,
       labels,
       browserHistoryVisible: !!document.getElementById('browser-history-list'),
+      providerTabsReady,
+      providerSwitchWorks,
       browserHistoryText: document.getElementById('browser-history-list')?.textContent || '',
-      browserHistoryMaxHeight: parseFloat(
-        getComputedStyle(document.getElementById('browser-history-list')).maxHeight,
-      ),
       browserConfigTabRemoved: !document.querySelector('[data-tab="ai-free-settings-panel"]'),
       languageIpControlRemoved: !document.getElementById('language-by-ip'),
       localeInputVisible: document.getElementById('browser-locale')?.hidden === false,
@@ -470,7 +556,8 @@ app.whenReady().then(async () => {
     || !result.accountCenterEmbedded
     || !result.standaloneLoginRemoved
     || !result.browserHistoryVisible
-    || result.browserHistoryMaxHeight <= 238
+    || !result.providerTabsReady
+    || !result.providerSwitchWorks
     || !result.browserConfigTabRemoved
     || !result.languageIpControlRemoved
     || !result.localeInputVisible
@@ -653,7 +740,7 @@ app.whenReady().then(async () => {
     };
   })()`);
   shellAccountResult.taskbarAndHomeCreateRequestedBrowsers = independentBrowserCreateRequests === 2;
-  shellAccountResult.homeButtonOpenedHomeOnly = homeSwitchRequests === 1;
+  shellAccountResult.visibleHomeStayedInPlace = homeSwitchRequests === 0;
   await new Promise((resolve) => setTimeout(resolve, 30));
   if (Object.values(shellAccountResult).some((value) => value !== true)) {
     throw new Error(`主窗口内置首页与控件校验失败: ${JSON.stringify(shellAccountResult)}`);
@@ -691,6 +778,8 @@ app.whenReady().then(async () => {
   const workingSetMb = app.getAppMetrics().reduce((sum, metric) => (
     sum + Number((metric.memory && metric.memory.workingSetSize) || 0)
   ), 0) / 1024;
+  await checkHomeConsole(win, layout);
+  await checkHomeMcp(win, layout);
   const destroyStartedAt = process.hrtime.bigint();
   win.destroy();
   const destroyMs = Number(process.hrtime.bigint() - destroyStartedAt) / 1e6;

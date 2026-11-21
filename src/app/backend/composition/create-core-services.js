@@ -223,7 +223,6 @@ function createCoreServices({ app, fs, path, BrowserWindow, dialog, shell, scree
   const uiBridge = createUiBridge({
     getMainWindow: appRuntime.getMainWindow,
     getSideView: appRuntime.getSideView,
-    getDevConsoleWindow: appRuntime.getDevConsoleWindow,
     getControlPanelWindow: appRuntime.getControlPanelWindow,
     getNetworkMagicPopupWindow: () => {
       try {
@@ -234,7 +233,7 @@ function createCoreServices({ app, fs, path, BrowserWindow, dialog, shell, scree
     },
     isDevMode,
   });
-  const { sendToSide, getAppConsoleHistory, getDebugConsoleHistory } = uiBridge;
+  const { sendToSide, getConsoleSnapshot, clearConsoleHistory } = uiBridge;
 
   const sendUpdateUiEvent = sendToSide;
   const appUpdater = createAppUpdater({
@@ -390,8 +389,8 @@ function createCoreServices({ app, fs, path, BrowserWindow, dialog, shell, scree
     aiServerDeviceService,
     isDevMode,
     sendToSide,
-    getAppConsoleHistory,
-    getDebugConsoleHistory,
+    getConsoleSnapshot,
+    clearConsoleHistory,
     appUpdater,
     licenseStore,
     serverResolver,

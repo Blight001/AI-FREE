@@ -2,6 +2,8 @@
 
 const path = require('path');
 const { fileURLToPath } = require('url');
+const { CONFIRMED_UPLOAD_FILES } = require('../browser-runtime/chromium-upload-staging');
+const { expectedPageToken, bindingFailure } = require('./native-browser-page-binding');
 const {
   expiredObservedRefResult, mismatchedObservationResult,
 } = require('./native-browser-observation');
@@ -145,7 +147,7 @@ async function downloadObservedResource(owner, connection, input, args, cause) {
 async function nativeElementDownload(owner, connection, target, args) {
   return owner.downloadService.downloadElement(args, (targetPath) => owner.runtimeCommand(
     connection, 'download-element', { ...target, target_path: targetPath },
-  ));
+  ), { preserveNativeFailure: Boolean(expectedPageToken(connection)) });
 }
 
 async function browserDownloadElement(owner, connection, args) {
@@ -157,6 +159,10 @@ async function browserDownloadElement(owner, connection, args) {
   if (expired) return expired;
   const target = owner.runtimeTarget(input);
   const canNative = text(target.selector) || hasDownloadPoint(target);
+  if (expectedPageToken(connection)) {
+    return canNative ? nativeElementDownload(owner, connection, target, args)
+      : bindingFailure('BROWSER_TARGET_TOOL_UNSUPPORTED', '绑定页面下载需要当前页面的有效元素');
+  }
   try {
     if (!canNative) return downloadObservedResource(owner, connection, input, args);
     const result = await nativeElementDownload(owner, connection, target, args);
@@ -182,20 +188,49 @@ async function browserDownloadUrl(owner, connection, args) {
   return softwareDownload(owner, connection, args, args.url, { mediaType: args.media_type });
 }
 
-async function browserUpload(owner, connection, args) {
-  const input = owner.runtimeTarget(owner.resolveObservedTarget(
-    connection, { ...args, action: 'upload_file' },
-  ));
+async function prepareUpload(owner, connection, args) {
   if (!owner.downloadService?.resolveUploadPaths) throw new Error('AI 工作区文件服务不可用');
   const requested = Array.isArray(args.paths) ? args.paths : [args.path].filter(Boolean);
   const paths = owner.downloadService.resolveUploadPaths(requested);
   const mode = text(args.mode) || (paths.length > 1 ? 'open-multiple' : 'open');
-  const session = text(args.page_url || args.pageUrl)
+  const session = expectedPageToken(connection) || text(args.page_url || args.pageUrl)
     ? null
     : await owner.runtimeCommand(connection, 'get-session-data', {});
-  await owner.runtime.selectFilesByProcessId(connection.browserProcessId, {
-    pageUrl: text(args.page_url || args.pageUrl || session?.url), paths, mode, ttlMs: 5000,
-  });
+  const confirmed = args[CONFIRMED_UPLOAD_FILES];
+  return { pageUrl: text(args.page_url || args.pageUrl || session?.url), paths, mode, ttlMs: 5000,
+    ...(confirmed ? { [CONFIRMED_UPLOAD_FILES]: confirmed } : {}),
+  };
+}
+
+async function boundUpload(owner, connection, args, target, token) {
+  const reject = (result) => ({ ...result, actionExecuted: false });
+  const invalid = mismatchedObservationResult(target) || expiredObservedRefResult(target);
+  if (invalid) return reject(invalid);
+  if (target.observedRefRecoveryCandidate || !text(target.selector)) {
+    return reject(bindingFailure('OBSERVATION_EXPIRED', '上传需要当前页面的最新 ref 或文件控件 selector'));
+  }
+  let selectionId;
+  try {
+    const selection = await prepareUpload(owner, connection, args);
+    const response = await owner.runtime.selectFilesByProcessId(connection.browserProcessId, selection, { expectedPageToken: token });
+    const result = response?.result || response;
+    if (result?.success === false) return reject(result);
+    selectionId = result?.selectionId;
+    if (!selectionId) return reject(bindingFailure('BROWSER_RUNTIME_UPDATE_REQUIRED', '当前内核未确认绑定的文件选择'));
+  } catch (error) {
+    return reject(bindingFailure(error.code || 'FILE_SELECTION_NOT_ARMED', error.message));
+  }
+  const { x: _x, y: _y, ...input } = owner.runtimeTarget(target);
+  return owner.dispatchPointerAction(connection, { ...input, selectionId });
+}
+
+async function browserUpload(owner, connection, args) {
+  const target = owner.resolveObservedTarget(connection, { ...args, action: 'upload_file' });
+  const token = expectedPageToken(connection);
+  if (token) return boundUpload(owner, connection, args, target, token);
+  const input = owner.runtimeTarget(target);
+  const selection = await prepareUpload(owner, connection, args);
+  await owner.runtime.selectFilesByProcessId(connection.browserProcessId, selection);
   return owner.runtimeCommand(connection, 'perform-action', input);
 }
 

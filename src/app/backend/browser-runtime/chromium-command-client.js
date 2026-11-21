@@ -8,7 +8,7 @@ const ALLOWED_COMMANDS = new Set([
   'navigate', 'reload', 'open-tabs', 'list-tabs', 'activate-tab', 'close-tab', 'history-back', 'history-forward', 'dispatch-input', 'close-browser',
   'set-cookies', 'set-storage', 'clear-session', 'select-files',
   'observe-page', 'inspect-page-state', 'inspect-page-diagnostics', 'capture-screenshot', 'perform-action', 'download-element', 'get-session-data',
-  'automation-takeover',
+  'automation-takeover', 'page-bound-command',
 ]);
 
 function runtimeBridgeError(code, message) {

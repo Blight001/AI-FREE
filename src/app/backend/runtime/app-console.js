@@ -31,12 +31,10 @@ function captureAppConsole() {
 
 class AppConsoleBridge {
   constructor(options = {}) {
+    this.enabled = options.enabled === true;
     this.historyLimit = options.historyLimit || 500;
-    this.getSenders = options.getSenders || (() => []);
-    this.getDebugSenders = options.getDebugSenders || (() => []);
-    this.getSender = options.getSender || (() => null);
     this.history = [];
-    this.debugHistory = [];
+    this.revision = 0;
     this.hasColor = Boolean(process.stdout?.isTTY || process.stderr?.isTTY || process.env.FORCE_COLOR);
   }
 
@@ -53,41 +51,27 @@ class AppConsoleBridge {
     };
   }
 
-  appendBounded(target, entry) {
-    target.push(entry);
-    if (target.length > this.historyLimit) target.splice(0, target.length - this.historyLimit);
+  getSnapshot(revision) {
+    return revision === this.revision ? { revision } : { revision: this.revision, history: this.history.slice() };
   }
 
-  deliver(entry, resolveSenders) {
-    try {
-      const senderValue = typeof resolveSenders === 'function' ? resolveSenders() : [];
-      const senderList = Array.isArray(senderValue) ? senderValue : [senderValue];
-      const uniqueSenders = [];
-      for (const sender of senderList) {
-        if (!sender || typeof sender.send !== 'function' || uniqueSenders.includes(sender)) continue;
-        uniqueSenders.push(sender);
-        sender.send('app-console-line', entry);
-      }
-    } catch (_) {}
-  }
-
-  push(level, args) {
-    try {
-      if (this.shouldSuppress(args)) return;
-      const entry = this.buildEntry(level, args);
-      this.appendBounded(this.history, entry);
-      this.appendBounded(this.debugHistory, entry);
-      this.deliver(entry, () => this.getSenders() || this.getSender());
-    } catch (_) {}
+  clearHistory() {
+    this.history.length = 0;
+    this.revision += 1;
+    return this.getSnapshot();
   }
 
   pushDebugOnly(level, args) {
+    if (!this.enabled) return;
     try {
       const entry = this.buildEntry(level, Array.isArray(args) ? args : [args]);
-      this.appendBounded(this.debugHistory, entry);
-      this.deliver(entry, this.getDebugSenders);
-      return entry;
-    } catch (_) { return null; }
+      if (entry.source === 'TCP') return;
+      this.history.push(entry);
+      if (this.history.length > this.historyLimit) this.history.shift();
+      this.revision += 1;
+    } catch (_) {
+      // Diagnostic capture must not break the operation that emitted the log.
+    }
   }
 
   pickColor(level, args) {
@@ -116,7 +100,7 @@ class AppConsoleBridge {
   installLevel(level, originalConsole) {
     return (...args) => {
       this.emit(level, args, originalConsole);
-      this.push(level, args);
+      this.pushDebugOnly(level, args);
     };
   }
 
@@ -135,8 +119,8 @@ function createAppConsoleBridge(options) {
   return {
     install: bridge.install.bind(bridge),
     pushDebugOnly: bridge.pushDebugOnly.bind(bridge),
-    getHistory: () => bridge.history.slice(),
-    getDebugHistory: () => bridge.debugHistory.slice(),
+    getSnapshot: bridge.getSnapshot.bind(bridge),
+    clearHistory: bridge.clearHistory.bind(bridge),
   };
 }
 

@@ -1,0 +1,119 @@
+.shell-home-tabs button[hidden] { display: none; }
+
+#home-console:not([hidden]) {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  block-size: 100%;
+  min-block-size: 140px;
+}
+
+.home-console-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding-block: 0 8px;
+  font-size: 12px;
+  color: var(--shell-muted);
+}
+
+#home-console-source, .home-console-toolbar button {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  min-block-size: 28px;
+  padding: 4px 8px;
+  border: 1px solid var(--shell-border);
+  border-radius: 6px;
+  background: var(--shell-panel);
+  color: var(--shell-text);
+  font: inherit;
+}
+
+.home-console-follow, .home-console-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.home-console-follow input { margin: 0; accent-color: var(--shell-accent); }
+.home-console-toolbar button:not(:disabled):hover { background: var(--shell-tab-bg); }
+.home-console-toolbar button:disabled { opacity: .55; }
+.home-console-toolbar button svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+#home-console-notice:empty { display: none; }
+
+#home-console-entries {
+  --console-info: #8fb4df;
+  --console-warn: #e6c35c;
+  --console-error: #f3929f;
+  --console-message-base: #c1cad7;
+  --console-source-lightness: 73%;
+  overflow: auto;
+  overflow-anchor: none;
+  scrollbar-width: thin;
+  scrollbar-color: var(--shell-scrollbar) transparent;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-block-start: 1px solid var(--shell-border);
+  background: var(--shell-panel);
+  font: 12px/1.5 Consolas, monospace;
+}
+
+.theme-light #home-console-entries {
+  --console-info: #3b5d86;
+  --console-warn: #765413;
+  --console-error: #943c4e;
+  --console-message-base: #343d4b;
+  --console-source-lightness: 29%;
+}
+
+#home-console-entries li {
+  --console-tone: var(--console-info);
+  --console-tint: color-mix(in srgb, var(--console-tone) 8%, var(--shell-panel));
+  padding: 6px 8px;
+  border-block-end: 1px solid var(--shell-border);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+#home-console-entries li > :first-child {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  color: var(--shell-muted);
+}
+
+#home-console-entries li[data-level="warn"] { --console-tone: var(--console-warn); }
+#home-console-entries li[data-level="error"] { --console-tone: var(--console-error); }
+
+#home-console-entries time { font-variant-numeric: tabular-nums; }
+
+#home-console-entries .home-console-level {
+  padding-inline: 5px;
+  border-radius: 4px;
+  color: var(--console-tone);
+  background: var(--console-tint);
+}
+
+#home-console-entries .home-console-source-tag {
+  color: hsl(var(--source-hue) 44% var(--console-source-lightness));
+}
+
+#home-console-entries .home-console-message {
+  margin-block-start: 3px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  color: color-mix(in srgb, var(--console-tone) 36%, var(--console-message-base));
+  background: var(--console-tint);
+}

@@ -1,14 +1,12 @@
   let workspacePreviewRequestId = 0;
+  const draftFileArtifacts = new Map();
+  let workspaceDraftSessionId;
 
   function formatWorkspaceFileSize(value) {
     const bytes = Math.max(0, Number(value) || 0);
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  }
-
-  function workspaceFileByPath(filePath) {
-    return state.workspaceFiles.find((file) => String(file.path || '') === String(filePath || '')) || null;
   }
 
   function renderAttachmentChips() {
@@ -19,12 +17,12 @@
       const chip = document.createElement('span');
       chip.className = 'ai-chat-attachment-chip';
       const label = document.createElement('span');
-      label.textContent = workspaceFileByPath(filePath)?.name || filePath;
-      label.title = filePath;
+      label.textContent = `附加 · ${filePath}`;
+      label.title = `${filePath}（发送时供 AI 读取）`;
       const remove = document.createElement('button');
       remove.type = 'button';
       remove.textContent = '×';
-      remove.setAttribute('aria-label', `移除 ${label.textContent}`);
+      remove.setAttribute('aria-label', `移除附件 ${filePath}`);
       remove.addEventListener('click', () => toggleChatAttachment(filePath));
       chip.append(label, remove);
       container.appendChild(chip);
@@ -33,16 +31,39 @@
     syncSendState();
   }
 
-  function toggleChatAttachment(filePath, force) {
+  function toggleChatAttachment(filePath, force, artifact) {
+    syncWorkspaceDraftSession();
     const pathValue = String(filePath || '').trim();
     if (!pathValue) return;
     const selected = state.attachmentPaths.includes(pathValue);
     const shouldSelect = force === undefined ? !selected : force;
-    state.attachmentPaths = shouldSelect
-      ? [...new Set([...state.attachmentPaths, pathValue])].slice(0, 16)
-      : state.attachmentPaths.filter((item) => item !== pathValue);
+    if (shouldSelect && !selected && state.attachmentPaths.length >= 16) {
+      setStatus('每条消息最多附加 16 个文件', 'warning');
+      return false;
+    }
+    if (shouldSelect) {
+      if (!selected) state.attachmentPaths.push(pathValue);
+      if (artifact) draftFileArtifacts.set(pathValue, artifact);
+    } else {
+      state.attachmentPaths = state.attachmentPaths.filter((item) => item !== pathValue);
+      draftFileArtifacts.delete(pathValue);
+    }
     renderAttachmentChips();
     renderWorkspaceFiles();
+    return true;
+  }
+
+  function syncWorkspaceDraftSession() {
+    const id = state.currentSession?.id || '';
+    if (workspaceDraftSessionId !== undefined && workspaceDraftSessionId !== id) {
+      state.attachmentPaths = [];
+      state.chatMentions = [];
+      draftFileArtifacts.clear();
+      closeWorkspacePreview();
+      renderAttachmentChips();
+      renderWorkspaceFiles();
+    }
+    workspaceDraftSessionId = id;
   }
 
   function workspaceFileRow(file) {
@@ -172,11 +193,17 @@
     const body = el('ai-chat-workspace-preview-body');
     if (preview) preview.hidden = false;
     if (body) body.textContent = '正在读取预览…';
+    const title = el('ai-chat-workspace-preview-title');
+    const meta = el('ai-chat-workspace-preview-meta');
+    if (title) title.textContent = '文件预览';
+    if (meta) meta.textContent = '';
+    el('ai-chat-workspace-preview-close')?.focus();
     return { requestId, body };
   }
 
-  function readWorkspacePreview(filePath) {
-    return window.aiFree?.ai?.workspaceRead?.({ path: filePath });
+  function readWorkspacePreview(filePath, artifact, validateOnly = false) {
+    const input = artifact ? { path: filePath, artifact, validateOnly } : { path: filePath };
+    return window.aiFree?.ai?.workspaceRead?.(input);
   }
 
   function assertWorkspacePreviewResult(result) {
@@ -184,15 +211,29 @@
     return result.file || {};
   }
 
-  async function previewWorkspaceFile(filePath) {
+  async function previewWorkspaceFile(filePath, artifact) {
     const { requestId, body } = startWorkspacePreview();
     try {
-      const file = assertWorkspacePreviewResult(await readWorkspacePreview(filePath));
+      const file = assertWorkspacePreviewResult(await readWorkspacePreview(filePath, artifact));
       if (requestId !== workspacePreviewRequestId) return;
       renderWorkspacePreview(file);
     } catch (error) {
       if (requestId !== workspacePreviewRequestId) return;
       if (body) body.textContent = error?.message || String(error);
+    }
+  }
+
+  async function attachWorkspaceArtifact(artifact, button) {
+    const sessionId = state.currentSession?.id;
+    button.disabled = true;
+    try {
+      assertWorkspacePreviewResult(await readWorkspacePreview(artifact.path, artifact, true));
+      if (state.currentSession?.id !== sessionId || !button.isConnected) return;
+      if (toggleChatAttachment(artifact.path, true, artifact)) el('ai-chat-input')?.focus();
+    } catch (error) {
+      if (state.currentSession?.id === sessionId && button.isConnected) setStatus(error.message, 'warning');
+    } finally {
+      button.disabled = false;
     }
   }
 
@@ -241,8 +282,9 @@
       button.type = 'button';
       button.dataset.index = String(index);
       button.className = index === active ? 'is-active' : '';
-      const type = candidate.type === 'file' ? '文件' : 'MCP';
-      button.textContent = `${candidate.label}  ·  ${type}`;
+      button.textContent = candidate.type === 'file'
+        ? `${candidate.reference} · 附加文件`
+        : `${candidate.label} · MCP`;
       button.title = candidate.detail;
       button.addEventListener('mousedown', (event) => event.preventDefault());
       button.addEventListener('click', () => selectChatMention(candidate, range));
@@ -256,14 +298,15 @@
   function selectChatMention(candidate, range) {
     const input = el('ai-chat-input');
     if (!input || !candidate || !range) return;
-    const token = `@${candidate.label}`;
-    input.value = `${input.value.slice(0, range.start)}${token} ${input.value.slice(range.end)}`;
-    const cursor = range.start + token.length + 1;
+    const isFile = candidate.type === 'file';
+    if (isFile && !toggleChatAttachment(candidate.reference, true)) return;
+    const token = isFile ? '' : `@${candidate.label} `;
+    input.value = `${input.value.slice(0, range.start)}${token}${input.value.slice(range.end)}`;
+    const cursor = range.start + token.length;
     input.setSelectionRange(cursor, cursor);
-    state.chatMentions = [...state.chatMentions.filter((item) => (
-      `${item.type}:${item.reference}` !== `${candidate.type}:${candidate.reference}`
-    )), candidate].slice(-32);
-    if (candidate.type === 'file') toggleChatAttachment(candidate.reference, true);
+    if (!isFile) {
+      state.chatMentions = [...state.chatMentions.filter((item) => item.reference !== candidate.reference), candidate].slice(-32);
+    }
     el('ai-chat-mention-menu').hidden = true;
     resizeInput();
     syncSendState();
@@ -297,11 +340,15 @@
 
   function takeChatAttachmentContext(content = '') {
     const text = String(content || '');
-    const activeMentions = state.chatMentions.filter((item) => text.includes(`@${item.label}`));
-    const result = { attachmentPaths: [...state.attachmentPaths], mentions: activeMentions };
+    const activeMentions = state.chatMentions.filter((item) => item.type !== 'file' && text.includes(`@${item.label}`));
+    const attachmentPaths = [...state.attachmentPaths];
+    const artifactReferences = attachmentPaths.map((filePath) => draftFileArtifacts.get(filePath)).filter(Boolean);
+    const result = { attachmentPaths, artifactReferences, mentions: activeMentions };
     state.attachmentPaths = [];
     state.chatMentions = [];
+    draftFileArtifacts.clear();
     renderAttachmentChips();
+    renderWorkspaceFiles();
     return result;
   }
 

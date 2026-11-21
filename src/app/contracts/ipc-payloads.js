@@ -3,8 +3,8 @@
 // 校验错误不记录实际字段值，避免 API Key、Cookie、礼品码等敏感内容进入日志。
 'use strict';
 
-const { AppError } = require('./ipc-result');
-const { getRequestSchema } = require('./ipc-channels');
+const { AppError, fail: ipcFailure } = require('./ipc-result');
+const { getRequestSchema, hasResultEnvelope } = require('./ipc-channels');
 
 const MAX_ID_LENGTH = 512;
 const MAX_TEXT_LENGTH = 2 * 1024 * 1024;
@@ -14,6 +14,7 @@ const AUTOMATION_CARD_ACTIONS = new Set([
   'delete_step', 'move_step', 'delete', 'run', 'validate', 'clone',
   'versions', 'get_version', 'set_enabled', 'export', 'start_run',
   'list_runs', 'get_run', 'list_run_steps', 'cancel_run', 'retry_run',
+  'pause_run', 'resume_run', 'step_run', 'restore', 'purge',
 ]);
 
 class IpcPayloadError extends AppError {
@@ -105,6 +106,22 @@ function validateChatMentions(channel, mentions) {
   });
 }
 
+function validateArtifactPayload(channel, item, key = 'artifact') {
+  if (!isPlainObject(item)) fail(channel, key, '必须是文件产物对象');
+  stringField(channel, item, 'path', { required: true, maxLength: 4096, path: `${key}.path` });
+  stringField(channel, item, 'sha256', { required: true, maxLength: 64, path: `${key}.sha256` });
+  stringField(channel, item, 'toolName', { required: true, maxLength: 32, path: `${key}.toolName` });
+  stringField(channel, item, 'toolCallId', { required: true, maxLength: 256, path: `${key}.toolCallId` });
+  stringField(channel, item, 'kind', { required: true, maxLength: 32, path: `${key}.kind` });
+  if (!Number.isSafeInteger(item.size) || item.size < 0) fail(channel, `${key}.size`, '必须为非负整数');
+}
+
+function validateArtifactReferences(channel, references) {
+  if (references === undefined) return;
+  if (!Array.isArray(references) || references.length > 16) fail(channel, 'artifactReferences', '最多 16 个文件产物');
+  references.forEach((item, index) => validateArtifactPayload(channel, item, `artifactReferences[${index}]`));
+}
+
 function validateHistorySession(channel, session) {
   if (!isPlainObject(session)) fail(channel, 'session', '必须是对象');
   for (const key of ['id', 'title', 'modelId', 'browserConnectionId', 'automationCardId', 'preview']) {
@@ -116,7 +133,44 @@ function validateHistorySession(channel, session) {
   }
 }
 
+function providerPayload(channel, payload) {
+  const input = objectPayload(channel, payload);
+  stringField(channel, input, 'provider', { required: true, maxLength: 64 });
+  return input;
+}
+
+function providerRecordPayload(channel, payload) {
+  const input = providerPayload(channel, payload);
+  stringField(channel, input, 'id', { required: true, maxLength: 64 });
+  return input;
+}
+
 const IPC_PAYLOAD_SCHEMAS = Object.freeze({
+  'account.provider-list': providerPayload,
+  'account.provider-save': (channel, payload) => {
+    const input = providerPayload(channel, payload);
+    stringField(channel, input, 'email', { required: true, maxLength: 254 });
+    stringField(channel, input, 'password', { required: true, maxLength: 1024 });
+    for (const field of ['note', 'smsUrl']) stringField(channel, input, field, { maxLength: 2048 });
+    return input;
+  },
+  'account.provider-delete': providerRecordPayload,
+  'account.provider-record': providerRecordPayload,
+  'account.category-create': (channel, payload) => {
+    const input = objectPayload(channel, payload);
+    stringField(channel, input, 'name', { required: true, maxLength: 32 });
+    return input;
+  },
+  'account.category-rename': (channel, payload) => {
+    const input = providerPayload(channel, payload);
+    stringField(channel, input, 'name', { required: true, maxLength: 32 });
+    return input;
+  },
+  'account.provider-note': (channel, payload) => {
+    const input = providerRecordPayload(channel, payload);
+    stringField(channel, input, 'note', { required: true, maxLength: 2048 });
+    return input;
+  },
   'account.authenticate': (channel, payload) => {
     const input = objectPayload(channel, payload, { optional: true });
     stringField(channel, input, 'mode', { maxLength: 32 });
@@ -147,8 +201,9 @@ const IPC_PAYLOAD_SCHEMAS = Object.freeze({
     }
     stringListField(channel, input, 'browserConnectionIds');
     stringListField(channel, input, 'attachmentPaths');
+    validateArtifactReferences(channel, input.artifactReferences);
     validateChatMentions(channel, input.mentions);
-    for (const key of ['disableTools', 'stream']) booleanField(channel, input, key);
+    for (const key of ['disableTools', 'stream', 'localInteraction']) booleanField(channel, input, key);
     if (input.quota !== undefined && input.quota !== null && !isPlainObject(input.quota)) {
       fail(channel, 'quota', '必须是对象或 null');
     }
@@ -169,16 +224,11 @@ const IPC_PAYLOAD_SCHEMAS = Object.freeze({
     stringField(channel, input, 'requestId');
     return input;
   },
-  'ai.prompt-diagnostics': (channel, payload) => {
-    const input = objectPayload(channel, payload, { optional: true });
-    for (const key of ['modelId', 'browserConnectionId', 'automationCardId']) {
-      stringField(channel, input, key);
-    }
-    stringListField(channel, input, 'browserConnectionIds');
-    if (input.messages !== undefined) {
-      if (!Array.isArray(input.messages)) fail(channel, 'messages', '必须是数组');
-      input.messages.forEach((message, index) => validateChatMessage(channel, message, index));
-    }
+  'ai.chat-approval': (channel, payload) => {
+    const input = objectPayload(channel, payload);
+    stringField(channel, input, 'requestId', { required: true, maxLength: 256 });
+    stringField(channel, input, 'id', { required: true, maxLength: 256 });
+    if (typeof input.accepted !== 'boolean') fail(channel, 'accepted', '必须是布尔值');
     return input;
   },
   'ai.gift-code': (channel, payload) => {
@@ -209,6 +259,25 @@ const IPC_PAYLOAD_SCHEMAS = Object.freeze({
     stringListField(channel, input, 'browserConnectionIds');
     return input;
   },
+  'browser.transfer-site': (channel, payload) => {
+    const input = objectPayload(channel, payload);
+    for (const key of ['sourceId', 'targetId', 'host']) stringField(channel, input, key, { required: true });
+    stringField(channel, input, 'revision', { maxLength: 64 });
+    return input;
+  },
+  'browser.transfer-indexed-db': (channel, payload) => {
+    const input = objectPayload(channel, payload);
+    for (const key of ['sourceId', 'targetId']) stringField(channel, input, key, { required: true });
+    stringField(channel, input, input.host === undefined ? 'origin' : 'host', { required: true, maxLength: 512 });
+    stringField(channel, input, 'revision', { maxLength: 64 });
+    const scope = input.host === undefined ? { origin: input.origin } : { host: input.host };
+    return { sourceId: input.sourceId, targetId: input.targetId, ...scope, revision: input.revision };
+  },
+  'browser.site-data': (channel, payload) => {
+    const input = objectPayload(channel, payload);
+    stringField(channel, input, 'historyId', { required: true });
+    return { historyId: input.historyId };
+  },
   'ai.history-id': (channel, payload) => {
     const input = objectPayload(channel, payload, { optional: true });
     stringField(channel, input, 'id');
@@ -224,11 +293,6 @@ const IPC_PAYLOAD_SCHEMAS = Object.freeze({
     const input = objectPayload(channel, payload, { optional: true });
     booleanField(channel, input, 'setCurrent');
     validateHistorySession(channel, input.session === undefined ? input : input.session);
-    return input;
-  },
-  'ai.settings': (channel, payload) => {
-    const input = objectPayload(channel, payload, { optional: true });
-    numberLikeField(channel, input, 'mcpCallLimit');
     return input;
   },
   'ui.window-close-behavior': (channel, payload) => {
@@ -258,6 +322,8 @@ const IPC_PAYLOAD_SCHEMAS = Object.freeze({
   'ai.workspace-read': (channel, payload) => {
     const input = objectPayload(channel, payload);
     stringField(channel, input, 'path', { required: true, maxLength: 4096 });
+    booleanField(channel, input, 'validateOnly');
+    if (input.artifact !== undefined) validateArtifactPayload(channel, input.artifact);
     return input;
   },
   'ui.sidebar-width': (channel, payload) => {
@@ -284,7 +350,7 @@ const IPC_PAYLOAD_SCHEMAS = Object.freeze({
       }
     }
     for (const key of ['step_index', 'to_step_index', 'start_step']) numberLikeField(channel, input, key);
-    for (const key of ['replace', 'enabled']) booleanField(channel, input, key);
+    for (const key of ['replace', 'enabled', 'include_deleted']) booleanField(channel, input, key);
     return input;
   },
   'ai.automation-session': (channel, payload) => {
@@ -314,6 +380,7 @@ function wrapLegacyIpcPayload(channel, handler) {
       return await handler(event, validated, ...rest);
     } catch (error) {
       if (!(error instanceof IpcPayloadError)) throw error;
+      if (hasResultEnvelope(channel)) return ipcFailure(error);
       return { ok: false, code: error.code, message: error.message };
     }
   };

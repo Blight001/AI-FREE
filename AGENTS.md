@@ -36,11 +36,14 @@ browser extension ↔ AutomationBridge ↔ Chromium runtime
 | UI | 入口与宿主 | 当前职责 | 控制器与样式归属 | 整改约束 |
 |---|---|---|---|---|
 | 主窗口与浏览器首页 | `src/app/frontend/views/app-shell.html`，由主 `BrowserWindow` 加载 | 底部任务栏（主题、更新、内置代理与 AI 入口）、无活动浏览器时的首页、浏览器记录、环境配置；活动 Chromium 的可见区域也由该窗口协调 | 主窗口逻辑位于 `renderer/controllers/pages/app-shell/`，基础样式位于 `renderer/styles/app-shell*.css` | 主内容功能必须放在此处或由此页面装配，不得再创建覆盖首页的第二个 `WebContentsView`；首页显隐只由标签运行状态决定；浏览器内容区域和侧栏预留宽度必须同步验证；不得在此页重新加入已删除的原生自动化工作台 DOM |
-| AI 控制页 | `src/app/frontend/sidebar/ai-control.html`，由右侧 `WebContentsView` 加载 | AI 对话、模型选择、浏览器/自动化卡片选择、工具调用展示、自定义 API、AI 服务器设备、Prompt 诊断 | `sidebar/client/app/side/controllers/pages/ai-control/` 与 `sidebar/client/app/side/styles/modules/ai-control.css` | 侧栏按钮只改变显隐；登录请求通过窄 IPC 交给主窗口，不导航或重新加载 AI；轮询、订阅和会话保存必须在页面卸载时保持可恢复 |
+| 网站数据 | 主窗口浏览器记录的「网站数据」按钮打开 `#site-data-dialog` | 按域名搜索并查看统计，预览和迁移站点图片、声音偏好及第一方 IndexedDB | `renderer/controllers/pages/app-shell/site-data.js` 与 `renderer/styles/app-shell-site-data.css` | 仅首页主帧按记录 ID 请求；统计、偏好和数据库预览只返回白名单字段；应用偏好须锁定目标 Profile，复制数据库须预览并锁定两边，保留来源与目标的其他网站数据 |
+| AI 控制页 | `src/app/frontend/sidebar/ai-control.html`，由右侧 `WebContentsView` 加载 | AI 对话、模型选择、由 AI 在每轮选择浏览器、上传确认、文件产物与工具调用、自定义 API、AI 服务器设备 | `sidebar/client/app/side/controllers/pages/ai-control/` 与 `sidebar/client/app/side/styles/modules/ai-control*.css` | 侧栏按钮只改变显隐；登录请求通过窄 IPC 交给主窗口，不导航或重新加载 AI；轮询、订阅和会话保存必须在页面卸载时保持可恢复 |
+| MCP 管理栏目 | `src/app/frontend/views/app-shell.html` 的 `#home-mcp`，开发模式下由首页左侧菜单进入 | 当前 MCP 工具目录、参数格式、示例提示词及请求和返回示例 | `renderer/controllers/pages/app-shell/shell-home-mcp.js`、`renderer/styles/app-shell-mcp.css` 与 `backend/features/browser/register-mcp-catalog-ipc.js` | 只读目录，仅开发模式下的主窗口首页主帧可访问；不执行示例，不捕获实际 Prompt、凭据或用户会话 |
 | 个人中心栏目 | `src/app/frontend/views/app-shell.html` 的 `#home-personal`，主窗口首页内嵌 | 登录/注册、设备登录、账号资料、额度、VIP 套餐、兑换码、常规设置、公告和教程 | `renderer/controllers/pages/app-shell/account/` 与 `renderer/styles/` | 登录表单和 VIP 弹层只在主窗口保留一个 DOM 真源；通过既有标签状态返回首页，不展开、不重载 AI；不得直接读取主进程存储或凭据 |
 | 内置代理弹窗 | `src/app/frontend/views/network-magic-popup.html`，受控临时窗口 | 从任务栏魔法棒入口管理内置代理和节点 | `backend/features/network/network-magic-popup-controller.js` 与 `renderer/controllers/pages/app-shell/network-magic-popup.js` | 不嵌入首页或 AI；未登录时导航到首页个人中心 |
 | 侧栏兼容入口 | `src/app/frontend/sidebar/index.html` | 仅把旧入口跳转到 `ai-control.html`，兼容旧路径、工具和外部启动参数 | 无业务控制器 | 必须保持轻量；不得重新放回 AI、账号或首页面板；新增正式侧栏页面时应让主进程直接加载明确文件，而不是依赖此跳转 |
-| 开发控制台 | `src/app/backend/views/dev-console.html`，开发模式下由独立诊断窗口加载 | 展示应用控制台历史和调试专用日志 | `backend/features/window/dev-console-window.js` 与 `runtime/app-console` 的受控日志桥接 | 不占用 AI 侧栏；只用于诊断，不能成为业务操作入口；不得显示凭据、Cookie、Token 或普通用户不可见的敏感响应；生产环境的可达性继续受开发模式控制 |
+| 调试控制台栏目 | `src/app/frontend/views/app-shell.html` 的 `#home-console`，开发模式下由首页左侧菜单进入 | 展示、筛选、跟踪和复制日志，可清空内存历史 | `renderer/controllers/pages/app-shell/shell-home-console.js`、`renderer/styles/app-shell-console.css` 与 `backend/runtime/app-console.js` | 不创建诊断窗口或占用 AI 侧栏。主进程只允许开发模式下的主窗口首页主帧读取或清空内存历史；仅在栏目可见时刷新。只用于诊断，不得显示凭据、Cookie、Token 或敏感响应 |
+| 自动化栏目 | `src/app/frontend/views/app-shell.html` 的 `#home-automation`，主窗口首页左侧进入 | 流程列表、运行记录、浏览器选择、JSON 导入导出和流程图编辑；执行通过已有自动化卡片服务与 MCP router | `renderer/controllers/pages/app-shell/shell-home-automation.js`、`automation-canvas.js`、`renderer/styles/app-shell-flow-studio.css` | 不新增第二套流程格式或执行器；流程以 `cardData.steps` 与 `flow.start/edges` 保存，`flow.layout` 只保存画布坐标。MCP 调用沿用 AI 工具目录和浏览器路由。新增执行控制、回收站或审计契约时必须更新 `contracts` 并补服务测试；运行详情默认脱敏 |
 | 浏览器历史手势弹窗 | 由 `main/features/browser/browser-history-popup-controller.js` 生成 `data:` 页面并加载到临时窗口 | 在顶部新建按钮手势中快速选择历史浏览器 | HTML 构建、窗口生命周期和输入路由归该 controller | 内容必须小型、短生命周期、无远程脚本；选项数据先在主进程规范化和转义；不得演变为第二套浏览器历史管理页 |
 | 标签上下文菜单弹窗 | 由 `main/features/browser/tab-context-menu-controller.js` 生成 `data:` 页面并加载到临时窗口 | 标签的重命名、关闭等上下文操作 | HTML 构建和动作回传归该 controller | 只承载上下文动作；必须绑定明确 tab ID、处理窗口销毁并转义可见文本；复杂设置应回到主窗口，不在弹窗中扩张 |
 | 更新下载页 | `main/features/updates/update-download-page.js` 创建窗口并加载受控远程地址 | 当直接安装包下载链路需要网页交互时，承载发行方下载页面 | URL 校验、导航、下载监听和窗口回收归更新域 | 这是外部页面而非本地 UI 真源；必须限制允许的 URL/导航和下载行为，不注入本地业务 DOM，不向页面暴露宽泛 preload 能力 |
@@ -50,6 +53,7 @@ browser extension ↔ AutomationBridge ↔ Chromium runtime
 UI 调整还必须遵守以下规则：
 
 - 新增 UI 前先判断它属于主内容、右侧侧栏、短生命周期弹窗还是外部网页；仅当需要独立渲染生命周期、层级或安全边界时才能新增 `BrowserWindow`/`WebContentsView`。
+- 首页模态表单和操作确认由 `app-shell.html` 的 `#home-dialog-layer` 承载，通过首页弹窗控制器管理打开、关闭、焦点恢复和导航清理。弹窗遮罩与交互限制均限于首页，底部任务栏保持可用。
 - 页面级 HTML 只声明该页面真实需要的 DOM。共享行为通过窄 preload API、纯工具或明确的共享控制器复用，不通过隐藏面板、跨页查询不存在的元素或复制脚本列表复用。
 - 页面导航、窗口创建和弹窗打开属于行为契约。改动后至少验证源码加载路径、`.generated/app` 路径、打包资源存在性、页面首次加载、页面切换、关闭/重开和主窗口/侧栏显隐。
 - 主窗口 UI 相关回归优先覆盖 `test/unit/runtime/app-shell-browser-settings-page.test.js`、`test/acceptance/scripts/check-browser-settings-ui.js`；侧栏资源与页面拆分覆盖 `test/packaging/packaged-runtime-assets.test.js`、`test/acceptance/scripts/check-packaged-sidebar-assets.js` 和 packaged runtime 校验。

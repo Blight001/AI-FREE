@@ -1,26 +1,12 @@
 # AI-FREE
 
-HeySure 地址统一读取聚合仓库 `device.config.json`；独立运行或安装态缺失时，正式地址固定回退 `http://49.234.181.190:58150`，本地地址固定回退 `http://127.0.0.1:3000`。Windows 使用 `run.bat` 启动默认 HeySure，使用 `run-local.bat` 启动本地 HeySure；这两个入口的 profile 高于外部 `HEYSURE_SERVER` 和已保存地址。直接运行 npm 命令时仍可用 `HEYSURE_SERVER` 显式指定地址，其优先级高于已保存地址和默认值。
-
-连接并成功注册到 HeySure 后，AI-FREE 会向**当前登录服务器**检查设备大厅稳定版；也会响应服务器的 `device:update-available` 提醒并重新查询。每个服务器的每个新版本只弹一次询问，确认后仅用系统浏览器打开服务器返回的设备大厅链接，不复用旧的自动下载/安装流程。检查失败不会影响设备连接。
-
 [English](README.md) | 简体中文
 
-AI-FREE 是面向 Windows 的多环境 AI 浏览器工作台。Electron 负责桌面外壳、账号授权、网络与环境配置，实际网页统一运行在项目内置的 **AI-FREE Chromium Fork** 中，并通过原生 Win32 宿主嵌入主窗口。
+AI-FREE 是面向 Windows 的浏览器自动化工作台。你可以为不同任务创建独立的 Chromium 环境，在选定环境里手动浏览、运行保存好的流程，或用自然语言让 AI 操作网页。
 
-版本号以根目录 `package.json` 的 `version` 字段为准。
-
-> 当前仓库不是普通 Electron 内嵌网页项目。正式模式必须使用 `resources/chromium/ai-free-browser.exe`，并完成 Runtime Bridge 命名管道握手；不会回退到 Electron 网页视图或系统 Chrome/Edge。
-
-## 核心能力
-
-- **多浏览器环境**：独立 Profile、标签页、浏览器记录、会话与 Cookie 导入、重启、清除数据和环境删除。
-- **浏览器环境配置**：代理、主页、Cookie、User Agent、语言、时区、WebRTC、地理位置、分辨率、Canvas、WebGL、WebGPU、AudioContext、硬件信息与启动参数等。
-- **账号与授权**：登录、注册、授权状态、兑换码、流量与 AI 额度展示，以及远端公告和自动更新。
-- **内置代理**：集成 Mihomo/Clash Mini，支持节点测速、自动选择、手动切换、系统代理恢复和代理流量统计。
-- **浏览器插件自动注入**：按配置向 Chromium 环境加载 AI 自动化、去水印和翻译扩展。
-- **AI 控制**：软件内对话可选择已连接的浏览器，通过本机桥接调用页面观察、点击、输入、导航、等待、Cookie 保存和自动化卡片等工具。
-- **后台自动化保护**：降低窗口最小化、遮挡或失焦对定时器、Socket 和脚本执行的影响。
+- **独立浏览器环境**：每个环境使用自己的浏览器进程和 Profile，分别保存 Cookie、登录会话和浏览记录。代理、语言、时区等设置也可以按环境配置。
+- **可复用的自动化流程**：在首页「自动化」中，把导航、点击、输入和等待等步骤连成流程。保存后可以选择浏览器环境再次运行、查看运行记录，也可以用 JSON 导入或导出流程。
+- **AI 驱动的自动化**：在 AI 侧栏选中已连接的浏览器，用自然语言描述任务。AI 可以先查看当前页面，再根据页面内容执行操作；也可以调用「自动化」中保存的同一套流程。
 
 ## 运行架构
 
@@ -63,7 +49,7 @@ npm ci
 npm start
 ```
 
-Windows 推荐双击 `run.bat`；本地 HeySure 联调双击 `run-local.bat`。兼容入口 `v-start.bat` 等同 `run.bat`，并继续检查 Electron 二进制是否安装完整。
+安装依赖后，也可以双击 `v-start.bat` 正常启动。
 
 ### 启动命令
 
@@ -74,10 +60,7 @@ Windows 推荐双击 `run.bat`；本地 HeySure 联调双击 `run-local.bat`。�
 | `npm run start:dev` | 直接启动 Electron 开发外壳；浏览器页仍使用内置 Chromium |
 | `npm run start:electron` | 与 `start:dev` 相同 |
 | `npm run start:prototype` | Chromium 接入排障模式，允许 prototype 握手；不得用于发布 |
-| `run.bat` | 标准入口：账号后端保持正式模式，HeySure 固定为默认服务器 |
-| `run-local.bat` | 本地 HeySure 联调：账号后端保持正式模式，HeySure 固定为 `127.0.0.1:3000` |
-| `v-start.bat` | 兼容入口，等同 `run.bat`；内部 `--local` 仅供 `run-local.bat` 使用 |
-| `v-debug.bat` | 兼容的全本地 HTTP 调试：账号后端 `127.0.0.1:58111`，HeySure `127.0.0.1:3000` |
+| `v-debug.bat` | 使用本地服务进行 HTTP 联调，不是日常启动入口 |
 
 `start:dev` 不包含热更新服务器。修改主进程或预加载脚本后需要重启应用；修改内置扩展后需要重建或重新加载对应浏览器环境。
 
@@ -91,7 +74,7 @@ $env:ELECTRON_MIRROR = "https://npmmirror.com/mirrors/electron/"
 npm install
 ```
 
-## 配置
+## 开发配置
 
 根目录的 `platforms-config.json` 是打包和默认运行配置入口。
 
@@ -122,7 +105,7 @@ npm install
 | `FORCE_HTTP_COMPAT_MODE=1` | 禁用 TCP 通道，使用 HTTP 兼容模式 |
 | `DEBUG=1` | 启用调试行为与额外日志 |
 
-`run.bat` 与 `run-local.bat` 只切换 HeySure 设备服务器，不改变账号后端语义。每次连接都会重新调用目标服务器登录接口取得新的 token 和 Socket 地址；加密记忆文件只保存服务器、账号、密码和设备名，不保存 token 或 Socket 地址。需要同时调试旧账号 HTTP 后端时才使用 `v-debug.bat`。
+设备服务联调：`v-start.bat` 默认强制使用正式 HeySure 地址，加 `--local` 仅切换设备服务，账号后端仍使用正式环境。直接运行 `npm start` 且未指定环境变量时，使用设置里的地址；未填写则使用默认地址。
 
 ## 内置扩展
 

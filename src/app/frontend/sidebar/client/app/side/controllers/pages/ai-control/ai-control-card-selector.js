@@ -1,35 +1,16 @@
-  function updateSelectDisplay(shell, select, trigger, valueEl, options) {
-    const isBrowserSelect = shell.dataset.aiSelect === 'browser';
-    trigger.disabled = Boolean(select.disabled);
-    if (!isBrowserSelect) {
-      valueEl.textContent = optionDisplayText(options.find((opt) => opt.selected) || options[0] || null);
-      return;
-    }
-    const connected = Number(state.availableBrowserIds.length || 0);
-    valueEl.textContent = connected ? `${connected} 个浏览器 · AI 自主控制` : (state.browserConnectionsError || '未连接浏览器');
-    shell.classList.toggle('has-selection', connected > 0);
-    trigger.title = connected ? `已连接 ${connected} 个浏览器，由 AI 自主选择目标` : 'AI 控制设置';
-  }
-
   function resolveFocusedOption(menu) {
     const active = document.activeElement;
     if (!active?.classList?.contains('ai-select-option') || !menu.contains(active)) return null;
     return String(active.dataset.value ?? '');
   }
 
-  function toggleBrowserOption(options, next) {
-    options.forEach((option) => { option.selected = Boolean(next) && option.value === next; });
-  }
-
   function createSelectOption(option, context) {
-    const { anyBrowserSelected, isBrowserSelect, options, select, shell } = context;
     const item = document.createElement('button');
     item.type = 'button';
     item.className = 'ai-select-option';
     item.role = 'option';
     item.dataset.value = option.value;
-    const optionSelected = isBrowserSelect && !option.value ? !anyBrowserSelected : option.selected;
-    item.setAttribute('aria-selected', optionSelected ? 'true' : 'false');
+    item.setAttribute('aria-selected', String(option.selected));
     if (option.disabled) {
       item.disabled = true;
       item.setAttribute('aria-disabled', 'true');
@@ -53,11 +34,6 @@
     event.preventDefault();
     if (item.disabled) return;
     const next = String(item.dataset.value ?? '');
-    if (context.isBrowserSelect) {
-      toggleBrowserOption(context.options, next);
-      context.select.dispatchEvent(new Event('change', { bubbles: true }));
-      return;
-    }
     if (context.select.value !== next) {
       context.select.value = next;
       context.select.dispatchEvent(new Event('change', { bubbles: true }));
@@ -65,11 +41,6 @@
       syncSelectUi(context.select);
     }
     closeSelect(context.shell);
-  }
-
-  function appendSelectPrefix(shell, menu) {
-    if (shell.dataset.aiSelect !== 'browser') return;
-    appendBrowserMcpSetting(menu);
   }
 
   function appendModelAction(shell, menu) {
@@ -85,11 +56,6 @@
       void openCustomApiDialog();
     });
     menu.appendChild(action);
-  }
-
-  function appendBrowserActions(shell, menu) {
-    if (shell.dataset.aiSelect !== 'browser') return;
-    updateBrowserMenuAvailableHeight(shell);
   }
 
   function restoreFocusedOption(shell, menu, value) {
@@ -108,30 +74,11 @@
     if (!trigger || !valueEl || !menu) return;
 
     const options = Array.from(select.options || []);
-    const isBrowserSelect = shell.dataset.aiSelect === 'browser';
-    updateSelectDisplay(shell, select, trigger, valueEl, options);
-
-    const activeBrowserSetting = shell.dataset.aiSelect === 'browser'
-      && document.activeElement?.closest?.('.ai-browser-menu-setting');
-    if (activeBrowserSetting) {
-      updateBrowserMcpSettingUi();
-      return;
-    }
-    const existingMcpInput = shell.dataset.aiSelect === 'browser'
-      ? menu.querySelector('#ai-browser-mcp-call-limit')
-      : null;
-    if (existingMcpInput) state.mcpCallLimitDraft = existingMcpInput.value;
-    // 重建菜单前记录当前焦点，刷新后恢复键盘操作位置。
+    trigger.disabled = Boolean(select.disabled);
+    valueEl.textContent = optionDisplayText(options.find((option) => option.selected) || options[0] || null);
     const focusedOptionValue = resolveFocusedOption(menu);
-    menu.innerHTML = '';
-    appendSelectPrefix(shell, menu);
-    const anyBrowserSelected = isBrowserSelect && options.some((opt) => opt.selected && opt.value);
-    const context = { anyBrowserSelected, isBrowserSelect, options, select, shell };
-    if (!isBrowserSelect) {
-      options.forEach((option) => menu.appendChild(createSelectOption(option, context)));
-    }
+    menu.replaceChildren(...options.map((option) => createSelectOption(option, { select, shell })));
     appendModelAction(shell, menu);
-    appendBrowserActions(shell, menu);
     restoreFocusedOption(shell, menu, focusedOptionValue);
   }
 
@@ -147,10 +94,7 @@
       event.preventDefault();
       if (trigger.disabled || select.disabled) return;
       if (shell.classList.contains('open')) closeSelect(shell);
-      else {
-        openSelect(shell);
-        if (shell.dataset.aiSelect === 'browser') void loadAiControlSettings();
-      }
+      else openSelect(shell);
     });
 
     trigger.addEventListener('keydown', (event) => {

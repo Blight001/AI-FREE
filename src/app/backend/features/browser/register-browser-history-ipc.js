@@ -7,6 +7,12 @@ const historyService = require('./browser-history-service');
 const { createBrowserHistoryPopupController } = require('./browser-history-popup-controller');
 const { createBrowserHistoryIpcHandlers } = require('./browser-history-ipc-handlers');
 
+const { createPreferenceTransfer } = require('./site-preference-transfer');
+const preferences = require('../../platform/site-preferences');
+const { listSiteMetadata } = require('../../platform/site-data-index');
+const { createSiteDataHandler } = require('./site-data-handler');
+const { createIndexedDbTransfer } = require('./indexed-db-transfer');
+
 function registerBrowserHistoryIpc({ ipc, ui, licenseCache }) {
   const popup = createBrowserHistoryPopupController({ ui });
   const handlers = createBrowserHistoryIpcHandlers({
@@ -21,6 +27,10 @@ function registerBrowserHistoryIpc({ ipc, ui, licenseCache }) {
     ui,
   });
   handlers.cleanupStartupProfiles();
+  const siteDeps = { ui, readHistory: historyService.readBrowserHistorySafe, resolveProfileId: historyService.resolveHistoryProfileId };
+  ipc.handle('get-browser-site-data', createSiteDataHandler({ ...siteDeps, listSiteMetadata }));
+  ipc.handle('transfer-site-preferences', createPreferenceTransfer({ ...siteDeps, preferences }));
+  const disposeIndexedDbTransfer = ipc.handle('transfer-site-indexed-db', createIndexedDbTransfer(siteDeps));
   ipc.handle('get-browser-history', handlers.getBrowserHistory);
   ipc.handle('show-browser-history-gesture-popup', handlers.showGesturePopup);
   ipc.on('update-browser-history-gesture-popup-selection', handlers.updateGesturePopup);
@@ -31,6 +41,7 @@ function registerBrowserHistoryIpc({ ipc, ui, licenseCache }) {
   ipc.handle('rename-browser-history', handlers.renameBrowserHistory);
   ipc.handle('rename-browser-history-batch', handlers.renameBrowserHistoryBatch);
   ipc.handle('delete-browser-history', handlers.deleteBrowserHistory);
+  return disposeIndexedDbTransfer;
 }
 
 module.exports = { registerBrowserHistoryIpc };

@@ -40,7 +40,7 @@ test('window.aiFree AI methods bind fixed channels and subscriptions return disp
   assert.equal(Object.isFrozen(exposed.aiFree.ai), true);
 
   await exposed.aiFree.ai.chat({ requestId: 'request-1' });
-  await exposed.aiFree.ai.getPromptDiagnostics({ modelId: 'model-1' });
+  await exposed.aiFree.diagnostics.getMcpCatalog();
   await exposed.aiFree.ai.manageAutomationCard({ action: 'list' });
   await exposed.aiFree.ai.saveAutomationSession({ connectionId: 'native:p1' });
   await exposed.aiFree.ai.workspaceList();
@@ -48,7 +48,7 @@ test('window.aiFree AI methods bind fixed channels and subscriptions return disp
   exposed.aiFree.ai.emitBrowserSelectionChanged({ ids: ['browser-1'] });
   assert.deepEqual(calls, [
     ['invoke', 'ai-control-chat', { requestId: 'request-1' }],
-    ['invoke', 'ai-control-get-prompt-diagnostics', { modelId: 'model-1' }],
+    ['invoke', 'get-browser-mcp-catalog', undefined],
     ['invoke', 'ai-control-manage-automation-card', { action: 'list' }],
     ['invoke', 'ai-control-save-automation-session', { connectionId: 'native:p1' }],
     ['invoke', 'ai-control-workspace-list', undefined],

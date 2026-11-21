@@ -291,6 +291,10 @@ function serializeBrowserHistory(history, ui) {
     .sort((left, right) => Number(right.lastOpenedAt || 0) - Number(left.lastOpenedAt || 0));
 }
 
+function resolveHistoryProfileId(record) {
+  return record.profileId || record.accountId || `browser-tab-${record.id.replace(/[^a-z0-9_-]/gi, '_')}`;
+}
+
 // 打开一条浏览器窗口记录（已打开则切换激活）。被 open-browser-history IPC
 // 和 AI 默认窗口工具（services/ai-browser-window-tools）共用，改动需两边兼容。
 async function openBrowserHistoryRecord(ui, historyIdInput) {
@@ -303,9 +307,7 @@ async function openBrowserHistoryRecord(ui, historyIdInput) {
   if (tabId) {
     callOptional(ui, 'switchTab', tabId);
   } else {
-    tabId = record.profileId
-      || record.accountId
-      || `browser-tab-${record.id.replace(/[^a-z0-9_-]/gi, '_')}`;
+    tabId = resolveHistoryProfileId(record);
     const openUrl = record.url || (record.accountId ? 'about:blank' : DEFAULT_BROWSER_WINDOW_URL);
     tabId = await ui.addTab(openUrl, {
       tabId,
@@ -330,6 +332,34 @@ async function openBrowserHistoryRecord(ui, historyIdInput) {
     name: record.name,
     alreadyOpen: Boolean(openTab && openTab.id),
   };
+}
+
+function persistOpenBrowserHistoryForStartup(ui) {
+  const history = syncOpenTabsToBrowserHistory(ui);
+  const openIds = new Set(Array.from(tabValues(ui), (tab) => text(tab && tab.browserHistoryId)));
+  let changed = false;
+  for (const record of history) {
+    const shouldRestore = openIds.has(record.id);
+    if (record.restoreOnStartup !== shouldRestore) {
+      record.restoreOnStartup = shouldRestore;
+      changed = true;
+    }
+  }
+  return !changed || writeBrowserHistorySafe(history);
+}
+
+async function restoreOpenBrowserHistoryForStartup(ui, logger = console) {
+  const records = readBrowserHistorySafe().filter((record) => record.restoreOnStartup === true);
+  for (const record of records) {
+    try {
+      await openBrowserHistoryRecord(ui, record.id);
+    } catch (error) {
+      logger.warn?.('[Startup] Browser history restore failed:', {
+        historyId: record.id,
+        error: error?.message || String(error),
+      });
+    }
+  }
 }
 
 function persistClosedTabIconToBrowserHistory(ui, tab) {
@@ -458,8 +488,11 @@ module.exports = {
   getManagedTabUrl,
   makeUniqueBrowserName,
   openBrowserHistoryRecord,
+  persistOpenBrowserHistoryForStartup,
+  restoreOpenBrowserHistoryForStartup,
   persistClosedTabIconToBrowserHistory,
   resolveHistoryIconUrl,
+  resolveHistoryProfileId,
   resolveTabIconUrl,
   readBrowserHistorySafe,
   renameBrowserHistoryRecord,

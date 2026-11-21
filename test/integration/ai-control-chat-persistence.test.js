@@ -78,6 +78,8 @@ function createComposerFixture(chatResult) {
     function renderConversation() {}
     function maybeGenerateTitle() {}
   `, context);
+  const targetPath = path.join(path.dirname(composerPath), 'ai-control-browser-target.js');
+  vm.runInContext(fs.readFileSync(targetPath, 'utf8'), context, { filename: targetPath });
   vm.runInContext(fs.readFileSync(composerPath, 'utf8'), context, { filename: composerPath });
   return { context, events, persisted, streamView };
 }

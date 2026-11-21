@@ -1,5 +1,7 @@
 'use strict';
 
+const { sendPageCommand } = require('./runtime-page-binding');
+
 const { findProfileIdByProcessId } = require('./runtime-input');
 
 const AUTOMATION_COMMANDS = new Set([
@@ -314,19 +316,22 @@ function normalizeRuntimeAutomation(command, source = {}) {
   return {};
 }
 
-async function dispatchRuntimeAutomation(runtime, profileId, command, source) {
+async function dispatchRuntimeAutomation(runtime, profileId, command, source, options = {}) {
   const payload = normalizeRuntimeAutomation(command, source);
+  if (options.expectedPageToken !== undefined && command === 'perform-action' && payload.action === 'upload_file') {
+    Object.assign(payload, { selectionId: optionalText(source.selectionId, 128) });
+  }
   const timeoutMs = Number('timeoutMs' in payload ? payload.timeoutMs : 10000) || 10000;
   return runtime.enqueueProfileOperation(profileId, () => (
-    runtime.getReadyInstance(profileId).commandClient.send(command, payload, {
+    sendPageCommand(runtime.getReadyInstance(profileId).commandClient, command, payload, {
       timeoutMs: ['perform-action', 'download-element'].includes(command) ? timeoutMs + 2000 : 15000,
-    })
+    }, options.expectedPageToken)
   ));
 }
 
-async function dispatchRuntimeAutomationByProcessId(runtime, processId, command, source) {
+async function dispatchRuntimeAutomationByProcessId(runtime, processId, command, source, options) {
   const profileId = findProfileIdByProcessId(runtime.instances, processId);
-  if (profileId) return dispatchRuntimeAutomation(runtime, profileId, command, source);
+  if (profileId) return dispatchRuntimeAutomation(runtime, profileId, command, source, options);
   throw automationError(
     'CHROMIUM_PROCESS_NOT_MANAGED',
     `Chromium 进程 ${Number(processId || 0) || '<empty>'} 不属于当前受管 Profile`,

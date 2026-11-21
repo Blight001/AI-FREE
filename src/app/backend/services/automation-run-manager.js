@@ -6,7 +6,7 @@ const path = require('path');
 const { atomicWrite } = require('./automation-card-store');
 
 const RUNS_FILE_NAME = 'automation-runs.json';
-const ACTIVE = new Set(['pending', 'running']);
+const ACTIVE = new Set(['pending', 'running', 'paused']);
 const TERMINAL = new Set(['succeeded', 'failed', 'cancelled', 'timed_out']);
 
 function clone(value) { return JSON.parse(JSON.stringify(value)); }
@@ -33,6 +33,7 @@ class AutomationRunManager {
     this.execute = options.execute;
     this.listeners = new Set();
     this.controllers = new Map();
+    this.controls = new Map();
     this.runs = this.readRuns();
   }
 
@@ -84,16 +85,48 @@ class AutomationRunManager {
 
   async perform(run) {
     const controller = new AbortController();
+    const control = { pauseRequested: false, singleStep: false, release: null };
     this.controllers.set(run.id, controller);
+    this.controls.set(run.id, control);
     this.patch(run, { status: 'running', startedAt: now(), error: null }, 'started');
     const timer = this.timeout(run, controller);
     try {
-      const context = { signal: controller.signal, onProgress: (step) => this.progress(run, step) };
+      const context = {
+        signal: controller.signal,
+        onProgress: (step) => this.progress(run, step),
+        beforeStep: () => this.beforeStep(run, control, controller.signal),
+      };
       const output = await this.execute(clone(run.request), context);
       if (!TERMINAL.has(run.status)) this.finish(run, output);
     } catch (error) {
       if (!TERMINAL.has(run.status)) this.patch(run, { status: 'failed', error: errorPayload(error), finishedAt: now() }, 'failed');
-    } finally { clearTimeout(timer); this.controllers.delete(run.id); }
+    } finally {
+      clearTimeout(timer);
+      control.release?.();
+      this.controllers.delete(run.id);
+      this.controls.delete(run.id);
+    }
+  }
+
+  async beforeStep(run, control, signal) {
+    if (!control.pauseRequested || TERMINAL.has(run.status)) return;
+    this.patch(run, { status: 'paused' }, 'paused');
+    await new Promise((resolve) => {
+      const release = () => {
+        signal.removeEventListener('abort', release);
+        if (control.release === release) control.release = null;
+        resolve(undefined);
+      };
+      control.release = release;
+      signal.addEventListener('abort', release, { once: true });
+    });
+    control.release = null;
+    if (TERMINAL.has(run.status)) return;
+    this.patch(run, { status: 'running' }, 'resumed');
+    if (control.singleStep) {
+      control.singleStep = false;
+      control.pauseRequested = true;
+    } else control.pauseRequested = false;
   }
 
   timeout(run, controller) {
@@ -104,6 +137,7 @@ class AutomationRunManager {
         code: 'RUN_TIMED_OUT', message: '自动化运行超过总超时限制', retryable: true,
       }, finishedAt: now() }, 'timed_out');
       controller.abort();
+      this.controls.get(run.id)?.release?.();
     }, timeoutMs);
   }
 
@@ -138,9 +172,42 @@ class AutomationRunManager {
     const run = this.find(id);
     if (TERMINAL.has(run.status)) return { success: true, run: publicRun(run) };
     this.controllers.get(run.id)?.abort();
+    this.controls.get(run.id)?.release?.();
     this.patch(run, { status: 'cancelled', error: {
       code: 'RUN_CANCELLED', message: String(reason), retryable: true,
     }, finishedAt: now() }, 'cancelled');
+    return { success: true, run: publicRun(run) };
+  }
+
+  pause(id) {
+    const run = this.find(id);
+    if (!ACTIVE.has(run.status)) throw new Error('运行已结束，不能暂停');
+    if (run.status === 'paused') return { success: true, run: publicRun(run) };
+    const control = this.controls.get(run.id);
+    if (!control) throw new Error('运行尚未进入可暂停状态');
+    control.pauseRequested = true;
+    return { success: true, run: publicRun(run) };
+  }
+
+  resume(id) {
+    const run = this.find(id);
+    if (run.status !== 'paused') throw new Error('运行当前未暂停');
+    const control = this.controls.get(run.id);
+    if (!control) throw new Error('运行控制器已失效');
+    control.singleStep = false;
+    control.pauseRequested = false;
+    control.release?.();
+    return { success: true, run: publicRun(run) };
+  }
+
+  step(id) {
+    const run = this.find(id);
+    if (run.status !== 'paused') throw new Error('单步运行仅可用于已暂停的流程');
+    const control = this.controls.get(run.id);
+    if (!control) throw new Error('运行控制器已失效');
+    control.singleStep = true;
+    control.pauseRequested = true;
+    control.release?.();
     return { success: true, run: publicRun(run) };
   }
 

@@ -1,0 +1,890 @@
+diff --git a/chrome/browser/ai_free_file_selection.cc b/chrome/browser/ai_free_file_selection.cc
+index 633ae1f..338d6b0 100644
+--- a/chrome/browser/ai_free_file_selection.cc
++++ b/chrome/browser/ai_free_file_selection.cc
+@@ -2,6 +2,8 @@
+ 
+ #include "chrome/browser/ai_free_file_selection.h"
+ 
++#include "content/public/browser/web_contents.h"
++
+ AiFreeFileSelection::Request::Request() = default;
+ AiFreeFileSelection::Request::Request(Request&&) = default;
+ AiFreeFileSelection::Request& AiFreeFileSelection::Request::operator=(Request&&) = default;
+@@ -19,7 +21,27 @@ void AiFreeFileSelection::SetTakeoverActive(bool active) {
+   if (!active) request_.reset();
+ }
+ 
++bool AiFreeFileSelection::Authorize(std::string_view selection_id) {
++  if (!request_ || !request_->page_guard || request_->authorized ||
++      request_->selection_id != selection_id ||
++      base::TimeTicks::Now() >= request_->expires_at ||
++      !request_->page_guard.Run()) {
++    return false;
++  }
++  request_->authorized = true;
++  return true;
++}
++
++void AiFreeFileSelection::Cancel(std::string_view selection_id) {
++  if (request_ && request_->selection_id == selection_id) request_.reset();
++}
++
++bool AiFreeFileSelection::WasConsumed(std::string_view selection_id) const {
++  return !selection_id.empty() && consumed_id_ == selection_id;
++}
++
+ std::optional<AiFreeFileSelection::Request> AiFreeFileSelection::Consume(
++    content::RenderFrameHost* frame,
+     const url::Origin& current_origin,
+     Mode mode) {
+   if (!request_) return std::nullopt;
+@@ -27,11 +49,21 @@ std::optional<AiFreeFileSelection::Request> AiFreeFileSelection::Consume(
+                             (request_->mode == Mode::kOpen &&
+                              mode == Mode::kOpenMultiple &&
+                              request_->paths.size() == 1);
++  if (request_->page_guard) {
++    if (!request_->page_guard.Run()) {
++      request_.reset();
++      return std::nullopt;
++    }
++    if (!request_->authorized || frame != GetWebContents().GetPrimaryMainFrame()) {
++      return std::nullopt;
++    }
++  }
+   if (base::TimeTicks::Now() >= request_->expires_at ||
+       request_->origin != current_origin || !mode_matches) {
+     request_.reset();
+     return std::nullopt;
+   }
++  consumed_id_ = request_->selection_id;
+   std::optional<Request> result = std::move(request_);
+   request_.reset();
+   return result;
+diff --git a/chrome/browser/ai_free_file_selection.h b/chrome/browser/ai_free_file_selection.h
+index 1e0f0bc..77e27c2 100644
+--- a/chrome/browser/ai_free_file_selection.h
++++ b/chrome/browser/ai_free_file_selection.h
+@@ -4,9 +4,12 @@
+ #define CHROME_BROWSER_AI_FREE_FILE_SELECTION_H_
+ 
+ #include <optional>
++#include <string>
++#include <string_view>
+ #include <vector>
+ 
+ #include "base/files/file_path.h"
++#include "base/functional/callback.h"
+ #include "base/time/time.h"
+ #include "content/public/browser/web_contents_user_data.h"
+ #include "url/origin.h"
+@@ -24,13 +27,20 @@ class AiFreeFileSelection
+     url::Origin origin;
+     Mode mode = Mode::kOpen;
+     base::TimeTicks expires_at;
++    base::RepeatingCallback<bool()> page_guard;
++    std::string selection_id;
++    bool authorized = false;
+   };
+ 
+   AiFreeFileSelection(const AiFreeFileSelection&) = delete;
+   AiFreeFileSelection& operator=(const AiFreeFileSelection&) = delete;
+   ~AiFreeFileSelection() override;
+   void Queue(Request request);
+-  std::optional<Request> Consume(const url::Origin& current_origin, Mode mode);
++  bool Authorize(std::string_view selection_id);
++  void Cancel(std::string_view selection_id);
++  bool WasConsumed(std::string_view selection_id) const;
++  std::optional<Request> Consume(content::RenderFrameHost* frame,
++                                 const url::Origin& current_origin, Mode mode);
+   void SetTakeoverActive(bool active);
+   bool takeover_active() const { return takeover_active_; }
+ 
+@@ -39,6 +49,7 @@ class AiFreeFileSelection
+   friend class content::WebContentsUserData<AiFreeFileSelection>;
+   WEB_CONTENTS_USER_DATA_KEY_DECL();
+   std::optional<Request> request_;
++  std::string consumed_id_;
+   bool takeover_active_ = false;
+ };
+ 
+diff --git a/chrome/browser/file_select_helper.cc b/chrome/browser/file_select_helper.cc
+index e447f12..1121648 100644
+--- a/chrome/browser/file_select_helper.cc
++++ b/chrome/browser/file_select_helper.cc
+@@ -652,7 +652,8 @@ void FileSelectHelper::RunFileChooser(
+   if (can_auto_select) {
+     const url::Origin current_origin =
+         render_frame_host_->GetOutermostMainFrame()->GetLastCommittedOrigin();
+-    auto request = selection->Consume(current_origin, automation_mode);
++    auto request = selection->Consume(render_frame_host_, current_origin,
++                                      automation_mode);
+     if (request) {
+       ai_free_auto_selected_ = true;
+       std::vector<ui::SelectedFileInfo> files;
+diff --git a/chrome/browser/ui/views/frame/ai_free_automation_pointer.cc b/chrome/browser/ui/views/frame/ai_free_automation_pointer.cc
+index df02d40..6ddde4a 100644
+--- a/chrome/browser/ui/views/frame/ai_free_automation_pointer.cc
++++ b/chrome/browser/ui/views/frame/ai_free_automation_pointer.cc
+@@ -79,7 +79,8 @@ class PointerSession : public content::WebContentsObserver,
+   void Start(const gfx::PointF& target,
+              bool right_button,
+              int click_count,
+-             base::OnceCallback<void(bool)> callback) {
++             base::OnceCallback<void(bool)> callback,
++             base::RepeatingCallback<bool()> page_guard) {
+     Finish(false);
+     hide_timer_.Stop();
+     target_ = target;
+@@ -88,6 +89,7 @@ class PointerSession : public content::WebContentsObserver,
+     dragging_ = false;
+     completed_clicks_ = 0;
+     callback_ = std::move(callback);
++    page_guard_ = std::move(page_guard);
+     if (!AttachOverlay()) {
+       return Finish(false);
+     }
+@@ -109,7 +111,8 @@ class PointerSession : public content::WebContentsObserver,
+ 
+   void StartDrag(const gfx::PointF& start,
+                  const gfx::PointF& end,
+-                 base::OnceCallback<void(bool)> callback) {
++                 base::OnceCallback<void(bool)> callback,
++                 base::RepeatingCallback<bool()> page_guard) {
+     Finish(false);
+     hide_timer_.Stop();
+     target_ = start;
+@@ -119,6 +122,7 @@ class PointerSession : public content::WebContentsObserver,
+     completed_clicks_ = 0;
+     dragging_ = true;
+     callback_ = std::move(callback);
++    page_guard_ = std::move(page_guard);
+     if (!AttachOverlay()) return Finish(false);
+     if (!has_position_) {
+       position_ = gfx::PointF(std::max(8.0f, start.x() - 72.0f),
+@@ -235,7 +239,7 @@ class PointerSession : public content::WebContentsObserver,
+   }
+ 
+   void Tick() {
+-    if (!overlay_ || !web_contents()) {
++    if (!overlay_ || !web_contents() || (page_guard_ && !page_guard_.Run())) {
+       return Finish(false);
+     }
+     BrowserView* browser_view = CurrentBrowserView();
+@@ -311,11 +315,13 @@ class PointerSession : public content::WebContentsObserver,
+ 
+   void Finish(bool success) {
+     timer_.Stop();
+-    if (!success &&
++    if (!success && (!page_guard_ || page_guard_.Run()) &&
+         (phase_ == Phase::kPressed || phase_ == Phase::kDragging)) {
++      phase_ = Phase::kIdle;
+       Dispatch(blink::WebInputEvent::Type::kMouseUp, 1);
+     }
+     phase_ = Phase::kIdle;
++    page_guard_.Reset();
+     dragging_ = false;
+     has_position_ = has_position_ || success;
+     if (overlay_) {
+@@ -367,6 +373,7 @@ class PointerSession : public content::WebContentsObserver,
+   base::OneShotTimer attach_retry_timer_;
+   base::OneShotTimer hide_timer_;
+   base::OnceCallback<void(bool)> callback_;
++  base::RepeatingCallback<bool()> page_guard_;
+   Phase phase_ = Phase::kIdle;
+   int click_count_ = 1;
+   int completed_clicks_ = 0;
+@@ -408,21 +415,24 @@ void DispatchAiFreeAnimatedClick(content::WebContents* web_contents,
+                                  const gfx::PointF& target,
+                                  bool right_button,
+                                  int click_count,
+-                                 base::OnceCallback<void(bool)> callback) {
++                                 base::OnceCallback<void(bool)> callback,
++                                 base::RepeatingCallback<bool()> page_guard) {
+   auto [it, inserted] = Sessions().try_emplace(web_contents);
+   if (inserted) {
+     it->second = std::make_unique<PointerSession>(web_contents);
+   }
+-  it->second->Start(target, right_button, click_count, std::move(callback));
++  it->second->Start(target, right_button, click_count, std::move(callback),
++                    std::move(page_guard));
+ }
+ 
+ void DispatchAiFreeAnimatedDrag(content::WebContents* web_contents,
+                                 const gfx::PointF& start,
+                                 const gfx::PointF& end,
+-                                base::OnceCallback<void(bool)> callback) {
++                                base::OnceCallback<void(bool)> callback,
++                                base::RepeatingCallback<bool()> page_guard) {
+   auto [it, inserted] = Sessions().try_emplace(web_contents);
+   if (inserted) {
+     it->second = std::make_unique<PointerSession>(web_contents);
+   }
+-  it->second->StartDrag(start, end, std::move(callback));
++  it->second->StartDrag(start, end, std::move(callback), std::move(page_guard));
+ }
+diff --git a/chrome/browser/ui/views/frame/ai_free_automation_pointer.h b/chrome/browser/ui/views/frame/ai_free_automation_pointer.h
+index 5b8a8a4..1b3eb46 100644
+--- a/chrome/browser/ui/views/frame/ai_free_automation_pointer.h
++++ b/chrome/browser/ui/views/frame/ai_free_automation_pointer.h
+@@ -22,13 +22,15 @@ void DispatchAiFreeAnimatedClick(content::WebContents* web_contents,
+                                  const gfx::PointF& target,
+                                  bool right_button,
+                                  int click_count,
+-                                 base::OnceCallback<void(bool)> callback);
++                                 base::OnceCallback<void(bool)> callback,
++                                 base::RepeatingCallback<bool()> page_guard);
+ 
+ // Moves to |start|, holds the left button while animating to |end|, then
+ // releases it. This preserves Chromium hit testing and native text selection.
+ void DispatchAiFreeAnimatedDrag(content::WebContents* web_contents,
+                                 const gfx::PointF& start,
+                                 const gfx::PointF& end,
+-                                base::OnceCallback<void(bool)> callback);
++                                base::OnceCallback<void(bool)> callback,
++                                base::RepeatingCallback<bool()> page_guard);
+ 
+ #endif  // CHROME_BROWSER_UI_VIEWS_FRAME_AI_FREE_AUTOMATION_POINTER_H_
+diff --git a/chrome/browser/ui/views/frame/ai_free_page_automation.cc b/chrome/browser/ui/views/frame/ai_free_page_automation.cc
+index 0bc9b48..a0503c0 100644
+--- a/chrome/browser/ui/views/frame/ai_free_page_automation.cc
++++ b/chrome/browser/ui/views/frame/ai_free_page_automation.cc
+@@ -19,6 +19,7 @@
+ #include "base/strings/utf_string_conversions.h"
+ #include "base/task/sequenced_task_runner.h"
+ #include "base/time/time.h"
++#include "chrome/browser/ai_free_file_selection.h"
+ #include "chrome/browser/profiles/profile.h"
+ #include "chrome/browser/ui/browser.h"
+ #include "chrome/browser/ui/views/frame/ai_free_accessibility_observe.h"
+@@ -80,6 +81,15 @@ void Fail(AiFreeAutomationFailure failure,
+   std::move(failure).Run({std::move(code), std::move(message)});
+ }
+ 
++bool PageChanged(const AiFreePageGuard& guard) {
++  return guard && !guard.Run();
++}
++
++void FailPageChanged(AiFreeAutomationFailure failure) {
++  Fail(std::move(failure), "BROWSER_TARGET_CHANGED",
++       "The bound page is no longer active");
++}
++
+ std::string CommandJson(const base::DictValue& command) {
+   return base::WriteJson(command).value_or("{}");
+ }
+@@ -219,6 +229,15 @@ std::string ActionScript(const base::DictValue& command) {
+     const elementValue=el=>String(el?.type==='password'?'':(el?.value??el?.innerText??el?.textContent??'')).trim().replace(/\s+/g,' ');
+     const waitState=()=>{const condition=String(a.condition||'attached'),el=find(),textValue=el?String(el.innerText??el.textContent??'').trim().replace(/\s+/g,' '):'',valueValue=el?String(el.value??''):'';const currentValue=condition==='url_matches'?location.href:(condition==='text_contains'||condition==='text_changed'?textValue:condition==='value_equals'?valueValue:condition==='attribute_equals'?String(el?.getAttribute?.(String(a.attribute||''))??''):condition==='checked'?String(!!el?.checked):condition==='count'?String(el?.querySelectorAll?.(String(a.selector||'*'))?.length??0):elementValue(el)),expected=String(a.expectedValue??''),hasInitial=Object.prototype.hasOwnProperty.call(a,'initialValue'),initial=String(a.initialValue??'');const matched=condition==='visible'?visible(el):condition==='hidden'?!visible(el):condition==='text_contains'?!!el&&currentValue.includes(expected):condition==='text_changed'?hasInitial&&!!el&&currentValue!==initial:condition==='value_equals'?!!el&&currentValue===expected:condition==='attribute_equals'?!!el&&currentValue===expected:condition==='checked'?!!el&&currentValue===expected:condition==='count'?currentValue===expected:condition==='url_matches'?currentValue.includes(expected):!!el;return {condition,el,currentValue,matched};};
+     if(action==='wait'){const state=waitState();return state.matched?{success:true,action,condition:state.condition,found:!!state.el,currentValue:state.currentValue,url:location.href}:{success:false,action,condition:state.condition,currentValue:state.currentValue,url:location.href,error:'等待条件中',errorCode:'WAIT_PENDING'};}
++    if(a.boundUpload){
++      let matches=[];try{matches=document.querySelectorAll(a.selector);}catch(_){}
++      const el=matches.length===1?matches[0]:null;
++      const r=el?.getBoundingClientRect(),x=r?r.left+r.width/2:-1,y=r?r.top+r.height/2:-1;
++      let hit=document.elementFromPoint(x,y);while(hit?.shadowRoot){const inner=hit.shadowRoot.elementFromPoint(x,y);if(!inner||inner===hit)break;hit=inner;}
++      if(!el||el.type!=='file'||el.disabled||!visible(el)||hit!==el)
++        return {success:false,action,error:'请选择当前主页面内唯一、可点击的文件控件',errorCode:'FILE_SELECTION_TARGET_INVALID',actionExecuted:false};
++      return {success:true,action,nativeInput:{x,y,viewportWidth:innerWidth,viewportHeight:innerHeight}};
++    }
+     const el=find();if(!el)return {success:false,action,error:'未找到目标元素',errorCode:'ELEMENT_NOT_FOUND'};el.scrollIntoView({block:'center',inline:'center'});el.focus();
+     if(action==='type'){if(typeof el.select==='function')el.select();return {success:true,action,selector:a.selector||'',nativeKeyboard:true};}
+     if(action==='insert_text')return {success:true,action,selector:a.selector||'',nativeKeyboard:true};
+@@ -239,10 +258,11 @@ std::string DownloadElementScript(const base::DictValue& command) {
+     if(!el&&a.selector){for(const root of roots()){try{el=root.querySelector(a.selector);}catch(_){}if(el)break;}}
+     if(!el)return {success:false,error:'未找到目标图片元素',errorCode:'ELEMENT_NOT_FOUND'};
+     let image=el.matches?.('img')?el:null;if(!image&&el.matches?.('picture'))image=el.querySelector('img');if(!image)image=el.querySelector?.('img')||el.closest?.('picture')?.querySelector('img');
++    if(a.boundMedia&&!image)image=el.matches?.('video,audio')?el:el.closest?.('video,audio')||el.querySelector?.('video,audio');
+     if(!image)return {success:false,error:'目标元素不是图片',errorCode:'IMAGE_ELEMENT_REQUIRED'};
+     const resourceUrl=String(image.currentSrc||image.src||'');let parsed;try{parsed=new URL(resourceUrl,location.href);}catch(_){}
+     if(!parsed||!/^https?:$/.test(parsed.protocol))return {success:false,error:'图片元素没有可下载的 HTTP/HTTPS currentSrc',errorCode:'IMAGE_URL_UNAVAILABLE'};
+-    return {success:true,action:'download_element',resourceUrl:parsed.href,tag:'img',naturalWidth:Number(image.naturalWidth)||0,naturalHeight:Number(image.naturalHeight)||0,ref:String(a.ref||'')};
++    return {success:true,action:'download_element',resourceUrl:parsed.href,tag:image.localName,naturalWidth:Number(image.naturalWidth||image.videoWidth)||0,naturalHeight:Number(image.naturalHeight||image.videoHeight)||0,ref:String(a.ref||'')};
+   } catch(e) { return {success:false,error:String(e&&e.message||e),errorCode:'DOWNLOAD_ELEMENT_FAILED'}; } })())JS"});
+ }
+ 
+@@ -253,7 +273,8 @@ std::string StorageScript() {
+ void DispatchResolvedMouse(content::WebContents* contents,
+                            const base::DictValue& result,
+                            std::string_view action,
+-                           base::OnceCallback<void(bool)> callback) {
++                           base::OnceCallback<void(bool)> callback,
++                           AiFreePageGuard page_guard) {
+   const base::DictValue* input = result.FindDict("nativeInput");
+   if (!input) {
+     return std::move(callback).Run(false);
+@@ -271,12 +292,13 @@ void DispatchResolvedMouse(content::WebContents* contents,
+   const bool right = action == "right_click";
+   const int clicks = action == "double_click" ? 2 : 1;
+   DispatchAiFreeAnimatedClick(contents, gfx::PointF(px, py), right, clicks,
+-                              std::move(callback));
++                              std::move(callback), std::move(page_guard));
+ }
+ 
+ void DispatchResolvedDrag(content::WebContents* contents,
+                           const base::DictValue& result,
+-                          base::OnceCallback<void(bool)> callback) {
++                          base::OnceCallback<void(bool)> callback,
++                           AiFreePageGuard page_guard) {
+   const base::DictValue* input = result.FindDict("nativeDrag");
+   if (!input) return std::move(callback).Run(false);
+   const std::optional<double> x = input->FindDouble("x");
+@@ -295,7 +317,7 @@ void DispatchResolvedDrag(content::WebContents* contents,
+                        static_cast<float>(py * bounds.height() / *height));
+   };
+   DispatchAiFreeAnimatedDrag(contents, scale(*x, *y), scale(*to_x, *to_y),
+-                             std::move(callback));
++                             std::move(callback), std::move(page_guard));
+ }
+ 
+ input::NativeWebKeyboardEvent KeyboardEvent(blink::WebInputEvent::Type type,
+@@ -419,7 +441,10 @@ void FinishObserve(content::GlobalRenderFrameHostId frame_id,
+                    bool show_highlights,
+                    int highlight_duration_ms,
+                    AiFreeAutomationSuccess success,
++                   AiFreeAutomationFailure failure,
++                   AiFreePageGuard page_guard,
+                    base::DictValue response) {
++  if (PageChanged(page_guard)) return FailPageChanged(std::move(failure));
+   content::RenderFrameHost* frame = content::RenderFrameHost::FromID(frame_id);
+   content::WebContents* contents =
+       frame ? content::WebContents::FromRenderFrameHost(frame) : nullptr;
+@@ -445,7 +470,9 @@ void OnObserveResult(content::GlobalRenderFrameHostId frame_id,
+                      int highlight_duration_ms,
+                      AiFreeAutomationSuccess success,
+                      AiFreeAutomationFailure failure,
++                     AiFreePageGuard page_guard,
+                      base::Value value) {
++  if (PageChanged(page_guard)) return FailPageChanged(std::move(failure));
+   const base::DictValue* result = value.GetIfDict();
+   if (!result) {
+     return Fail(std::move(failure), "OBSERVE_FAILED",
+@@ -461,15 +488,57 @@ void OnObserveResult(content::GlobalRenderFrameHostId frame_id,
+   SupplementAiFreeObserveWithAccessibility(
+       contents, std::move(command), std::move(response),
+       base::BindOnce(&FinishObserve, frame_id, show_highlights,
+-                     highlight_duration_ms, std::move(success)));
++                     highlight_duration_ms, std::move(success),
++                     std::move(failure), std::move(page_guard)));
++}
++
++void VerifyBoundSelection(base::WeakPtr<content::WebContents> contents,
++                          std::string selection_id,
++                          AiFreePageGuard guard,
++                          base::TimeTicks deadline,
++                          base::DictValue response,
++                          AiFreeAutomationSuccess success) {
++  auto* selection = contents ? AiFreeFileSelection::FromWebContents(contents.get()) : nullptr;
++  if (selection && selection->WasConsumed(selection_id)) {
++    response.Set("fileSelected", true);
++    response.Set("dispatched", true);
++    return std::move(success).Run(std::move(response));
++  }
++  if (selection && !PageChanged(guard) && base::TimeTicks::Now() < deadline) {
++    base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
++        FROM_HERE,
++        base::BindOnce(&VerifyBoundSelection, contents, std::move(selection_id),
++                       guard, deadline, std::move(response), std::move(success)),
++        base::Milliseconds(25));
++    return;
++  }
++  if (selection) selection->Cancel(selection_id);
++  response.Set("success", false);
++  response.Set("errorCode", "UPLOAD_OUTCOME_UNVERIFIED");
++  response.Set("error", "The page did not confirm its file chooser selection");
++  std::move(success).Run(std::move(response));
++}
++
++void OnBoundUploadDispatched(base::WeakPtr<content::WebContents> contents,
++                             std::string selection_id,
++                             AiFreePageGuard guard,
++                             base::DictValue response,
++                             AiFreeAutomationSuccess success,
++                             bool dispatched) {
++  const auto grace = dispatched ? base::Seconds(1) : base::Milliseconds(0);
++  VerifyBoundSelection(contents, std::move(selection_id), guard,
++                       base::TimeTicks::Now() + grace, std::move(response),
++                       std::move(success));
+ }
+ 
+ void OnMouseDispatched(AiFreeAutomationSuccess success,
+                        AiFreeAutomationFailure failure,
+                        std::string input_mode,
+                        base::DictValue response,
++                       AiFreePageGuard page_guard,
+                        bool dispatched) {
+   if (!dispatched) {
++    if (PageChanged(page_guard)) return FailPageChanged(std::move(failure));
+     return Fail(std::move(failure), "INPUT_TARGET_UNAVAILABLE",
+                 "Chromium 原生输入目标不可用");
+   }
+@@ -498,7 +567,18 @@ void OnActionResult(content::GlobalRenderFrameHostId frame_id,
+                     int keyboard_modifiers,
+                     AiFreeAutomationSuccess success,
+                     AiFreeAutomationFailure failure,
++                    AiFreePageGuard page_guard,
++                    std::string selection_id,
+                     base::Value value) {
++  if (PageChanged(page_guard)) {
++    if (action != "upload_file") return FailPageChanged(std::move(failure));
++    base::DictValue rejected;
++    rejected.Set("success", false);
++    rejected.Set("errorCode", "BROWSER_TARGET_CHANGED");
++    rejected.Set("error", "The bound page is no longer active");
++    rejected.Set("actionExecuted", false);
++    return std::move(success).Run(std::move(rejected));
++  }
+   const base::DictValue* result = value.GetIfDict();
+   if (!result) {
+     return Fail(std::move(failure), "ACTION_RESULT_INVALID",
+@@ -519,6 +599,22 @@ void OnActionResult(content::GlobalRenderFrameHostId frame_id,
+                 "Chromium 原生输入目标不可用");
+   }
+   base::DictValue response = result->Clone();
++  if (page_guard && action == "upload_file") {
++    auto* selection = AiFreeFileSelection::FromWebContents(contents);
++    if (!selection || !selection->Authorize(selection_id)) {
++      response.Set("success", false);
++      response.Remove("nativeInput");
++      response.Set("errorCode", "FILE_SELECTION_NOT_ARMED");
++      response.Set("actionExecuted", false);
++      return std::move(success).Run(std::move(response));
++    }
++    response.Remove("nativeInput");
++    return DispatchResolvedMouse(
++        contents, *result, "click",
++        base::BindOnce(&OnBoundUploadDispatched, contents->GetWeakPtr(),
++                       std::move(selection_id), page_guard,
++                       std::move(response), std::move(success)), page_guard);
++  }
+   if (native_keyboard) {
+     response.Remove("nativeKeyboard");
+     const int repeat = result->FindInt("repeat").value_or(1);
+@@ -537,13 +633,13 @@ void OnActionResult(content::GlobalRenderFrameHostId frame_id,
+         contents, *result,
+         base::BindOnce(&OnMouseDispatched, std::move(success),
+                        std::move(failure), "chromium-visible-pointer-drag",
+-                       std::move(response)));
++                       std::move(response), page_guard), page_guard);
+   }
+   response.Remove("nativeInput");
+   DispatchResolvedMouse(
+       contents, *result, action == "upload_file" ? "click" : action,
+       base::BindOnce(&OnMouseDispatched, std::move(success), std::move(failure),
+-                     "chromium-visible-pointer", std::move(response)));
++                     "chromium-visible-pointer", std::move(response), page_guard), page_guard);
+ }
+ 
+ bool IsAllowedDownloadTarget(const base::FilePath& target) {
+@@ -571,7 +667,9 @@ void StartElementDownload(content::GlobalRenderFrameHostId frame_id,
+                           base::FilePath target_path,
+                           AiFreeAutomationSuccess success,
+                           AiFreeAutomationFailure failure,
++                          AiFreePageGuard page_guard,
+                           base::Value value) {
++  if (PageChanged(page_guard)) return FailPageChanged(std::move(failure));
+   const base::DictValue* result = value.GetIfDict();
+   if (!result) {
+     return Fail(std::move(failure), "DOWNLOAD_ELEMENT_RESULT_INVALID",
+@@ -614,7 +712,8 @@ void StartElementDownload(content::GlobalRenderFrameHostId frame_id,
+ void DownloadElement(content::WebContents* web_contents,
+                      const base::DictValue& command,
+                      AiFreeAutomationSuccess success,
+-                     AiFreeAutomationFailure failure) {
++                     AiFreeAutomationFailure failure,
++                     AiFreePageGuard page_guard) {
+   const std::string* raw_target = command.FindString("targetPath");
+   const base::FilePath target =
+       base::FilePath::FromUTF8Unsafe(raw_target ? *raw_target : "");
+@@ -624,23 +723,29 @@ void DownloadElement(content::WebContents* web_contents,
+   }
+   const content::GlobalRenderFrameHostId frame_id =
+       web_contents->GetPrimaryMainFrame()->GetGlobalId();
+-  ExecuteIsolated(web_contents, DownloadElementScript(command),
++  auto input = command.Clone();
++  input.Set("boundMedia", static_cast<bool>(page_guard));
++  ExecuteIsolated(web_contents, DownloadElementScript(input),
+                   base::BindOnce(&StartElementDownload, frame_id, target,
+-                                 std::move(success), std::move(failure)));
++                                 std::move(success), std::move(failure),
++                                 std::move(page_guard)));
+ }
+ 
+ void RunWaitAttempt(content::GlobalRenderFrameHostId frame_id,
+                     std::string script,
+                     base::TimeTicks deadline,
+                     AiFreeAutomationSuccess success,
+-                    AiFreeAutomationFailure failure);
++                    AiFreeAutomationFailure failure,
++                    AiFreePageGuard page_guard);
+ 
+ void OnWaitResult(content::GlobalRenderFrameHostId frame_id,
+                   std::string script,
+                   base::TimeTicks deadline,
+                   AiFreeAutomationSuccess success,
+                   AiFreeAutomationFailure failure,
++                  AiFreePageGuard page_guard,
+                   base::Value value) {
++  if (PageChanged(page_guard)) return FailPageChanged(std::move(failure));
+   const base::DictValue* result = value.GetIfDict();
+   if (!result) {
+     return Fail(std::move(failure), "ACTION_RESULT_INVALID",
+@@ -662,7 +767,8 @@ void OnWaitResult(content::GlobalRenderFrameHostId frame_id,
+   base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
+       FROM_HERE,
+       base::BindOnce(&RunWaitAttempt, frame_id, std::move(script), deadline,
+-                     std::move(success), std::move(failure)),
++                     std::move(success), std::move(failure),
++                     std::move(page_guard)),
+       base::Milliseconds(100));
+ }
+ 
+@@ -670,7 +776,9 @@ void RunWaitAttempt(content::GlobalRenderFrameHostId frame_id,
+                     std::string script,
+                     base::TimeTicks deadline,
+                     AiFreeAutomationSuccess success,
+-                    AiFreeAutomationFailure failure) {
++                    AiFreeAutomationFailure failure,
++                    AiFreePageGuard page_guard) {
++  if (PageChanged(page_guard)) return FailPageChanged(std::move(failure));
+   content::RenderFrameHost* frame = content::RenderFrameHost::FromID(frame_id);
+   content::WebContents* contents =
+       frame ? content::WebContents::FromRenderFrameHost(frame) : nullptr;
+@@ -681,7 +789,8 @@ void RunWaitAttempt(content::GlobalRenderFrameHostId frame_id,
+   std::string execution_script = script;
+   auto callback =
+       base::BindOnce(&OnWaitResult, frame_id, std::move(script), deadline,
+-                     std::move(success), std::move(failure));
++                     std::move(success), std::move(failure),
++                     std::move(page_guard));
+   ExecuteIsolated(contents, std::move(execution_script), std::move(callback));
+ }
+ 
+@@ -745,7 +854,9 @@ void OnStorage(Profile* profile,
+ 
+ void OnScreenshot(AiFreeAutomationSuccess success,
+                   AiFreeAutomationFailure failure,
++                  AiFreePageGuard page_guard,
+                   const content::CopyFromSurfaceResult& copy_result) {
++  if (PageChanged(page_guard)) return FailPageChanged(std::move(failure));
+   if (!copy_result.has_value() || copy_result->bitmap.drawsNothing()) {
+     return Fail(std::move(failure), "SCREENSHOT_CAPTURE_FAILED",
+                 "Chromium 页面 Surface 截图失败");
+@@ -768,7 +879,8 @@ void OnScreenshot(AiFreeAutomationSuccess success,
+ void CaptureScreenshot(content::WebContents* web_contents,
+                        const base::DictValue& command,
+                        AiFreeAutomationSuccess success,
+-                       AiFreeAutomationFailure failure) {
++                       AiFreeAutomationFailure failure,
++                       AiFreePageGuard page_guard) {
+   if (command.FindBool("fullPage").value_or(false) ||
+       (command.FindString("selector") &&
+        !command.FindString("selector")->empty())) {
+@@ -790,7 +902,8 @@ void CaptureScreenshot(content::WebContents* web_contents,
+   }
+   view->CopyFromSurface(
+       clip, gfx::Size(), base::Seconds(5),
+-      base::BindOnce(&OnScreenshot, std::move(success), std::move(failure)));
++      base::BindOnce(&OnScreenshot, std::move(success), std::move(failure),
++                     std::move(page_guard)));
+ }
+ 
+ std::string InspectPageStateScript(const base::DictValue& command) {
+@@ -890,6 +1003,7 @@ void ExecuteMainWorld(content::WebContents* web_contents,
+ bool HandleAiFreePageAutomationCommand(Browser* browser,
+                                        content::WebContents* web_contents,
+                                        const base::DictValue& command,
++                                       AiFreePageGuard page_guard,
+                                        AiFreeAutomationSuccess success,
+                                        AiFreeAutomationFailure failure) {
+   const std::string* type = command.FindString("type");
+@@ -901,7 +1015,8 @@ bool HandleAiFreePageAutomationCommand(Browser* browser,
+   if (*type != "automation-takeover" && *type != "observe-page" &&
+       *type != "inspect-page-state" && *type != "inspect-page-diagnostics" &&
+       *type != "perform-action" && *type != "get-session-data" &&
+-      *type != "capture-screenshot") {
++      *type != "capture-screenshot" &&
++      (*type != "download-element" || !page_guard)) {
+     return false;
+   }
+   if (*type == "automation-takeover") {
+@@ -930,6 +1045,7 @@ bool HandleAiFreePageAutomationCommand(Browser* browser,
+                "浏览器当前为只读模式。请先调用 browser_control "
+                "action=acquire 正式接管页面；完成后调用 action=release。");
+     result.Set("takeoverActive", false);
++    if (page_guard) result.Set("actionExecuted", false);
+     result.Set("suggestedTool", "browser_control");
+     result.Set("suggestedAction", "acquire");
+     std::move(success).Run(std::move(result));
+@@ -967,7 +1083,7 @@ bool HandleAiFreePageAutomationCommand(Browser* browser,
+         web_contents, ObserveScript(command),
+         base::BindOnce(&OnObserveResult, frame_id, command.Clone(),
+                        show_highlights, highlight_duration_ms,
+-                       std::move(success), std::move(failure)));
++                       std::move(success), std::move(failure), page_guard));
+     return true;
+   }
+   if (*type == "perform-action") {
+@@ -1001,7 +1117,7 @@ bool HandleAiFreePageAutomationCommand(Browser* browser,
+                      120000);
+       RunWaitAttempt(frame_id, ActionScript(command),
+                      base::TimeTicks::Now() + base::Milliseconds(timeout_ms),
+-                     std::move(success), std::move(failure));
++                     std::move(success), std::move(failure), page_guard);
+       return true;
+     }
+     const bool text_input = action == "type" || action == "insert_text";
+@@ -1010,15 +1126,21 @@ bool HandleAiFreePageAutomationCommand(Browser* browser,
+     const std::string keyboard_value =
+         keyboard_input ? *keyboard_input : (text_input ? "" : "Enter");
+     const int keyboard_modifiers = KeyboardModifiers(command);
+-    ExecuteIsolated(web_contents, ActionScript(command),
++    const auto* selection_id = command.FindString("selectionId");
++    auto input = command.Clone();
++    input.Remove("selectionId");
++    input.Set("boundUpload", page_guard && action == "upload_file");
++    ExecuteIsolated(web_contents, ActionScript(input),
+                     base::BindOnce(&OnActionResult, frame_id, action,
+                                    keyboard_value, keyboard_modifiers,
+-                                   std::move(success), std::move(failure)));
++                                   std::move(success), std::move(failure),
++                                   page_guard,
++                                   selection_id ? *selection_id : std::string()));
+     return true;
+   }
+   if (*type == "download-element") {
+     DownloadElement(web_contents, command, std::move(success),
+-                    std::move(failure));
++                    std::move(failure), page_guard);
+     return true;
+   }
+   if (*type == "get-session-data") {
+@@ -1030,7 +1152,7 @@ bool HandleAiFreePageAutomationCommand(Browser* browser,
+   }
+   if (*type == "capture-screenshot") {
+     CaptureScreenshot(web_contents, command, std::move(success),
+-                      std::move(failure));
++                      std::move(failure), page_guard);
+     return true;
+   }
+   return false;
+diff --git a/chrome/browser/ui/views/frame/ai_free_page_automation.h b/chrome/browser/ui/views/frame/ai_free_page_automation.h
+index b7ee4f8..49ea551 100644
+--- a/chrome/browser/ui/views/frame/ai_free_page_automation.h
++++ b/chrome/browser/ui/views/frame/ai_free_page_automation.h
+@@ -21,10 +21,12 @@ struct AiFreeAutomationError {
+ 
+ using AiFreeAutomationSuccess = base::OnceCallback<void(base::DictValue)>;
+ using AiFreeAutomationFailure = base::OnceCallback<void(AiFreeAutomationError)>;
++using AiFreePageGuard = base::RepeatingCallback<bool()>;
+ 
+ bool HandleAiFreePageAutomationCommand(Browser* browser,
+                                        content::WebContents* web_contents,
+                                        const base::DictValue& command,
++                                       AiFreePageGuard page_guard,
+                                        AiFreeAutomationSuccess success,
+                                        AiFreeAutomationFailure failure);
+ 
+diff --git a/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc b/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
+index e94417c..7cc0223 100644
+--- a/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
++++ b/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
+@@ -14,6 +14,7 @@
+ #include <vector>
+ 
+ #include "base/command_line.h"
++#include "base/feature_list.h"
+ #include "base/files/file_path.h"
+ #include "base/functional/bind.h"
+ #include "base/json/json_reader.h"
+@@ -28,10 +29,12 @@
+ #include "base/strings/string_util.h"
+ #include "base/strings/utf_string_conversions.h"
+ #include "base/synchronization/lock.h"
++#include "base/metrics/field_trial_params.h"
+ #include "base/task/task_traits.h"
+ #include "base/task/thread_pool.h"
+ #include "base/time/time.h"
+ #include "base/timer/timer.h"
++#include "base/unguessable_token.h"
+ #include "base/values.h"
+ #include "base/win/scoped_handle.h"
+ #include "chrome/browser/ai_free_file_selection.h"
+@@ -54,6 +57,8 @@
+ #include "content/public/browser/storage_partition.h"
+ #include "content/public/browser/web_contents.h"
+ #include "content/public/browser/web_contents_observer.h"
++#include "content/public/browser/weak_document_ptr.h"
++#include "content/public/common/content_features.h"
+ #include "content/public/browser/reload_type.h"
+ #include "content/public/browser/navigation_handle.h"
+ #include "net/base/net_errors.h"
+@@ -201,6 +206,7 @@ class BridgeConnection
+   HANDLE pipe() const { return pipe_.get(); }
+   const std::string& profile_id() const { return profile_id_; }
+   const std::string& session_id() const { return session_id_; }
++  const base::UnguessableToken& page_nonce() const { return page_nonce_; }
+   base::WeakPtr<Browser> browser() const { return browser_; }
+   bool connected() const { return connected_.load(); }
+   void Disconnect() { connected_ = false; }
+@@ -285,6 +291,7 @@ class BridgeConnection
+ 
+   base::win::ScopedHandle pipe_;
+   const std::string profile_id_;
++  const base::UnguessableToken page_nonce_ = base::UnguessableToken::Create();
+   std::string session_id_;
+   int heartbeat_interval_ms_ = kDefaultHeartbeatIntervalMs;
+   base::WeakPtr<Browser> browser_;
+@@ -781,12 +788,48 @@ void HandleSetStorage(scoped_refptr<BridgeConnection> connection,
+   observer->Start();
+ }
+ 
++std::string PageToken(const BridgeConnection& connection,
++                      content::WebContents* contents) {
++  // Scripts and input must go to a frame endpoint that is not reused by a
++  // subsequent document. Only advertise the capability in that configuration.
++  const auto level = base::GetFieldTrialParamValueByFeature(
++      features::kRenderDocument, "level");
++  if (!base::FeatureList::IsEnabled(features::kRenderDocument) ||
++      (!level.empty() && level != "all-frames") || !contents ||
++      !contents->GetLastCommittedURL().SchemeIsHTTPOrHTTPS()) {
++    return {};
++  }
++  auto* frame = contents->GetPrimaryMainFrame();
++  if (!frame || !frame->IsRenderFrameLive() || !frame->IsActive()) return {};
++  return base::StrCat({connection.page_nonce().ToString(), ".",
++                       frame->GetFrameToken().ToString()});
++}
++
++bool IsPageCommand(std::string_view name) {
++  return name == "observe-page" || name == "capture-screenshot" ||
++         name == "perform-action" || name == "download-element" ||
++         name == "automation-takeover" || name == "select-files";
++}
++
++bool IsCurrentPage(scoped_refptr<BridgeConnection> connection,
++                   content::WeakDocumentPtr document) {
++  auto* frame = document.AsRenderFrameHostIfValid();
++  auto* browser = connection->browser().get();
++  const auto* active = browser
++                           ? browser->tab_strip_model()->GetActiveWebContents()
++                           : nullptr;
++  return connection->connected() && frame && active &&
++         active->GetPrimaryMainFrame() == frame && frame->IsRenderFrameLive() &&
++         frame->IsActive();
++}
++
+ void HandleCommandOnUi(scoped_refptr<BridgeConnection> connection,
+                        base::DictValue command) {
+   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+   const std::string* type = command.FindString("type");
+   const std::string* request_id = command.FindString("requestId");
+-  const std::string command_name = type ? *type : std::string();
++  std::string command_name = type ? *type : std::string();
++  const std::string wire_command = command_name;
+   const std::string request = request_id ? *request_id : std::string();
+   VLOG(1) << "AI-FREE Runtime Bridge handling command on UI: "
+           << command_name;
+@@ -798,6 +841,34 @@ void HandleCommandOnUi(scoped_refptr<BridgeConnection> connection,
+   }
+   content::WebContents* web_contents =
+       browser->tab_strip_model()->GetActiveWebContents();
++  AiFreePageGuard page_guard;
++  if (command_name == "page-bound-command") {
++    const auto* name = command.FindString("command");
++    const auto* token = command.FindString("expectedPageToken");
++    const auto* payload = command.FindDict("payload");
++    if (!name || !IsPageCommand(*name) || !payload) {
++      return connection->SendErrorAsync(request, wire_command,
++                                        "BROWSER_TARGET_TOOL_UNSUPPORTED",
++                                        "Unsupported page-bound command");
++    }
++    const std::string active_token = PageToken(*connection, web_contents);
++    if (!token || active_token.empty() || active_token != *token ||
++        !connection->connected()) {
++      base::DictValue rejected;
++      rejected.Set("success", false);
++      rejected.Set("errorCode", "BROWSER_TARGET_CHANGED");
++      rejected.Set("error", "The bound page is no longer active");
++      rejected.Set("actionExecuted", false);
++      return connection->SendSuccessAsync(request, wire_command,
++                                          std::move(rejected));
++    }
++    page_guard = base::BindRepeating(&IsCurrentPage, connection,
++        web_contents->GetPrimaryMainFrame()->GetWeakDocumentPtr());
++    command_name = *name;
++    auto input = payload->Clone();
++    input.Set("type", command_name);
++    command = std::move(input);
++  }
+   if (!web_contents && command_name != "close-browser") {
+     return connection->SendErrorAsync(request, command_name,
+                                       "WEB_CONTENTS_UNAVAILABLE",
+@@ -846,6 +917,8 @@ void HandleCommandOnUi(scoped_refptr<BridgeConnection> connection,
+     active_tab.Set("active", true);
+     active_tab.Set("title", base::UTF16ToUTF8(web_contents->GetTitle()));
+     active_tab.Set("url", web_contents->GetVisibleURL().spec());
++    const std::string page_token = PageToken(*connection, web_contents);
++    if (!page_token.empty()) active_tab.Set("pageToken", page_token);
+     for (const auto& favicon : web_contents->GetFaviconURLs()) {
+       if (favicon && favicon->icon_url.is_valid()) {
+         active_tab.Set("faviconUrl", favicon->icon_url.spec());
+@@ -1026,10 +1099,13 @@ void HandleCommandOnUi(scoped_refptr<BridgeConnection> connection,
+     const std::string* mode_text = command.FindString("mode");
+     const base::ListValue* path_values = command.FindList("paths");
+     const GURL origin_url(origin_text ? *origin_text : std::string());
+-    const url::Origin expected_origin = url::Origin::Create(origin_url);
+     const url::Origin current_origin = web_contents->GetPrimaryMainFrame()
+                                            ->GetLastCommittedOrigin();
+-    if (!origin_text || !origin_url.is_valid() || expected_origin.opaque() ||
++    const url::Origin expected_origin = page_guard && !origin_text
++                                            ? current_origin
++                                            : url::Origin::Create(origin_url);
++    if ((!page_guard && (!origin_text || !origin_url.is_valid())) ||
++        expected_origin.opaque() ||
+         expected_origin != current_origin || !path_values ||
+         path_values->empty() || path_values->size() > 32) {
+       return connection->SendErrorAsync(
+@@ -1072,17 +1148,22 @@ void HandleCommandOnUi(scoped_refptr<BridgeConnection> connection,
+     const int ttl_ms =
+         std::clamp(command.FindInt("ttlMs").value_or(30000), 1000, 120000);
+     pending.expires_at = base::TimeTicks::Now() + base::Milliseconds(ttl_ms);
++    base::DictValue result;
++    if (page_guard) {
++      pending.page_guard = page_guard;
++      pending.selection_id = base::UnguessableToken::Create().ToString();
++      result.Set("selectionId", pending.selection_id);
++    }
+     AiFreeFileSelection::CreateForWebContents(web_contents);
+     AiFreeFileSelection::FromWebContents(web_contents)->Queue(
+         std::move(pending));
+-    base::DictValue result;
+     result.Set("queued", true);
+     result.Set("count", static_cast<int>(path_values->size()));
+-    return connection->SendSuccessAsync(request, command_name,
++    return connection->SendSuccessAsync(request, wire_command,
+                                         std::move(result));
+   }
+   if (HandleAiFreePageAutomationCommand(
+-          browser, web_contents, command,
++          browser, web_contents, command, page_guard,
+           base::BindOnce(
+               [](scoped_refptr<BridgeConnection> connection,
+                  std::string request_id, std::string command,
+@@ -1091,7 +1172,7 @@ void HandleCommandOnUi(scoped_refptr<BridgeConnection> connection,
+                                              std::move(command),
+                                              std::move(result));
+               },
+-              connection, request, command_name),
++              connection, request, wire_command),
+           base::BindOnce(
+               [](scoped_refptr<BridgeConnection> connection,
+                  std::string request_id, std::string command,
+@@ -1101,7 +1182,7 @@ void HandleCommandOnUi(scoped_refptr<BridgeConnection> connection,
+                                            std::move(error.code),
+                                            std::move(error.message));
+               },
+-              connection, request, command_name))) {
++              connection, request, wire_command))) {
+     return;
+   }
+   if (command_name == "set-cookies") {

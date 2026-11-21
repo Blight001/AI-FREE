@@ -57,6 +57,11 @@
           "path": "logosLoaded",
           "op": "equals",
           "value": true
+        },
+        {
+          "path": "browserSelectorPresent",
+          "op": "equals",
+          "value": false
         }
       ]
     },
@@ -158,6 +163,11 @@
           "path": "logosLoaded",
           "op": "equals",
           "value": true
+        },
+        {
+          "path": "browserSelectorPresent",
+          "op": "equals",
+          "value": false
         }
       ]
     },

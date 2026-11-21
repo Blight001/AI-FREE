@@ -5,10 +5,10 @@ function combineToolSets(...sets) {
   return {
     tools: available.flatMap((set) => Array.isArray(set.tools) ? set.tools : []),
     has: (name) => available.some((set) => set.has?.(name)),
-    execute: (name, args) => {
+    execute: (name, args, options = undefined) => {
       const owner = available.find((set) => set.has?.(name));
       if (!owner) throw new Error(`未知工具: ${name}`);
-      return owner.execute(name, args);
+      return options === undefined ? owner.execute(name, args) : owner.execute(name, args, options);
     },
   };
 }

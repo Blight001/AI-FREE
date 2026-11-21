@@ -23,12 +23,11 @@
   <link rel="stylesheet" href="./client/styles/control-panel.css" />
   <link rel="stylesheet" href="./client/app/side/styles/side.css" />
   <link rel="stylesheet" href="./client/app/side/styles/modules/ai-control-files.css" />
+  <link rel="stylesheet" href="./client/app/side/styles/modules/ai-control-browser-target.css" />
   <link rel="stylesheet" href="./client/app/side/styles/modules/website-console-theme.css" />
-  <script defer src="./client/scripts/dev-mode-navigation.js"></script>
 </head>
 <body>
   <div class="control-shell">
-    <!-- data-dev-only 保留为兼容标记；调试控制台已移到独立窗口。 -->
     <div class="main-wrapper">
 
       <section id="ai-control-panel" class="ai-control-panel panel active" aria-label="AI 控制">
@@ -71,26 +70,18 @@
             </header>
             <div id="ai-chat-workspace-files" class="ai-chat-workspace-files"></div>
           </div>
+          <section id="ai-chat-upload-confirmation" class="ai-chat-confirmation" aria-label="上传确认" hidden>
+            <div id="ai-chat-confirmation-summary" role="status"></div>
+            <div class="ai-chat-confirmation-actions">
+              <button id="ai-chat-confirmation-cancel" type="button">取消</button>
+              <button id="ai-chat-confirmation-accept" type="button">确认上传</button>
+            </div>
+          </section>
           <div id="ai-chat-mention-menu" class="ai-chat-mention-menu" role="listbox" hidden></div>
           <textarea id="ai-chat-input" rows="1" maxlength="12000" placeholder="输入消息，@ 引用工具或文件，Enter 发送"></textarea>
           <div class="ai-chat-footer-bar">
             <div class="ai-chat-footer-left">
               <button id="ai-chat-attach" class="ai-chat-attach" type="button" aria-label="添加文件" title="上传或选择 AI-Workspace 文件">+</button>
-              <div class="ai-chat-browser-gear-field">
-                <div class="ai-select ai-select-sm ai-select-dropup ai-browser-gear-select" data-ai-select="browser">
-                  <select id="ai-chat-browser" class="ai-select-native" tabindex="-1" aria-hidden="true">
-                    <option value="">正在查找可用浏览器...</option>
-                  </select>
-                  <button type="button" class="ai-select-trigger ai-browser-gear-trigger" id="ai-chat-browser-trigger" aria-haspopup="listbox" aria-expanded="false" aria-label="AI 控制设置" title="AI 控制设置">
-                    <svg class="ai-browser-gear-icon" viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M12 8.4a3.6 3.6 0 1 0 0 7.2 3.6 3.6 0 0 0 0-7.2Z"></path>
-                      <path d="M19.2 13.4a7.7 7.7 0 0 0 0-2.8l2-1.5-2-3.4-2.4 1a8 8 0 0 0-2.4-1.4L14 2.8h-4l-.4 2.5a8 8 0 0 0-2.4 1.4l-2.4-1-2 3.4 2 1.5a7.7 7.7 0 0 0 0 2.8l-2 1.5 2 3.4 2.4-1a8 8 0 0 0 2.4 1.4l.4 2.5h4l.4-2.5a8 8 0 0 0 2.4-1.4l2.4 1 2-3.4-2-1.5Z"></path>
-                    </svg>
-                    <span class="ai-select-value ai-browser-gear-value">正在查找可用浏览器...</span>
-                  </button>
-                  <ul class="ai-select-menu" role="listbox" hidden></ul>
-                </div>
-              </div>
             </div>
             <div class="ai-chat-footer-right">
               <div id="ai-chat-quota" class="ai-chat-quota-widget" title="选择模型后即可开始对话">
@@ -194,44 +185,6 @@
         </section>
       </section>
 
-      <section id="ai-prompt-diagnostics-dialog" class="ai-prompt-diagnostics-dialog" role="dialog" aria-modal="true" aria-labelledby="ai-prompt-diagnostics-title" hidden>
-        <button class="ai-custom-api-backdrop" type="button" data-ai-prompt-diagnostics-close aria-label="关闭 AI 提示词查看器"></button>
-        <section class="ai-prompt-diagnostics-panel">
-          <header class="ai-custom-api-header">
-            <div>
-              <h2 id="ai-prompt-diagnostics-title">AI 提示词与完整 Prompt</h2>
-              <p>内容来自主进程实际工具目录和对话组装结果，不包含账号凭据。</p>
-            </div>
-            <button class="ai-custom-api-close" type="button" data-ai-prompt-diagnostics-close aria-label="关闭">&times;</button>
-          </header>
-          <div class="ai-prompt-diagnostics-body">
-            <p id="ai-prompt-diagnostics-status" class="ai-custom-api-status" aria-live="polite"></p>
-            <section>
-              <h3>当前 MCP 功能</h3>
-              <p>根据当前浏览器连接动态显示实际可用的工具、功能和支持操作。</p>
-              <pre id="ai-prompt-mcp-functions-content"></pre>
-            </section>
-            <section>
-              <h3>所有 MCP 对应的 AI 提示词</h3>
-              <pre id="ai-prompt-tools-content"></pre>
-            </section>
-            <section>
-              <h3>发送给 AI 的完整 Prompt</h3>
-              <p>实际请求和下次预览分开显示，不会在单次请求中重复发送。</p>
-              <div class="ai-prompt-request-tabs" role="tablist" aria-label="Prompt 请求来源">
-                <button type="button" role="tab" data-ai-prompt-view="actual" aria-selected="true">上次实际请求</button>
-                <button type="button" role="tab" data-ai-prompt-view="preview" aria-selected="false">下一次预览</button>
-              </div>
-              <p id="ai-prompt-request-metrics" class="ai-prompt-request-metrics"></p>
-              <pre id="ai-prompt-full-content"></pre>
-            </section>
-          </div>
-          <footer class="ai-prompt-diagnostics-footer">
-            <button id="ai-prompt-diagnostics-refresh" type="button">刷新</button>
-            <button type="button" data-ai-prompt-diagnostics-close>关闭</button>
-          </footer>
-        </section>
-      </section>
 
     </div>
   </div>
@@ -247,7 +200,6 @@
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-selection.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-server-device.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-mcp-config.js"></script>
-  <script src="./client/app/side/controllers/pages/ai-control/ai-control-prompt-diagnostics.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-selectors.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-card-selector.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-history-list.js"></script>
@@ -258,6 +210,7 @@
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-messages.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-data-loaders.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-files.js"></script>
+  <script src="./client/app/side/controllers/pages/ai-control/ai-control-browser-target.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-composer.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-bootstrap.js"></script>
 

@@ -171,6 +171,8 @@ function collectAccountSessionElements() {
     usernameDisplay: safeGetEl('account-username-display'),
     usernameInput: safeGetEl('sidebar-auth-username'),
     profileName: safeGetEl('account-profile-name'),
+    homeName: safeGetEl('home-personal-name'),
+    homeAvatar: safeGetEl('home-personal-avatar'),
     giftInput: safeGetEl('unified-gift-code'),
     giftButton: safeGetEl('unified-redeem-gift'),
     usageDetails: safeGetEl('account-usage-details'),
@@ -179,11 +181,18 @@ function collectAccountSessionElements() {
 }
 
 function applyAccountSessionElements(elements, authenticated, username) {
-  if (elements.profile) elements.profile.dataset.authenticated = authenticated ? 'true' : 'false';
+  for (const identity of [elements.profile, elements.homeAvatar]) {
+    if (identity) identity.dataset.authenticated = String(authenticated);
+  }
   if (elements.vipCard) elements.vipCard.hidden = !authenticated;
   if (elements.usernameDisplay) elements.usernameDisplay.value = username;
   if (elements.usernameInput && username) elements.usernameInput.value = username;
-  if (elements.profileName) elements.profileName.textContent = username || '未登录';
+  const name = username || (authenticated ? '已登录' : '未登录');
+  if (elements.profileName) elements.profileName.textContent = name;
+  if (elements.homeName) {
+    elements.homeName.textContent = name;
+    elements.homeName.title = name;
+  }
   updateGiftCodeInput(elements.giftInput, authenticated);
   if (elements.giftButton) elements.giftButton.disabled = !authenticated;
   if (elements.usageDetails) elements.usageDetails.hidden = !authenticated;

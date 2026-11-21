@@ -131,8 +131,8 @@
     return runAction(() => window.aiFree.extensions.setEnabled({ id: plugin.id, enabled: plugin.enabled !== true }), plugin.enabled === true ? '已停用统一插件。' : '已启用到全部浏览器。');
   }
 
-  function removePlugin(plugin) {
-    if (!window.confirm(`确认删除统一插件“${plugin.name || '未命名插件'}”？`)) return Promise.resolve();
+  async function removePlugin(plugin) {
+    if (!await homeDialogs.confirm(`确认删除统一插件“${plugin.name || '未命名插件'}”？`)) return;
     return runAction(() => window.aiFree.extensions.removePlugin({ id: plugin.id }), '统一插件已删除。');
   }
 

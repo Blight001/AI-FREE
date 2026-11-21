@@ -6,7 +6,10 @@ const {
   writeBrowserEnvironmentExtension,
 } = require('./chromium-browser-environment-extension');
 
+const { cleanupStaleUploadStaging } = require('./chromium-upload-staging');
+
 async function prepareChromiumProfileEnvironment(context) {
+  cleanupStaleUploadStaging(context.paths.root);
   cleanupStaleBrowserEnvironmentExtensions(context.paths.root);
   context.resources.environmentExtensionDir = writeBrowserEnvironmentExtension(
     context.paths.root,

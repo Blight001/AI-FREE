@@ -44,6 +44,8 @@ function compactMessage(message, limits) {
   delete copy.reasoning;
   delete copy.tool_events;
   delete copy.trace_events;
+  delete copy.artifacts;
+  delete copy.artifactReferences;
   if (copy.role === 'tool') {
     copy.content = truncateMiddle(copy.content, limits.toolResultChars);
   } else if (typeof copy.content === 'string') {
@@ -59,12 +61,17 @@ function compactGroup(group, limits) {
   return group.map((message) => compactMessage(message, limits));
 }
 
+function isUserRequest(message) {
+  return message?.role === 'user' && message.ai_free_transient_image !== true
+    && message.ai_free_attachment_context !== true;
+}
+
 function summaryLines(groups, maxChars) {
   const lines = [];
   let used = 0;
   for (const group of groups) {
     for (const message of group) {
-      if (!['user', 'assistant'].includes(message?.role) || message?.tool_calls?.length) continue;
+      if (!isUserRequest(message) && (message?.role !== 'assistant' || message.tool_calls?.length)) continue;
       const content = String(message.content || '').replace(/\s+/g, ' ').trim();
       if (!content) continue;
       const label = message.role === 'user' ? '用户' : '助手';
@@ -81,7 +88,7 @@ function createHistorySummary(groups, maxChars) {
   if (!groups.length || maxChars < 80) return null;
   const heading = `[较早对话摘要：已压缩 ${groups.length} 个消息组]`;
   const lines = summaryLines(groups, Math.max(0, maxChars - heading.length - 1));
-  return { role: 'user', content: [heading, ...lines].join('\n') };
+  return lines.length ? { role: 'user', content: [heading, ...lines].join('\n') } : null;
 }
 
 function partitionGroups(messages) {
@@ -104,43 +111,51 @@ function normalizeLimits(options = {}) {
   };
 }
 
-function collectRecentGroups(system, conversation, tools, limits) {
+function collectRecentGroups(system, conversation, tools, limits, requestIndex) {
   const compacted = conversation.map((group) => compactGroup(group, limits));
-  const kept = [];
   let firstKeptIndex = compacted.length;
   for (let index = compacted.length - 1; index >= 0; index -= 1) {
-    const candidate = [...system, ...compacted.slice(index).flat()];
+    const request = index > requestIndex ? compacted[requestIndex] || [] : [];
+    const candidate = [...system, ...request, ...compacted.slice(index).flat()];
     if (serializedLength(candidate, tools) > limits.maxRequestChars) break;
     firstKeptIndex = index;
-    kept.unshift(compacted[index]);
   }
-  return { kept, omitted: conversation.slice(0, firstKeptIndex) };
+  return keepRecentGroups(conversation, compacted, firstKeptIndex, requestIndex);
 }
 
-function forceLatestGroup(system, conversation, tools, limits) {
-  if (!conversation.length) return { kept: [], omitted: [] };
+function keepRecentGroups(conversation, compacted, firstKeptIndex, requestIndex) {
+  const omitted = conversation.slice(0, firstKeptIndex);
+  const kept = compacted.slice(firstKeptIndex);
+  if (requestIndex >= 0 && requestIndex < firstKeptIndex) {
+    omitted.splice(requestIndex, 1);
+    kept.unshift(compacted[requestIndex]);
+  }
+  return { kept, omitted };
+}
+
+function forceLatestGroup(conversation, limits, requestIndex) {
   const tight = {
     ...limits, toolResultChars: 2000, textMessageChars: 4000, toolArgumentChars: 2000,
   };
-  return {
-    kept: [compactGroup(conversation.at(-1), tight)],
-    omitted: conversation.slice(0, -1),
-  };
+  const compacted = conversation.map((group, index) => compactGroup(group, index === requestIndex ? limits : tight));
+  return keepRecentGroups(conversation, compacted, conversation.length - 1, requestIndex);
 }
 
 function fitAiControlContext(messages = [], tools = [], options = {}) {
   const limits = normalizeLimits(options);
   const { system, conversation } = partitionGroups(messages);
-  let selected = collectRecentGroups(system, conversation, tools, limits);
+  const requestIndex = conversation.map((group) => isUserRequest(group[0])).lastIndexOf(true);
+  let selected = collectRecentGroups(system, conversation, tools, limits, requestIndex);
   if (selected.omitted.length) {
     const reserved = Math.min(limits.summaryChars, Math.floor(limits.maxRequestChars * 0.2));
     selected = collectRecentGroups(system, conversation, tools, {
       ...limits,
       maxRequestChars: Math.max(1000, limits.maxRequestChars - reserved),
-    });
+    }, requestIndex);
   }
-  if (!selected.kept.length && conversation.length) {
-    selected = forceLatestGroup(system, conversation, tools, limits);
+  if (conversation.length && selected.omitted.at(-1) === conversation.at(-1)) {
+    // An oversized latest group still travels with the user's actual request.
+    selected = forceLatestGroup(conversation, limits, requestIndex);
   }
   const flattened = selected.kept.flat();
   const withoutSummary = [...system, ...flattened];

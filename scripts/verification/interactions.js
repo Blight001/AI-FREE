@@ -41,6 +41,7 @@ const interactions = [
     runtime: 'packaged', configurable: true, scenario: 'test/acceptance/flows/application-pages.json', domain: 'electron-pages' },
   { id: 'session-storage', file: 'check-session-storage.js', scope: 'electron-storage' },
   { id: 'chromium-media', file: 'check-chromium-media.js', scope: 'headless-browser', node: true },
+  { id: 'site-data-migration', file: 'check-site-data-migration.js', scope: 'headless-browser', node: true },
   { id: 'installed-mcp', file: 'accept-installed-mcp.js', scope: 'installed-user-session', manual: true,
     reason: '需要明确指定安装入口和独立测试浏览器；自动验证不连接日常用户会话' },
 ];

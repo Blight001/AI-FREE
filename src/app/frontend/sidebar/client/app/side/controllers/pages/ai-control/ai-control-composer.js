@@ -176,18 +176,12 @@
     content_replace: (run, event) => run.streamView?.replaceContent(event.content, event.round),
     tool_start: (run, event) => run.streamView?.upsertTool(event.tool || {}, event.round),
     tool_result: (run, event) => run.streamView?.upsertTool(event.tool || {}, event.round),
-    browser_control_changed: (_run, event) => applyControlledBrowser(event.connectionId),
+    tool_progress: (run, event) => run.streamView?.upsertTool(event.tool || {}, event.round),
+    artifacts: (run, event) => renderAssistantArtifacts(run.streamView, event.artifacts),
+    upload_confirmation: (run, event) => showChatUploadConfirmation(run, event),
+    upload_confirmation_closed: (_run, event) => closeChatUploadConfirmation(event.id),
     user_inserted: (run) => handleInsertedStreamMessage(run),
   };
-
-  function applyControlledBrowser(connectionId) {
-    const id = String(connectionId || '').trim();
-    if (!id || !state.availableBrowserIds.includes(id)) return;
-    state.currentBrowserIds = [id];
-    setSelectBrowserIds(el('ai-chat-browser'), [id]);
-    syncSelectUi(el('ai-chat-browser'));
-    notifyBrowserSelection();
-  }
 
   function handleChatStreamEvent(run, event) {
     if (!event || event.requestId !== run.requestId) return;
@@ -205,12 +199,12 @@
       modelId: run.select.value,
       messages: run.messages,
       quota: run.useCustomApi ? null : state.quota,
-      browserConnectionId: state.currentBrowserIds[0] || '',
-      browserConnectionIds: [...state.currentBrowserIds],
+      localInteraction: true,
       automationCardId: '',
       stream: true,
       requestId: run.requestId,
       attachmentPaths: run.attachmentPaths,
+      artifactReferences: run.artifactReferences || [],
       mentions: run.mentions,
     };
   }
@@ -240,13 +234,12 @@
     finalAssistant.reasoning = String(result.message?.reasoning || '');
     finalAssistant.tool_events = Array.isArray(result.message?.tool_events) ? result.message.tool_events : [];
     finalAssistant.trace_events = Array.isArray(result.message?.trace_events) ? result.message.trace_events : [];
+    finalAssistant.artifacts = Array.isArray(result.message?.artifacts) ? result.message.artifacts : [];
   }
 
   function updateCurrentSessionAfterChat(run) {
     if (!state.currentSession) return;
     state.currentSession.modelId = run.select.value;
-    state.currentSession.browserConnectionId = state.currentBrowserIds[0] || '';
-    state.currentSession.browserConnectionIds = [...state.currentBrowserIds];
     state.currentSession.automationCardId = '';
     if (!state.currentSession.title || state.currentSession.title === '新对话') {
       state.currentSession.title = provisionalTitle(run.content);
@@ -254,7 +247,6 @@
   }
 
   async function applyChatResult(run, result) {
-    applyControlledBrowser(result.browserConnectionId);
     applyReturnedMessages(run, result);
     const replyText = String(result.message?.content || '').trim();
     applyFinalAssistantMetadata(result);
@@ -268,6 +260,7 @@
       return;
     }
     run.streamView?.setContent(replyText || '模型未返回内容');
+    renderAssistantArtifacts(run.streamView, result.message?.artifacts);
     run.streamView?.finalize();
     if (run.insertedDuringRun) renderConversation();
     await persistCurrentSession();
@@ -298,6 +291,7 @@
 
   function finishChatSend(run) {
     run.unsubscribeStream?.();
+    closeChatUploadConfirmation();
     state.loading = false;
     state.stopping = false;
     state.activeRequestId = '';

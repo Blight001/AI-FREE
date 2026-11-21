@@ -34,7 +34,13 @@ function createIpcRegistry(ipcMain, { source = 'unknown' } = {}) {
       }
       assertUsable(channel, handles, 'invoke');
       ipcMain.handle(channel, wrapLegacyIpcPayload(channel, handler));
-      handles.set(channel, { registrar });
+      const registration = { registrar };
+      handles.set(channel, registration);
+      return () => {
+        if (handles.get(channel) !== registration) return;
+        ipcMain.removeHandler(channel);
+        handles.delete(channel);
+      };
     },
     on(channel, listener, { registrar = source } = {}) {
       if (!isRegisteredEvent(channel)) {

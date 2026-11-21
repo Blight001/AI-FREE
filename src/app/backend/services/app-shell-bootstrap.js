@@ -21,11 +21,6 @@ function initializeHttpAuth(deps) {
   }
 }
 
-function getConsoleHistory(deps, debug = false) {
-  if (debug && typeof deps.getDebugConsoleHistory === 'function') return deps.getDebugConsoleHistory();
-  return typeof deps.getAppConsoleHistory === 'function' ? deps.getAppConsoleHistory() : [];
-}
-
 function createBootstrapUiDeps(deps) {
   return {
     addTab: deps.resolveAddTab(),
@@ -59,8 +54,6 @@ function createBootstrapUiDeps(deps) {
     statePluginGetter: deps.statePluginGetter,
     setRuntimeTcpConfig: deps.setRuntimeTcpConfig,
     setRuntimeServerBase: deps.setRuntimeServerBase,
-    getAppConsoleHistory: () => getConsoleHistory(deps),
-    getDebugConsoleHistory: () => getConsoleHistory(deps, true),
     ensureSidebarVisible: () => { if (!deps.getIsSidebarVisible?.()) deps.toggleSidebar(); },
     purgeBrowserSessionData: typeof deps.purgeBrowserSessionData === 'function' ? deps.purgeBrowserSessionData : null,
     buildManagedTabPartitionName: typeof deps.buildManagedTabPartitionName === 'function' ? deps.buildManagedTabPartitionName : null,
@@ -108,6 +101,9 @@ function registerBootstrapIPC(deps) {
 function createBootstrapWindows(deps) {
   try {
     const mainWindow = deps.createMainWindow();
+    void deps.restoreBrowserSession?.().catch((error) => {
+      deps.logger.warn?.('[Startup] Browser session restore failed:', bootstrapError(error));
+    });
     const startMinimized = deps.isLaunchMinimizedStartupRequested?.() === true;
     if (startMinimized) {
       mainWindow?.hide?.();

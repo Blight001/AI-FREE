@@ -1,0 +1,130 @@
+'use strict';
+
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { test } = require('node:test');
+const { resolveConnections } = require('../../../src/app/backend/features/ai-chat/chat-request-context');
+const { captureChatTarget } = require('../../../src/app/backend/features/ai-chat/chat-browser-target');
+const { createChatRunRegistry } = require('../../../src/app/backend/features/ai-chat/chat-run-registry');
+const { dispatchChatUpload } = require('../../../src/app/backend/features/ai-chat/chat-browser-upload');
+
+test('an explicitly selected offline browser is never silently replaced', () => {
+  const bridge = { listConnections: () => [{ id: 'other' }], getConnection: (id) => ({ id }) };
+  assert.equal(resolveConnections({ browserAutomationBridge: bridge }, { localInteraction: true, connectionIds: ['missing'] }).error?.ok, false);
+  assert.equal(resolveConnections({ browserAutomationBridge: bridge }, {}).controlledConnectionId, 'other');
+});
+
+test('capturing a target requires native page identity, not a tab index', async () => {
+  const info = { activeTab: { id: '1', title: '素材页', url: 'https://example.test/path?secret=local' } };
+  const bridge = { getConnection: () => ({ name: 'Browser A' }), dispatch: async () => info };
+  assert.equal((await captureChatTarget(bridge, 'a')).ok, false);
+  info.activeTab.pageToken = 'opaque-page';
+  const result = await captureChatTarget(bridge, 'a');
+  assert.deepEqual(result.data, {
+    connectionId: 'a', pageToken: 'opaque-page', url: info.activeTab.url, title: '素材页', host: 'example.test', browserName: 'Browser A',
+  });
+});
+
+test('local chat chooses a connection with no manual binding and retains the page it observed', async () => {
+  const { dispatchPluginTool } = require('../../../src/app/backend/features/ai-chat/chat-tool-executor');
+  const connections = [{ id: 'a' }, { id: 'b' }];
+  const tabs = { a: 'a-page', b: 'b-original' };
+  const pageCalls = [];
+  const bridge = {
+    getConnection: (id) => connections.find((connection) => connection.id === id),
+    dispatch: async (id, tool, args, { expectedPageToken } = {}) => {
+      if (tool === 'browser_tab' && args.action === 'list') return { activeTab: { pageToken: tabs[id] } };
+      pageCalls.push({ id, tool, expectedPageToken });
+      return expectedPageToken === tabs[id] ? { success: true } : { success: false, errorCode: 'BROWSER_TARGET_CHANGED' };
+    },
+  };
+  const makeTurn = () => ({ localInteraction: true, browserTargets: new Map(), connections, bridge, browserControl: { connectionId: '' },
+    describeConnections: () => 'a, b', waitForAbort: async (value) => value });
+  const turn = makeTurn();
+  const listed = await dispatchPluginTool(turn, 'browser_tab', { action: 'list', change_browser: 'b' });
+  assert.equal(listed.activeTab.pageToken, undefined);
+  assert.equal((await dispatchPluginTool(turn, 'browser_observe', {})).success, true);
+  tabs.b = 'b-reloaded';
+  assert.equal((await dispatchPluginTool(turn, 'browser_action', { action: 'click' })).errorCode, 'BROWSER_TARGET_CHANGED');
+  assert.equal((await dispatchPluginTool(makeTurn(), 'browser_observe', { change_browser: 'b' })).success, true);
+  assert.deepEqual(pageCalls.map(({ id, expectedPageToken }) => [id, expectedPageToken]), [
+    ['b', 'b-original'], ['b', 'b-original'], ['b', 'b-reloaded'],
+  ]);
+});
+
+test('an explicit tab switch allows the next page, while an unexpected tab change is refused', async () => {
+  const { dispatchPluginTool } = require('../../../src/app/backend/features/ai-chat/chat-tool-executor');
+  const browser = { id: 'a' };
+  let active = { url: 'https://local.test/a', pageToken: 'a-page' };
+  const pageCalls = [];
+  const context = { localInteraction: true, browserTargets: new Map(), connections: [browser],
+    describeConnections: () => browser.id, waitForAbort: async (value) => value,
+    bridge: { getConnection: () => browser, async dispatch(_id, tool, args, options) {
+      if (tool === 'browser_tab' && args.action === 'list') return { activeTab: active };
+      if (tool === 'browser_tab' && args.action === 'switch') return { success: true, url: 'https://local.test/b' };
+      pageCalls.push(options.expectedPageToken);
+      return { success: true };
+    } },
+  };
+  await dispatchPluginTool(context, 'browser_observe', {});
+  assert.equal((await dispatchPluginTool(context, 'browser_tab', { action: 'switch', tab_id: 1 })).success, true);
+  assert.equal((await dispatchPluginTool(context, 'browser_action', { action: 'click' })).errorCode, 'BROWSER_TARGET_CHANGED');
+  active = { url: 'https://local.test/b', pageToken: 'b-page' };
+  assert.equal((await dispatchPluginTool(context, 'browser_observe', {})).success, true);
+  assert.deepEqual(pageCalls, ['a-page', 'b-page']);
+});
+
+test('approval belongs to one request and renderer and cannot be replayed', async () => {
+  const registry = createChatRunRegistry();
+  const owner = { sender: { id: 1 } };
+  const stranger = { sender: { id: 2 } };
+  const { run } = registry.begin(owner, 'turn');
+  const pending = run.approval.request('operation', () => {});
+  assert.equal(registry.decide(stranger, 'turn', 'operation', true).ok, false);
+  assert.equal(registry.decide(owner, 'turn', 'operation', true).ok, true);
+  assert.equal(await pending, true);
+  assert.equal(registry.decide(owner, 'turn', 'operation', true).ok, false);
+  const cancelled = run.approval.request('operation-2', () => {});
+  registry.stop(owner, 'turn');
+  assert.equal(await cancelled, false);
+});
+
+function uploadContext(t, decide) {
+  const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-upload-check-'));
+  const file = path.join(workspaceDir, 'tile.png');
+  fs.writeFileSync(file, 'original');
+  t.after(() => {
+    fs.unlinkSync(file);
+    fs.rmdirSync(workspaceDir);
+  });
+  return {
+    workspaceDir, uploadState: { unverified: false }, boundTarget: { connectionId: 'a', pageToken: 'page' },
+    bridge: { getConnection: () => ({ id: 'a', name: 'A' }), dispatch: async () => ({ activeTab: { pageToken: 'page' } }) },
+    approval: { request: async (_id, notify) => { notify(); return decide(file); } },
+    emit: () => {},
+  };
+}
+
+test('declined or changed upload does not reach browser dispatch', async (t) => {
+  const rejected = uploadContext(t, () => false);
+  const changed = uploadContext(t, (file) => { fs.writeFileSync(file, 'replacement'); return true; });
+  const dispatch = () => assert.fail('must not dispatch');
+  assert.equal((await dispatchChatUpload(rejected, 'a', { path: 'tile.png' }, dispatch)).errorCode, 'UPLOAD_NOT_CONFIRMED');
+  assert.equal((await dispatchChatUpload(changed, 'a', { path: 'tile.png' }, dispatch)).errorCode, 'UPLOAD_FILE_CHANGED');
+});
+
+test('lost upload receipt marks verification required without a second dispatch', async (t) => {
+  const context = uploadContext(t, () => true);
+  let calls = 0;
+  const result = await dispatchChatUpload(context, 'a', { path: 'tile.png', page_url: 'https://wrong.test' }, async (args) => {
+    calls += 1;
+    assert.equal(args.page_url, undefined);
+    assert.deepEqual(args.paths, [path.join(context.workspaceDir, 'tile.png')]);
+    throw new Error('lost acknowledgement');
+  });
+  assert.equal(calls, 1);
+  assert.equal(result.errorCode, 'UPLOAD_OUTCOME_UNVERIFIED');
+  assert.equal(context.uploadState.unverified, true);
+});

@@ -65,10 +65,15 @@ function resolveRemoteBrowserPeerViewPath() {
   return path.join(__dirname, '../views/remote-browser-peer.html');
 }
 
+function resolveAppShellViewPath() {
+  return path.join(__dirname, '../../frontend/views/app-shell.html');
+}
+
 module.exports = {
   resolveAiSandboxDir,
   resolveLegacyAiSandboxDir,
   resolveAutomationCardCacheDir,
+  resolveAppShellViewPath,
   resolveChromiumResourcesPath,
   resolveInstallDirectory,
   resolveRemoteBrowserPeerViewPath,

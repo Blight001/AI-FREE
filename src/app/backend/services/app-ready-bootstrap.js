@@ -1,4 +1,5 @@
-const { createDevConsoleWindowController } = require('../features/window/dev-console-window');
+const { registerHomeConsoleIpc } = require('../features/window/register-home-console-ipc');
+const { registerMcpCatalogIpc } = require('../features/browser/register-mcp-catalog-ipc');
 const { createAiSupportService } = require('../features/ai-chat/ai-support-service');
 const { registerAiHistoryIpc } = require('../features/ai-chat/register-history-ipc');
 const { createAiChatHistoryRepository } = require('../features/ai-chat/history-repository');
@@ -17,24 +18,6 @@ const {
   updateStartupSettings,
   withCloseBehaviorStartupSettings,
 } = require('../features/window/startup-preference');
-
-function registerConsoleHistoryIpc(deps, ipc) {
-  try {
-    ipc.handle('get-app-console-history', async () => {
-      try {
-        const provider = typeof deps.getDebugConsoleHistory === 'function'
-          ? deps.getDebugConsoleHistory
-          : deps.getAppConsoleHistory;
-        const history = typeof provider === 'function' ? provider() : [];
-        return { ok: true, history: Array.isArray(history) ? history : [] };
-      } catch (error) {
-        return { ok: false, error: error?.message || String(error), history: [] };
-      }
-    });
-  } catch (error) {
-    deps.logger.warn?.('[启动] 注册调试控制台历史 IPC 失败:', error?.message || error);
-  }
-}
 
 function scheduleCoreDirectoryInitialization(deps) {
   setImmediate(() => {
@@ -152,6 +135,7 @@ function createAndRegisterAiServices(deps, ipc) {
     getConnections: () => aiSupport.getBrowserConnections().connections,
     getWindowTools: aiChatService.getWindowTools,
   });
+  registerMcpCatalogIpc(ipc, { ...deps, getWindowTools: aiChatService.getWindowTools });
   if (deps.aiServerDeviceService) {
     registerAiServerDeviceIpc({ ipc, service: deps.aiServerDeviceService });
   }
@@ -190,9 +174,7 @@ async function restoreMembership(deps) {
 }
 
 async function bootstrapReadyApp(deps, ipc) {
-  registerConsoleHistoryIpc(deps, ipc);
-  const devConsole = createDevConsoleWindowController(deps);
-  ipc.handle('open-dev-console', () => devConsole.open());
+  registerHomeConsoleIpc(ipc, deps);
   synchronizeAppStartupSettings(deps);
   scheduleCoreDirectoryInitialization(deps);
   scheduleUpdateStorageCleanup(deps);

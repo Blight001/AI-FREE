@@ -5,6 +5,7 @@ const { ipcMain, BrowserWindow, dialog } = require('electron');
 const { getStorePath, initializeCoreDirectory } = require('../config');
 const { createHttpClient } = require('../lib/http-client');
 const { shortcutManager } = require('../utils/removeWatermark');
+const { persistOpenBrowserHistoryForStartup } = require('../features/browser/browser-history-service');
 
 function buildLifecycleDeps({
   app,
@@ -25,8 +26,8 @@ function buildLifecycleDeps({
     browserPartitionCleaner,
     isDevMode,
     sendToSide,
-    getAppConsoleHistory,
-    getDebugConsoleHistory,
+    getConsoleSnapshot,
+    clearConsoleHistory,
     licenseStore,
     serverResolver,
     tabHelpers,
@@ -52,6 +53,10 @@ function buildLifecycleDeps({
     sendToSide,
     cleanupAllBrowserSessionData: browserPartitionCleaner.cleanupAllBrowserSessionData,
     cleanupBrowserPartitionsRootDir: browserPartitionCleaner.cleanupBrowserPartitionsRootDir,
+    persistBrowserSessionForStartup: () => persistOpenBrowserHistoryForStartup({
+      getTabs: () => tabs,
+      updateTabs: tabHelpers.updateTabs,
+    }),
     browserRuntimeManager,
     aiSandboxDir,
     browserAutomationBridge,
@@ -90,10 +95,8 @@ function buildLifecycleDeps({
     createMainWindow: appShell.createMainWindow,
     revealMainWindow: appShell.revealMainWindow,
     getMainWindow: appRuntime.getMainWindow,
-    getDevConsoleWindow: appRuntime.getDevConsoleWindow,
-    setDevConsoleWindow: appRuntime.setDevConsoleWindow,
-    getAppConsoleHistory,
-    getDebugConsoleHistory,
+    getConsoleSnapshot,
+    clearConsoleHistory,
     isDevMode,
     logger: console,
   };

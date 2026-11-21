@@ -9,6 +9,7 @@ const { once } = require('events');
 const { app, BrowserWindow } = require('electron');
 const { createBrowserRuntimeManager } = require('../../../src/app/backend/browser-runtime');
 const { MAX_MESSAGE_BYTES, PROTOCOL_VERSION } = require('../../../src/app/backend/browser-runtime/chromium-command-client');
+const { acceptPageBinding } = require('../../helpers/flows/chromium-page-binding-cases');
 
 const acceptanceChromiumPath = String(process.env.AI_FREE_ACCEPTANCE_CHROMIUM_PATH || '').trim();
 if (acceptanceChromiumPath) {
@@ -99,14 +100,19 @@ function createTestServer() {
     if (url.pathname === '/file-input') {
       response.end(`<!doctype html><meta charset="utf-8"><title>FILE_INPUT_READY</title>
         <input id="file" type="file" style="position:fixed;inset:0;width:100vw;height:100vh">
+        <img id="attachment-image" src="/asset-one.svg" style="position:fixed;left:48px;top:48px;width:32px;height:32px" alt="fixture image">
         <script>
+          if (new URL(location.href).searchParams.has('pointer-race')) {
+            document.addEventListener('mousemove', () => location.reload(), { once: true });
+          }
           document.querySelector('#file').addEventListener('click', (event) => {
             fetch('/file-click?trusted=' + event.isTrusted).catch(() => {});
           });
-          document.querySelector('#file').addEventListener('change', (event) => {
+          document.querySelector('#file').addEventListener('change', async (event) => {
             const file = event.target.files[0];
+            const text = await file?.text().catch(() => 'read-error');
             fetch('/file-result?name=' + encodeURIComponent(file?.name || '')
-              + '&size=' + Number(file?.size || 0)).catch(() => {});
+              + '&size=' + Number(file?.size || 0) + '&contents=' + encodeURIComponent(text || '')).catch(() => {});
           });
         </script>`);
       return;
@@ -336,6 +342,19 @@ app.whenReady().then(async () => {
     getParentWindow: () => window,
     logger: console,
   });
+
+  if (process.argv.includes('--page-binding-only')) {
+    const profileId = 'phase3_binding';
+    const url = `${origin}/file-input?profile=b`;
+    const { state } = await launchProfile(profileId, url);
+    const workspace = path.join(runtimeRoot, 'AI-Workspace');
+    fs.mkdirSync(workspace, { recursive: true });
+    const uploadPath = path.join(workspace, 'page-binding.txt');
+    fs.writeFileSync(uploadPath, 'page-binding acceptance');
+    await acceptPageBinding({ manager, pid: state.pid, profileId, url, uploadPath, requests, waitForRequest });
+    await stopAndAssertReleased(profileId, state.pid);
+    return shutdown(0);
+  }
 
   const a = await launchProfile('phase3_a', `${origin}/page?profile=a`);
   await manager.hide('phase3_a', 'chromium');
@@ -591,6 +610,8 @@ app.whenReady().then(async () => {
   const fileQuery = new URLSearchParams(fileRequest.query || '');
   assert.equal(fileQuery.get('name'), 'input-video.mp4');
   assert.equal(Number(fileQuery.get('size')), fs.statSync(uploadPath).size);
+  await acceptPageBinding({ manager, pid: b.state.pid, profileId: 'phase3_b',
+    url: filePageUrl, uploadPath, requests, waitForRequest });
   await manager.navigate('phase3_b', 'chromium', `${origin}/page?profile=b`);
 
   const nativePage = await manager.navigate('phase3_b', 'chromium', `${origin}/native-input?profile=b`);

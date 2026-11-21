@@ -3,7 +3,7 @@ const path = require('path');
 const { build, Platform } = require('electron-builder');
 const { verifyPackagedRuntime } = require('./verify-packaged-runtime');
 const { writeChromiumRuntimeManifest } = require('./chromium-runtime-manifest');
-const { buildNativeHost } = require('./build-native-host');
+const { stagePackagedNativeHost } = require('./build-native-host');
 const { buildRoot, withPackagedSource } = require('./build-source');
 
 const projectDir = path.resolve(__dirname, '..');
@@ -228,14 +228,13 @@ async function main() {
     return;
   }
 
-  // 禁止把工作区中的旧 .node 产物直接带入安装包。
-  // Electron ABI 目标和 CRT 链接方式都由当前源码在本次打包中重建。
-  buildNativeHost();
-
   // Chromium 和 Clash Core 都包含会触发签名/实时扫描的可执行文件。若交给
   // electron-builder 与其它资源并行复制，Windows 偶发返回 EBUSY/EPERM。
   // 先生成主程序，再串行同步这两项资源，最后由预打包目录生成 NSIS。
-  await withPackagedSource((sourceRoot) => prepackageApp(appOutDir, builderConfig, extraResources, sourceRoot));
+  await withPackagedSource((sourceRoot) => {
+    const resources = stagePackagedNativeHost(sourceRoot, extraResources);
+    return prepackageApp(appOutDir, builderConfig, resources, sourceRoot);
+  });
   await syncDeferredExtraResource(appOutDir, clashCoreResource, {
     label: 'Clash Mini Core',
     requiredFile: 'verge-mihomo.exe',
