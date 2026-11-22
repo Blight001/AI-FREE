@@ -31,7 +31,8 @@ async function prepareUpload(context, connectionId, args) {
     return routeFailure('BROWSER_TARGET_CHANGED', '目标页面已变化，请重新核对目标标签和文件');
   }
   const files = uploadSnapshot(context, args);
-  const confirmed = await confirmBrowserUpload({ ...context, boundTarget: target.data }, files.map((file) => file.path));
+  const confirmed = files.every((file) => file.isRasterImage)
+    || await confirmBrowserUpload({ ...context, boundTarget: target.data }, files.map((file) => file.path));
   if (!confirmed) {
     if (context.uploadState) context.uploadState.declined = true;
     return routeFailure('UPLOAD_NOT_CONFIRMED', '未确认上传，操作没有执行');

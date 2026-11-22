@@ -161,55 +161,35 @@ class FakeElement {
   }
 }
 
-test('新对话空白页展示五条最近聊天并可点击切换', () => {
-  const messages = new FakeElement('div');
-  const welcome = new FakeElement('div');
-  welcome.className = 'ai-chat-welcome';
-  messages.appendChild(welcome);
-  let selectedId = '';
+test('下拉历史将置顶对话排到前面，保留按更新时间排序的其他对话', async () => {
   const context = createControllerContext({
-    formatRelativeTime: (value) => `${value}分钟前`,
-    loadSessionById: async (id) => { selectedId = id; },
+    readLocalHistoryStore: () => ({ sessions: [] }),
+    sessionSummaryLocal: (session) => session,
   });
-  context.document.getElementById = (id) => (id === 'ai-chat-messages' ? messages : null);
-  context.document.createElement = (tagName) => new FakeElement(tagName);
-  context.sessions = Array.from({ length: 6 }, (_, index) => ({
-    id: `session-${index + 1}`,
-    title: `聊天 ${index + 1}`,
-    preview: `内容 ${index + 1}`,
-    updatedAt: index + 1,
-  }));
+  const sessions = [
+    { id: 'newest', updatedAt: 5 },
+    { id: 'pinned', updatedAt: 1, pinnedAt: 6 },
+    { id: 'previous', updatedAt: 3 },
+  ];
+  context.window.aiFree.ai = { historyList: async () => ({ ok: true, sessions }) };
   runController(context, 'ai-control-history-list.js');
-  vm.runInContext("state.currentSession = { id: 'new-session' }; state.sessionList = sessions", context);
-
-  vm.runInContext('renderRecentHistory()', context);
-  const recent = welcome.querySelector('.ai-chat-recent');
-  const list = welcome.querySelector('.ai-chat-recent-list');
-  assert.equal(recent['aria-label'], '最近聊天');
-  assert.equal(recent.querySelector('.ai-chat-recent-heading').textContent, '最近聊天');
-  assert.equal(recent.querySelector('.ai-chat-recent-heading').children[0].textContent, '5 条');
-  assert.equal(list.children.length, 5);
-  assert.equal(list.children[0].querySelector('.ai-chat-recent-title').textContent, '聊天 1');
-  assert.equal(list.children[0].querySelector('.ai-chat-recent-icon'), null);
-  assert.equal(list.children[0].querySelector('.ai-chat-recent-arrow'), null);
-
-  list.children[0].listeners.click();
-  assert.equal(selectedId, 'session-1');
+  await vm.runInContext('refreshHistoryList()', context);
+  assert.deepEqual(Array.from(vm.runInContext('state.sessionList.map(({ id }) => id)', context)), ['pinned', 'newest', 'previous']);
 });
 
-test('新对话空白页不展示快捷任务入口', () => {
+test('新对话空白页不展示快捷任务入口或最近聊天', () => {
   const messages = new FakeElement('div');
   const context = createControllerContext({
     currentMessages: () => [],
-    renderRecentHistory() {},
     updateSessionTitleUi() {},
     selectedAutomationCard: () => null,
   });
-  context.document.getElementById = (id) => (id === 'ai-chat-messages' ? messages : null);
+  context.document.getElementById = (id) => (id === 'ai-chat-message-list' ? messages : null);
   context.document.createElement = (tagName) => new FakeElement(tagName);
   runController(context, 'ai-control-messages.js');
-  vm.runInContext('state.currentBrowserIds = []; renderWelcome()', context);
+  vm.runInContext("state.sessionList = [{ id: 'old', title: '已有记录' }]; renderWelcome()", context);
 
   assert.ok(messages.querySelector('.ai-chat-welcome-hero'));
   assert.equal(messages.querySelector('.ai-chat-prompts'), null);
+  assert.equal(messages.querySelector('.ai-chat-recent'), null);
 });

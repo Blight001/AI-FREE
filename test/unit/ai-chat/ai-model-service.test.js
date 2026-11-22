@@ -27,6 +27,15 @@ test('custom model service exposes every configured model with stable ids', () =
   assert.deepEqual(createCustomModel(store).map((model) => model.id), ['__custom_openai_api__:first', '__custom_openai_api__:second']);
 });
 
+test('the model picker hides old generic labels and preserves explicit display names', () => {
+  const modelStore = { aiControlSettings: { customApis: [
+    { enabled: true, name: '自定义 API', baseUrl: 'https://api.example.test', model: 'alpha' },
+    { enabled: true, name: '自定义API · beta', baseUrl: 'https://api.example.test', model: 'beta' },
+    { enabled: true, name: 'My model', baseUrl: 'https://api.example.test', model: 'gamma' },
+  ] } };
+  assert.deepEqual(createCustomModel(modelStore).map(({ name }) => name), ['alpha', 'beta', 'My model']);
+});
+
 test('remote unavailable response preserves an available custom model', () => {
   const model = { id: 'custom' };
   assert.deepEqual(remoteUnavailable(model), { ok: true, models: [model], quota: null, remoteError: 'AI 服务尚未就绪' });

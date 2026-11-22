@@ -38,6 +38,19 @@ test('历史创建保持内存空会话，首次消息保存后可读取、重�
   assert.equal(data.repository.deleteSession(credentials, created.session.id).sessions.length, 0);
 });
 
+test('置顶和取消置顶不会改动聊天内容、更新时间，也不会被消息存档覆盖', () => {
+  const { repository } = fixture();
+  const messages = [{ role: 'user', content: '第一条消息' }];
+  const saved = repository.saveSession({}, { id: 'one', messages }).session;
+  const pinned = repository.setSessionPinned({}, 'one', true);
+  assert.ok(pinned.pinnedAt > 0);
+  assert.deepEqual(repository.getSession({}, 'one').session, { ...saved, pinnedAt: pinned.pinnedAt });
+  assert.equal(repository.saveSession({}, saved).summary.pinnedAt, pinned.pinnedAt);
+  assert.equal(repository.setSessionPinned({}, 'one', false).pinnedAt, 0);
+  assert.equal(repository.saveSession({}, { ...saved, pinnedAt: pinned.pinnedAt }).summary.pinnedAt, 0);
+  assert.throws(() => repository.setSessionPinned({}, 'missing', true), { code: 'AI_HISTORY_NOT_FOUND' });
+});
+
 test('消息持久化保留全部合法消息并过滤非法角色', () => {
   const data = fixture();
   const messages = Array.from({ length: 45 }, (_, index) => ({ role: 'user', content: `message-${index}` }));

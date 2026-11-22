@@ -89,6 +89,7 @@ function buildAppShellDeps({
     refreshAllowedPlatformsAndNotify,
     resetRuntimeTutorialUrlState,
     registerIPC,
+    aiModelConfig: services.aiModelConfig,
     providerAccountVault: services.providerAccountVault,
     stopClashMiniProcess,
     getStorePath,

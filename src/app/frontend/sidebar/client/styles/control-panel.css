@@ -563,3 +563,9 @@ html.theme-light .modal-header h3,
 html.theme-light #server-message-content {
   color: #333;
 }
+
+*,
+*::before,
+*::after {
+  font-weight: inherit !important;
+}

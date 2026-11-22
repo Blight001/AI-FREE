@@ -94,6 +94,7 @@
       messageCount: messages.length,
       createdAt: selectionTimestamp(session?.createdAt),
       updatedAt: selectionTimestamp(session?.updatedAt),
+      pinnedAt: Number(session?.pinnedAt) || 0,
     };
   }
 
@@ -138,6 +139,15 @@
     session.titleGenerated = true;
     writeLocalHistoryStore(store);
     return session;
+  }
+
+  function setLocalHistoryPin(id, pinnedAt) {
+    const store = readLocalHistoryStore();
+    const session = store.sessions.find((item) => String(item.id) === id);
+    if (!session) return false;
+    session.pinnedAt = pinnedAt;
+    if (!writeLocalHistoryStore(store)) throw new Error('未能保存本地对话的置顶状态');
+    return true;
   }
 
   function getLocalSession(sessionId) {

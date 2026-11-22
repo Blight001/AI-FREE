@@ -13,6 +13,7 @@ function readAiControlSource() {
   const base = 'src/app/frontend/sidebar/client/app/side/controllers/pages';
   return readFiles([
     `${base}/ai-control.js`,
+    `${base}/ai-control/ai-control-scroll.js`,
     `${base}/ai-control/ai-control-selection.js`,
     `${base}/ai-control/ai-control-selectors.js`,
     `${base}/ai-control/ai-control-card-selector.js`,

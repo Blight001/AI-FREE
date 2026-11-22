@@ -69,7 +69,7 @@ function updateDiscoveredSelection(state) {
 
 function populateModelIdentity(model) {
   modelElement('home-custom-model-title').textContent = model ? '编辑模型' : '添加模型';
-  modelElement('home-model-name').value = model?.name || '自定义 API';
+  modelElement('home-model-name').value = model?.name || '';
   modelElement('home-model-base-url').value = model?.baseUrl || '';
   modelElement('home-model-api-key').value = '';
   modelElement('home-model-api-key').placeholder = model?.hasApiKey ? '已保存；留空保持不变' : '可留空，支持无鉴权的本地接口';
@@ -80,6 +80,7 @@ function populateModelCapabilities(model) {
   modelElement('home-model-tools').checked = model?.supportsTools !== false;
   modelElement('home-model-images').checked = model?.supportsImageInput === true;
   modelElement('home-model-reasoning').checked = model?.supportsReasoning === true;
+  modelElement('home-model-stream-output').checked = model?.streamOutput !== false;
   modelElement('home-model-custom-protocol').checked = model?.customProtocol === true;
 }
 
@@ -185,6 +186,7 @@ function modelSavePayload(state, model, name) {
     supportsTools: modelElement('home-model-tools').checked,
     supportsImageInput: modelElement('home-model-images').checked,
     supportsReasoning: modelElement('home-model-reasoning').checked,
+    streamOutput: modelElement('home-model-stream-output').checked,
     customProtocol: modelElement('home-model-custom-protocol').checked,
     contextWindow: readModelTokenLimit(modelTokenFields.contextWindow),
     maxOutputTokens: readModelTokenLimit(modelTokenFields.maxOutputTokens),
@@ -208,7 +210,7 @@ async function saveHomeModels(state, event) {
   submit.disabled = true;
   try {
     const baseName = modelElement('home-model-name').value.trim();
-    const models = ids.map((id) => modelSavePayload(state, id, ids.length > 1 ? `${baseName} · ${id}` : baseName));
+    const models = ids.map((id) => modelSavePayload(state, id, baseName && ids.length > 1 ? `${baseName} · ${id}` : baseName));
     const result = await window.aiFree.ai.saveCustomApis({ models });
     if (!result?.ok) throw new Error(result?.error || '保存模型失败');
     state.models = result.models || state.models;

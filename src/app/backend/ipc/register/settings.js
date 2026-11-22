@@ -224,13 +224,11 @@ function registerSettingsIPC(ctx) {
   registerBrowserHistoryIpc({ ipc, ui, licenseCache });
   registerBrowserSettingsIpc({ ipc, ui, licenseCache });
 
-  const aiSettingsService = createAiSettingsService({
-    readStore: readStoreConfigSafe,
-    writeStore: writeStoreConfigSafe,
-  });
+  const aiSettingsService = createAiSettingsService(ctx.aiModelConfig);
   registerAiSettingsIpc({
     ipc,
     service: aiSettingsService,
+    getSidebar: () => ui?.getSideView?.()?.webContents,
     onModelsChanged: () => ui?.sendToSide?.('ai-control-models-updated'),
   });
   registerPluginSettingsIpc(ipc, ui, extensionManager);

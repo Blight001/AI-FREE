@@ -20,18 +20,40 @@
     return option;
   }
 
-  function renderModelOptions(select, models, preferred) {
+  function applyModelSelection(select, choices) {
+    const available = Array.from(select.options).filter((option) => option.value && !option.disabled);
+    const selected = choices.find((id) => available.some((option) => option.value === id)) || available[0]?.value;
+    if (selected) select.value = selected;
+    syncSelectUi(select);
+  }
+
+  function selectDefaultAiModel() {
+    const select = el('ai-chat-model');
+    if (select) applyModelSelection(select, [state.lastChosenModelId]);
+  }
+
+  async function rememberModelChoice(modelId) {
+    state.lastChosenModelId = modelId;
+    try {
+      const result = await window.aiFree.ai.setLastModel({ modelId });
+      requireAiDataResult(result, '未能保存模型选择');
+    } catch (error) {
+      if (state.lastChosenModelId === modelId) setStatus(aiDataErrorMessage(error), 'warning');
+    }
+  }
+
+  function renderModelOptions(select, models) {
     select.innerHTML = '';
     if (!models.length) {
       select.innerHTML = '<option value="" disabled>管理员尚未配置模型</option>';
-      select.disabled = false;
-      return;
-    }
-    models.forEach((model) => select.appendChild(createModelOption(model)));
-    if (preferred && Array.from(select.options).some((option) => option.value === preferred)) {
-      select.value = preferred;
+    } else {
+      models.forEach((model) => select.appendChild(createModelOption(model)));
     }
     select.disabled = false;
+    applyModelSelection(select, [
+      state.modelSelectionFromHistory ? state.currentSession?.modelId : '',
+      state.lastChosenModelId,
+    ]);
   }
 
   function selectHasModelOptions(select) {
@@ -40,7 +62,7 @@
 
   let modelsLoadPromise = null;
   let modelsLoadQueued = false;
-  async function loadModels(preferredModelId = '') {
+  async function loadModels() {
     if (modelsLoadPromise) {
       modelsLoadQueued = true;
       return modelsLoadPromise;
@@ -48,7 +70,6 @@
     const select = el('ai-chat-model');
     const getModels = getAiModelsApi();
     if (!select || !getModels) return;
-    const preferred = String(preferredModelId || state.currentSession?.modelId || select.value || '');
     const showingPlaceholder = !selectHasModelOptions(select);
     if (showingPlaceholder) {
       select.disabled = true;
@@ -62,8 +83,8 @@
         syncSendState();
         const result = requireAiDataResult(await getModels(), '模型加载失败');
         const models = Array.isArray(result.models) ? result.models : [];
-        renderModelOptions(select, models, preferred);
-        syncSelectUi(select);
+        state.lastChosenModelId ||= String(result.lastModelId || '');
+        renderModelOptions(select, models);
         renderQuota(result.quota);
       } catch (error) {
         if (!selectHasModelOptions(select)) {
@@ -82,7 +103,7 @@
       modelsLoadPromise = null;
       if (modelsLoadQueued) {
         modelsLoadQueued = false;
-        void loadModels(preferredModelId);
+        void loadModels();
       }
     }
   }
@@ -133,7 +154,7 @@
   }
 
   function aiDataErrorMessage(value, fallback = '') {
-    return String(value?.message || value?.error || fallback || value || '');
+    return String(value?.message || value?.error?.message || value?.error || fallback || value || '');
   }
 
   function requireAiDataResult(result, fallback) {

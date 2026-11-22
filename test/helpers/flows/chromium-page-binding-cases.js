@@ -18,6 +18,7 @@ async function acceptPageBinding({ manager, pid, profileId, url, uploadPath, req
   assert(observed.items.some((item) => item.selector === '#attachment-image'));
   assert.equal((await command('automation-takeover', { action: 'acquire' }, before.pageToken)).takeoverActive, true);
   const select = (token) => manager.selectFilesByProcessId(pid, { path: uploadPath }, { expectedPageToken: token });
+  await acceptTransparentFileInput({ command, select, token: before.pageToken, uploadPath, waitForRequest });
   const pending = (await select(before.pageToken)).result;
   assert(pending.selectionId);
   const clicksBefore = requests.filter((request) => request.path === '/file-click').length;
@@ -61,6 +62,32 @@ async function acceptPageBinding({ manager, pid, profileId, url, uploadPath, req
   await command('automation-takeover', { action: 'release' });
   await acceptPointerRace({ manager, profileId, url, requests, command, active, select });
   process.stdout.write('Native page binding acceptance passed (same-URL reload, file chooser, guarded download, pointer race).\n');
+}
+
+async function acceptTransparentFileInput({ command, select, token, uploadPath, waitForRequest }) {
+  const result = await command('observe-page', { filter: 'file-input', show_highlights: false }, token);
+  const fileInput = result.items.find((item) => item.selector === '#reference-file');
+  assert(fileInput, 'Targeted observation must include a transparent file input');
+  assert.equal(fileInput.visible, false);
+  assert.equal(fileInput.requiresFileUpload, true);
+  assert.equal(fileInput.disabled, false);
+  const rejectedSelection = (await select(token)).result;
+  const rejected = await command('perform-action', {
+    action: 'upload_file', selector: '#disabled-reference-file', selectionId: rejectedSelection.selectionId,
+  }, token);
+  assert.equal(rejected.errorCode, 'FILE_SELECTION_TARGET_INVALID');
+  assert.equal(rejected.actionExecuted, false);
+  const armed = (await select(token)).result;
+  assert(armed.selectionId);
+  const uploaded = await command('perform-action', {
+    action: 'upload_file', selector: fileInput.selector, selectionId: armed.selectionId,
+  }, token);
+  assert.equal(uploaded.fileSelected, true, JSON.stringify(uploaded));
+  const request = await waitForRequest((item) => item.path === '/reference-result');
+  const receipt = new URLSearchParams(request.query);
+  assert.equal(receipt.get('trusted'), 'true');
+  assert.equal(receipt.get('name'), path.basename(uploadPath));
+  assert.equal(receipt.get('contents'), await fs.readFile(uploadPath, 'utf8'));
 }
 
 async function assertConfirmedBytes({ manager, pid, uploadPath, token, command, waitForRequest, previousRequests }) {

@@ -36,6 +36,32 @@ function publicModels(store) {
   return getCustomAiApiConfigs(store).map(toPublicCustomAiApiConfig);
 }
 
+function setLastModelId(deps, modelId) {
+  const store = deps.readStore();
+  if (store.aiControlSettings?.lastModelId !== modelId
+    && !deps.writeStore(mergeAiControlSettings(store, { lastModelId: modelId }))) {
+    throw new Error('未能保存模型选择');
+  }
+  return { modelId };
+}
+
+function upsertCustomApi(configs, item) {
+  const id = String(item.id || '').trim() || `${CUSTOM_AI_MODEL_PREFIX}${crypto.randomUUID()}`;
+  const index = configs.findIndex((entry) => entry.id === id);
+  const previous = configs[index];
+  const config = normalizeCustomAiApiConfig({
+    ...previous,
+    ...item,
+    id,
+    enabled: true,
+    apiKey: Object.hasOwn(item, 'apiKey') ? item.apiKey : previous?.apiKey,
+  });
+  validateCustomApiConfig(config);
+  if (index < 0) configs.push(config);
+  else configs[index] = config;
+  return config;
+}
+
 function createAiSettingsService(deps = {}) {
   function persist(currentStore, configs) {
     const next = mergeAiControlSettings(currentStore, { customApis: configs });
@@ -59,22 +85,7 @@ function createAiSettingsService(deps = {}) {
     const updates = Array.isArray(payload.models) ? payload.models : [];
     if (!updates.length || updates.length > 64) throw new Error('请选择 1 到 64 个模型');
     const next = [...existing];
-    const saved = updates.map((item) => {
-      const id = String(item.id || '').trim() || `${CUSTOM_AI_MODEL_PREFIX}${crypto.randomUUID()}`;
-      const previous = next.find((entry) => entry.id === id);
-      const config = normalizeCustomAiApiConfig({
-        ...previous,
-        ...item,
-        id,
-        enabled: true,
-        apiKey: Object.prototype.hasOwnProperty.call(item, 'apiKey') ? item.apiKey : previous?.apiKey,
-      });
-      validateCustomApiConfig(config);
-      const index = next.findIndex((entry) => entry.id === id);
-      if (index === -1) next.push(config);
-      else next[index] = config;
-      return config;
-    });
+    const saved = updates.map((item) => upsertCustomApi(next, item));
     persist(currentStore, next);
     return { ok: true, config: toPublicCustomAiApiConfig(saved[0]), models: getCustomApis().models };
   }
@@ -122,7 +133,10 @@ function createAiSettingsService(deps = {}) {
     return { ok: true, config: toPublicCustomAiApiConfig(config) };
   }
 
-  return { deleteCustomApi, fetchModels, getCustomApi, getCustomApis, saveCustomApi, saveCustomApis, setCustomApi };
+  return {
+    deleteCustomApi, fetchModels, getCustomApi, getCustomApis, saveCustomApi, saveCustomApis, setCustomApi,
+    setLastModelId: (modelId) => setLastModelId(deps, modelId),
+  };
 }
 
 module.exports = { createAiSettingsService, mergeAiControlSettings, publicModels, validateCustomApiConfig };

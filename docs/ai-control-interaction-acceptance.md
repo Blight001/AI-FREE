@@ -56,7 +56,7 @@ Invoke-RestMethod -Uri $fixture.urls.state
 | --- | --- |
 | `QA ATTACH` | 使用 `@` 附加恰好一张测试 PNG。回复识别到的文件路径和图案。 |
 | `QA DOWNLOAD RED` 或 `QA DOWNLOAD BLUE` | 将 A 设为活动页。观察指定 PNG 并通过浏览器工具下载到 `qa-download-red` 或 `qa-download-blue`。 |
-| `QA SELECT B` | 再次引用下载卡或附加恰好一张测试 PNG。让 B 或 `dropOnce` 页保持活动，等待人工确认。 |
+| `QA SELECT B` | 再次引用下载卡或附加恰好一张测试 PNG。让 B 或 `dropOnce` 页保持活动，图片应直接交给文件控件。 |
 | `QA OBSERVE B` | 让 B 或 `dropOnce` 页保持活动，只读观察页面显示的回执和计数。可以在点 Readback 后运行。 |
 | `QA COMMAND` | 执行延时命令。分别让它自然退出和运行中停止。 |
 | `QA COMMAND TIMEOUT` 或 `QA COMMAND TRUNCATE` | 观察超时或截断提示。 |
@@ -65,9 +65,9 @@ Invoke-RestMethod -Uri $fixture.urls.state
 
 1. 在隔离的 Windows 测试账户或虚拟机运行候选版和夹具。将夹具工作区里的 `source-red`、`source-blue`、`command` 复制到该测试账户实际使用的桌面 `AI-Workspace`。在侧栏文件选择器确认能搜到两份 `sample.png`，再按上文配置本地验收模型。在测试账户实际工作区查看命令的 `command/completed.marker`。
 2. 创建一个无代理的测试浏览器环境，在同一环境打开 A、B、C。切到夹具要求的活动标签后直接发消息。AI 按本轮任务选择浏览器。多环境验收时在消息中说明目标浏览器或网站。
-3. U1–U4 先检验同名选择和移除，再在 A 下载红图，用对话文件卡预览。重开应用后从原历史点「再次引用」。转到 B，发起选择文件并在确认栏核对文件和目标。B 显示 `selected` 后，手动点 Submit，随后 Readback。核对 B 的 `receivedCount` 为 1、摘要等于 `files.red.sha256`，C 两个计数均为 0。
-4. U5 重新开始一轮 B 上传，在确认等待期间切到 C，另测关闭 B 或关闭显式选中的浏览器环境。继续后检查 C 无记录。U6 在测试工作区移动下载的文件，再用蓝图替换下载路径，分别重开对话尝试预览和引用。
-5. U7 用下述命令夹具检查输出、退出、截断和停止。U8 先取消一次确认，在 B/C 核对计数，再用 `urls.dropOnce` 完成一次选择和提交。回执显示 `unknown` 后用 Readback 核对 B 的文件摘要和接收次数。浏览器工具回执丢失由下列 Electron 回归注入，也可切到另一个标签验证目标不可读时的处理。
+3. U1–U4 先检验同名选择和移除，再在 A 下载红图，用对话文件卡预览。重开应用后从原历史点「再次引用」。转到 B，发起选择文件并核对 PNG 直接选中。B 显示 `selected` 后，手动点 Submit，随后 Readback。核对 B 的 `receivedCount` 为 1、摘要等于 `files.red.sha256`，C 两个计数均为 0。
+4. U5 重新开始一轮 B 上传，选择测试文本文件触发确认，在等待期间切到 C，另测关闭 B 或关闭显式选中的浏览器环境。继续后检查 C 无记录。U6 在测试工作区移动下载的文件，再用蓝图替换下载路径，分别重开对话尝试预览和引用。
+5. U7 用下述命令夹具检查输出、退出、截断和停止。U8 先取消一次测试文本文件的上传确认，在 B/C 核对计数，再用 `urls.dropOnce` 完成一次选择和提交。回执显示 `unknown` 后用 Readback 核对 B 的文件摘要和接收次数。浏览器工具回执丢失由下列 Electron 回归注入，也可切到另一个标签验证目标不可读时的处理。
 6. U9 缩窄侧栏，展开或收起调用详情，用键盘选择文件并打开旧历史。在普通模式回到首页确认左侧没有「MCP 管理」。逐项记录结果和实际看到的状态。
 
 主进程在本轮第一次识别目标后校验文档身份。同网址刷新会使当前工具序列的旧目标失效。新一轮自动读取活动页。选择上传文件只确认文件控件已接到数据。网站收件用业务回执和夹具的文件摘要核对。
@@ -119,7 +119,7 @@ node --test test/acceptance/fixtures/ai-control-interaction/electron-sidebar.tes
 | `npm run accept:chromium-phase3 -- --page-binding-only` | 真实内核验证同 URL 重载失效、等待和下载的页面保护、上传点击期间切页，以及工作区原文件被替换后网页仍读取已确认字节。 |
 | U1–U9 | 在候选版本上由用户操作，记录实际结果。 |
 
-常规 Electron 夹具覆盖直接发送任务、自动识别页、对话中查看 PNG、关闭并重启 Electron 后通过历史菜单恢复和再次引用、取消上传、批准中目标身份变更、确认文件选择以及丢失工具结果后停止重放。页面令牌由桥接替身提供。实际内核是否正确签发、保留和作废令牌，须在具备对应能力的内核上验证。站点处理后丢失 HTTP 回执的场景由 `browser-smoke.js` 实测，Electron 测试中的传输故障由桥接替身注入。
+常规 Electron 夹具覆盖直接发送任务、自动识别页、对话中查看 PNG、关闭并重启 Electron 后通过历史菜单恢复和再次引用、取消文本上传、批准中目标身份变更、PNG 免确认选择以及丢失工具结果后停止重放。页面令牌由桥接替身提供。实际内核是否正确签发、保留和作废令牌，须在具备对应能力的内核上验证。站点处理后丢失 HTTP 回执的场景由 `browser-smoke.js` 实测，Electron 测试中的传输故障由桥接替身注入。
 
 混合批处理验收可在 `urls.editor` 发送 `QA PREVIEW DRAFT`。预期观察并接管后，侧栏用一条 `browser_page_batch` 执行 10 步（点击、表单输入、按键、条件等待），显示 `10/10 步`；最后读回网页上的 `Accepted: First draft!`。刷新后再复测。单笔画圆仍是独立的浏览器输入回归，不是批处理的触发条件。
 

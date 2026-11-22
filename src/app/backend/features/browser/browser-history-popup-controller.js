@@ -52,7 +52,7 @@ function createBrowserHistoryPopupController({ ui }) {
     .item.selected { border-color: rgba(77,163,255,.56); background: rgba(77,163,255,.22); box-shadow: 0 5px 16px rgba(25,102,196,.16); }
     .light .item.selected { border-color: rgba(47,127,230,.38); background: rgba(47,127,230,.12); }
     .name, .url { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .name { align-self: end; font-size: 20px; font-weight: 600; }
+    .name { align-self: end; font-size: 20px; }
     .url { grid-column: 1 / -1; color: #9aa3b2; font-size: 15px; }
     .state { align-self: end; color: #9aa3b2; font-size: 15px; }
     .state.open { color: #43bd70; }

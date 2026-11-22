@@ -41,25 +41,26 @@
               </button>
               <ul class="ai-select-menu ai-chat-history-menu" id="ai-chat-history-menu" role="listbox" hidden></ul>
             </div>
-            <button type="button" class="ai-chat-new-conversation" id="ai-chat-new-conversation" aria-label="新建对话">
-              <span class="ai-chat-new-conversation-icon" aria-hidden="true">+</span>新建对话
+            <button type="button" class="ai-chat-new-conversation" id="ai-chat-new-conversation" aria-label="新建对话" title="新建对话">
+              <span aria-hidden="true">+</span>
             </button>
-            <label class="ai-chat-stream-toggle" title="逐步显示 AI 生成内容">
-              <input id="ai-chat-stream-output" type="checkbox" checked>
-              <span>流式</span>
-            </label>
           </div>
         </header>
         <div class="ai-chat-body">
-          <div id="ai-chat-messages" class="ai-chat-messages" role="log" aria-live="polite">
-            <div class="ai-chat-welcome">
-              <div class="ai-chat-welcome-hero">
-                <span class="ai-chat-welcome-logo"><img class="ai-chat-welcome-icon" data-app-logo alt="" aria-hidden="true"></span>
-                <strong>今天想一起完成什么？</strong>
-                <p>直接描述你的目标即可。</p>
+          <div id="ai-chat-messages" class="ai-chat-messages" tabindex="0" aria-label="对话消息">
+            <div id="ai-chat-message-list" class="ai-chat-message-list" role="log" aria-live="polite">
+              <div class="ai-chat-welcome">
+                <div class="ai-chat-welcome-hero">
+                  <span class="ai-chat-welcome-logo"><img class="ai-chat-welcome-icon" data-app-logo alt="" aria-hidden="true"></span>
+                  <strong>今天想一起完成什么？</strong>
+                  <p>直接描述你的目标即可。</p>
+                </div>
               </div>
             </div>
           </div>
+          <button id="ai-chat-jump-bottom" type="button" aria-label="回到底部" title="回到底部" aria-controls="ai-chat-messages" hidden>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14m-7-7 7 7 7-7"/></svg>
+          </button>
         </div>
         <form id="ai-chat-form" class="ai-chat-composer">
           <div id="ai-chat-attachment-chips" class="ai-chat-attachment-chips" hidden></div>
@@ -139,6 +140,7 @@
 
   <script src="../../shared/quota-display.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control.js"></script>
+  <script src="./client/app/side/controllers/pages/ai-control/ai-control-scroll.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-selection.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-selectors.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-card-selector.js"></script>

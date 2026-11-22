@@ -188,23 +188,6 @@ html.theme-light .ai-chat-welcome-context {
 html.theme-light .ai-chat-welcome-context b { color: var(--site-text-soft); }
 .ai-chat-welcome p,
 html.theme-light .ai-chat-welcome p { margin-top: 7px; color: var(--site-muted); }
-.ai-chat-recent-heading,
-html.theme-light .ai-chat-recent-heading { color: var(--site-text-soft); }
-.ai-chat-recent-list,
-html.theme-light .ai-chat-recent-list {
-  border-color: var(--site-border);
-  background: var(--site-panel);
-  box-shadow: 0 4px 16px rgba(24, 24, 27, .04);
-}
-.ai-chat-recent-item,
-html.theme-light .ai-chat-recent-item { color: var(--site-text-soft); border-color: var(--site-border-soft); }
-.ai-chat-recent-item:hover,
-.ai-chat-recent-item:focus-visible,
-html.theme-light .ai-chat-recent-item:hover,
-html.theme-light .ai-chat-recent-item:focus-visible {
-  border-color: #c7d2fe;
-  background: var(--site-accent-soft);
-}
 
 .ai-chat-message.assistant .ai-chat-bubble,
 html.theme-light .ai-chat-message.assistant .ai-chat-bubble {

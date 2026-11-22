@@ -137,6 +137,9 @@ function validateHistorySession(channel, session) {
     stringField(channel, session, key, { maxLength: key === 'preview' ? MAX_TEXT_LENGTH : MAX_ID_LENGTH });
   }
   stringListField(channel, session, 'browserConnectionIds');
+  if (session.pinnedAt !== undefined && (!Number.isSafeInteger(session.pinnedAt) || session.pinnedAt < 0)) {
+    fail(channel, 'session.pinnedAt', '必须是非负整数');
+  }
   if (session.messages !== undefined) {
     if (!Array.isArray(session.messages)) fail(channel, 'session.messages', '必须是数组');
   }
@@ -260,7 +263,7 @@ const IPC_PAYLOAD_SCHEMAS = Object.freeze({
   'ai.custom-api': (channel, payload) => {
     const input = objectPayload(channel, payload, { optional: true });
     for (const key of ['clear', 'enabled']) booleanField(channel, input, key);
-    for (const key of ['supportsImageInput', 'supportsTools', 'supportsReasoning', 'customProtocol']) booleanField(channel, input, key);
+    for (const key of ['supportsImageInput', 'supportsTools', 'supportsReasoning', 'streamOutput', 'customProtocol']) booleanField(channel, input, key);
     stringField(channel, input, 'name', { maxLength: 80 });
     stringField(channel, input, 'id', { maxLength: 128 });
     stringField(channel, input, 'baseUrl', { maxLength: 2048 });
@@ -275,13 +278,19 @@ const IPC_PAYLOAD_SCHEMAS = Object.freeze({
     stringField(channel, input, 'id', { required: true, maxLength: 128 });
     return input;
   },
+  'ai.last-model': (channel, payload) => {
+    const input = objectPayload(channel, payload);
+    stringField(channel, input, 'modelId', { required: true });
+    if (!input.modelId.trim()) fail(channel, 'modelId', '不能为空');
+    return { modelId: input.modelId.trim() };
+  },
   'ai.custom-api-batch': (channel, payload) => {
     const input = objectPayload(channel, payload);
     if (!Array.isArray(input.models) || input.models.length < 1 || input.models.length > 64) fail(channel, 'models', '必须是 1 到 64 项的数组');
     input.models.forEach((model, index) => {
       if (!isPlainObject(model)) fail(channel, `models[${index}]`, '必须是对象');
       for (const key of ['id', 'name', 'baseUrl', 'model', 'apiKey']) stringField(channel, model, key, { maxLength: key === 'apiKey' ? 4096 : key === 'baseUrl' ? 2048 : key === 'name' ? 80 : key === 'model' ? 200 : 128 });
-      for (const key of ['supportsImageInput', 'supportsTools', 'supportsReasoning', 'customProtocol']) booleanField(channel, model, key);
+      for (const key of ['supportsImageInput', 'supportsTools', 'supportsReasoning', 'streamOutput', 'customProtocol']) booleanField(channel, model, key);
       numberLikeField(channel, model, 'contextWindow');
       numberLikeField(channel, model, 'maxOutputTokens');
     });
@@ -330,6 +339,13 @@ const IPC_PAYLOAD_SCHEMAS = Object.freeze({
     stringField(channel, input, 'id');
     stringField(channel, input, 'title', { maxLength: MAX_TEXT_LENGTH });
     return input;
+  },
+  'ai.history-pin': (channel, payload) => {
+    const input = objectPayload(channel, payload);
+    stringField(channel, input, 'id', { required: true });
+    if (!input.id.trim()) fail(channel, 'id', '不能为空');
+    if (typeof input.pinned !== 'boolean') fail(channel, 'pinned', '必须是布尔值');
+    return { id: input.id.trim(), pinned: input.pinned };
   },
   'ai.history-save': (channel, payload) => {
     const input = objectPayload(channel, payload, { optional: true });

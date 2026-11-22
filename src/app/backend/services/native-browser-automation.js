@@ -426,6 +426,8 @@ class NativeBrowserAutomation {
     throw new Error(`未知的 Chromium 原生自动化工具: ${text(toolName) || '(空)'}`);
   }
 
+  // Keep capability, result and error semantics aligned with external MCP.
+  // This path enforces document identity. See docs/mcp-entry-parity.md for both-entry checks.
   async dispatchBound(connection, tool, input, token, signal = undefined) {
     if (typeof token !== 'string' || !token.trim() || token.length > 256) {
       return bindingFailure('BROWSER_TARGET_REQUIRED', '缺少有效的页面绑定');

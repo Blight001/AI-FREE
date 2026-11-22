@@ -115,6 +115,9 @@ function createTestServer() {
     if (url.pathname === '/file-input') {
       response.end(`<!doctype html><meta charset="utf-8"><title>FILE_INPUT_READY</title>
         <input id="file" type="file" style="position:fixed;inset:0;width:100vw;height:100vh">
+        <button type="button" style="position:fixed;left:8px;top:8px;width:180px;height:36px">+ Reference image</button>
+        <input id="reference-file" type="file" style="position:fixed;left:8px;top:8px;width:180px;height:36px;opacity:0;cursor:pointer">
+        <input id="disabled-reference-file" type="file" disabled style="position:fixed;left:210px;top:8px;width:40px;height:36px;opacity:0">
         <img id="attachment-image" src="/asset-one.svg" style="position:fixed;left:48px;top:48px;width:32px;height:32px" alt="fixture image">
         <script>
           if (new URL(location.href).searchParams.has('pointer-race')) {
@@ -128,6 +131,12 @@ function createTestServer() {
             const text = await file?.text().catch(() => 'read-error');
             fetch('/file-result?name=' + encodeURIComponent(file?.name || '')
               + '&size=' + Number(file?.size || 0) + '&contents=' + encodeURIComponent(text || '')).catch(() => {});
+          });
+          document.querySelector('#reference-file').addEventListener('change', async (event) => {
+            const file = event.target.files[0];
+            const text = await file?.text().catch(() => 'read-error');
+            fetch('/reference-result?trusted=' + event.isTrusted + '&name=' + encodeURIComponent(file?.name || '')
+              + '&contents=' + encodeURIComponent(text || '')).catch(() => {});
           });
         </script>`);
       return;

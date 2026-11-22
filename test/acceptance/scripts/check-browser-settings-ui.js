@@ -32,6 +32,12 @@ let startupSettings = { openAtLogin: false, startMinimized: false };
 let customModels = [];
 let discoveredModelRequest = null;
 let savedModelPayload = null;
+let aiPreferencesEnabled = false;
+let fixtureLastModelId = '';
+const fixtureHistory = [
+  { id: 'newer', title: 'Newer', updatedAt: 4, pinnedAt: 0 },
+  { id: 'older', title: 'Older', updatedAt: 2, pinnedAt: 0 },
+];
 require('../../helpers/electron/site-data').bindSiteDataFixture(ipcMain, () => BrowserWindow.getAllWindows()[0], layout.root);
 ipcMain.handle('open-browser-history', (_event, payload = {}) => {
   browserHistoryOpenRequests += 1;
@@ -64,6 +70,18 @@ ipcMain.handle('set-startup-settings', (_event, payload = {}) => {
   return { ok: true, data: startupSettings };
 });
 ipcMain.handle('ai-control-custom-models-list', () => ({ ok: true, models: customModels }));
+ipcMain.handle('ai-control-get-models', () => ({ ok: true, quota: null, lastModelId: fixtureLastModelId,
+  models: aiPreferencesEnabled ? [{ id: 'first', name: 'First' }, { id: 'second', name: 'Second', custom_api: true }] : [] }));
+ipcMain.handle('ai-control-set-last-model', (_event, { modelId }) => {
+  fixtureLastModelId = modelId;
+  return { ok: true, data: { modelId } };
+});
+ipcMain.handle('ai-control-history-list', () => ({ ok: true, sessions: aiPreferencesEnabled ? fixtureHistory : [] }));
+ipcMain.handle('ai-control-history-pin', (_event, { id, pinned }) => {
+  const session = fixtureHistory.find((item) => item.id === id);
+  session.pinnedAt = pinned ? Date.now() : 0;
+  return { ok: true, data: { id, pinnedAt: session.pinnedAt } };
+});
 ipcMain.handle('ai-control-custom-model-discover', (_event, payload) => {
   discoveredModelRequest = payload;
   return { ok: true, models: [{ id: 'fixture-chat', name: 'Fixture Chat' }, { id: 'fixture-reasoner', name: 'Fixture Reasoner' }] };
@@ -167,8 +185,6 @@ for (const [channel, response] of /** @type {Array<[string, any]>} */ ([
   }],
   ['ai-control-workspace-list', { ok: true, rootName: 'AI-Workspace', files: [], truncated: false }],
   ['ai-control-get-automation-cards', { ok: true, cards: [], selectedId: '' }],
-  ['ai-control-history-list', { ok: true, sessions: [] }],
-  ['ai-control-get-models', { ok: true, models: [], quota: null }],
   ['get-ai-control-custom-api', { ok: true, config: {} }],
   ['get-ai-server-device-status', {
     ok: true,
@@ -275,7 +291,7 @@ async function checkTaskbarHomeButton(win) {
       return [readTitleStyle('.tab.active .tab-title'), readTitleStyle('.tab:not(.active) .tab-title')];
     })()`);
     assert.equal(activeTitle.fontSize, inactiveTitle.fontSize, 'Selecting a browser tab must not enlarge its title');
-    assert.ok(activeTitle.fontWeight > inactiveTitle.fontWeight, 'Selected browser tab titles should stay bold');
+    assert.equal(activeTitle.fontWeight, inactiveTitle.fontWeight, 'Browser tab titles should use the same inherited weight');
     await clickTaskbarCorner(contents, 1);
   } finally {
     contents.send('update-tabs', []);
@@ -845,7 +861,7 @@ app.whenReady().then(async () => {
     throw new Error(`主窗口内置首页与控件校验失败: ${JSON.stringify(shellAccountResult)}`);
   }
   ipcMain.removeAllListeners('request-account-center');
-  await checkHomeAccountIntegration(win, layout, (session) => { accountSession = session; });
+  await checkHomeAccountIntegration(win, layout, (session) => { accountSession = session; }, () => { aiPreferencesEnabled = true; });
   if (discoveredModelRequest?.baseUrl !== 'https://models.example.test/v1'
     || discoveredModelRequest?.apiKey !== 'acceptance-key'
     || savedModelPayload?.models?.length !== 2

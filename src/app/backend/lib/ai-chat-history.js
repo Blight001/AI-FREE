@@ -4,6 +4,7 @@
 const crypto = require('crypto');
 const path = require('path');
 const { app } = require('electron');
+const { AppError } = require('../../contracts/ipc-result');
 const { readJsonFileSafe, writeJsonFileSafe } = require('../utils/json-store');
 const { normalizeFileArtifacts } = require('../features/ai-chat/workspace-file-artifacts');
 
@@ -193,6 +194,8 @@ function normalizeBrowserConnectionIds(raw = {}) {
   return [...new Set(list.map((value) => String(value || '').trim()).filter(Boolean))];
 }
 
+const normalizePinnedAt = (value) => Number.isSafeInteger(value) && value > 0 ? value : 0;
+
 function normalizeSession(raw = {}, context = DEFAULT_HISTORY_CONTEXT) {
   const id = String(raw.id || '').trim() || context.randomUUID();
   const messages = sanitizeMessages(raw.messages);
@@ -211,6 +214,7 @@ function normalizeSession(raw = {}, context = DEFAULT_HISTORY_CONTEXT) {
     preview: String(raw.preview || previewFromMessages(messages) || '').slice(0, 80),
     createdAt: Number(raw.createdAt) || now,
     updatedAt: Number(raw.updatedAt) || now,
+    pinnedAt: normalizePinnedAt(raw.pinnedAt),
   };
 }
 
@@ -227,6 +231,7 @@ function sessionSummary(session) {
     messageCount: Array.isArray(session.messages) ? session.messages.length : 0,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
+    pinnedAt: session.pinnedAt,
   };
 }
 
@@ -269,8 +274,10 @@ function saveSession(credentials, rawSession, options = {}, context = DEFAULT_HI
   }
 
   const index = store.sessions.findIndex((item) => String(item.id) === session.id);
-  if (index >= 0) store.sessions[index] = session;
-  else store.sessions.unshift(session);
+  if (index >= 0) {
+    session.pinnedAt = normalizePinnedAt(store.sessions[index].pinnedAt);
+    store.sessions[index] = session;
+  } else store.sessions.unshift(session);
 
   store.sessions.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   // 清理无消息的脏数据
@@ -343,6 +350,22 @@ function renameSession(credentials, sessionId, rawTitle, context = DEFAULT_HISTO
   return { ok: true, session, summary: sessionSummary(session) };
 }
 
+function setSessionPinned(credentials, id, pinned, context) {
+  const scope = context.accountScope(credentials);
+  const store = context.readStore(scope);
+  const session = store.sessions.find((item) => String(item.id) === id);
+  if (!session) throw new AppError('AI_HISTORY_NOT_FOUND', '对话不存在');
+  const previous = normalizePinnedAt(session.pinnedAt);
+  const pinnedAt = pinned ? (previous || context.now()) : 0;
+  if (pinnedAt !== previous) {
+    session.pinnedAt = pinnedAt;
+    if (!context.writeStore(scope, store)) {
+      throw new AppError('AI_HISTORY_PIN_WRITE_FAILED', '未能保存对话置顶状态', { retryable: true });
+    }
+  }
+  return { id, pinnedAt };
+}
+
 function createSession(credentials, partial = {}, context = DEFAULT_HISTORY_CONTEXT) {
   // 空会话只返回内存对象，真正有消息后再 saveSession 落盘
   const session = normalizeSession({
@@ -391,6 +414,7 @@ function createAiChatHistoryRepository(options = {}) {
     listSessions: (credentials) => listSessions(credentials, context),
     renameSession: (credentials, id, title) => renameSession(credentials, id, title, context),
     saveSession: (credentials, session, options) => saveSession(credentials, session, options, context),
+    setSessionPinned: (credentials, id, pinned) => setSessionPinned(credentials, id, pinned, context),
     setCurrent: (credentials, id) => setCurrent(credentials, id, context),
   };
 }

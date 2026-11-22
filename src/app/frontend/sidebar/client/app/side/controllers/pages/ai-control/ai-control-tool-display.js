@@ -135,11 +135,6 @@
       this.hydrate({ traceEvents: options.traceEvents || [], reasoning: options.reasoning, toolEvents: options.toolEvents || [] });
       if (options.content) this.addContent(options.content, Number.MAX_SAFE_INTEGER);
       if (!options.pending) this.finalize();
-      this.scroll();
-    }
-
-    scroll() {
-      this.container.scrollTop = this.container.scrollHeight;
     }
 
     startActivityGroup() {
@@ -272,7 +267,6 @@
       view.content += String(delta || '');
       view.text.textContent = view.content;
       this.syncActivityGroup(view.activity);
-      this.scroll();
     }
 
     addContent(delta, round = 0) {
@@ -281,7 +275,6 @@
       this.finishThinking(this.answerRound);
       this.content += String(delta || '');
       this.updateAnswer(this.content);
-      this.scroll();
     }
 
     setContent(value) {
@@ -303,7 +296,6 @@
         this.answerRound = roundId;
         this.updateAnswer(this.content);
       }
-      this.scroll();
     }
 
     upsertTool(tool, round = 0) {
@@ -326,7 +318,6 @@
         view.update(tool);
       }
       this.syncActivityGroup(view.activity);
-      this.scroll();
     }
 
     hydrateTraceEvents(traceEvents) {
@@ -361,11 +352,10 @@
       });
       this.answer?.classList.remove('is-streaming');
       this.activities.forEach((activity) => this.syncActivityGroup(activity));
-      this.scroll();
     }
   }
 
   function createAssistantView(options = {}) {
-    const container = el('ai-chat-messages');
+    const container = el('ai-chat-message-list');
     return container ? new AssistantView(container, options) : null;
   }

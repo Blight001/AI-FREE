@@ -1,5 +1,7 @@
 'use strict';
 
+const { AppError, wrapIpcResult } = require('../../../contracts/ipc-result');
+
 function safe(handler) {
   return async (_event, payload = {}) => {
     try { return await handler(payload); } catch (error) {
@@ -8,7 +10,7 @@ function safe(handler) {
   };
 }
 
-function registerAiSettingsIpc({ ipc, service, onModelsChanged = () => {} }) {
+function registerAiSettingsIpc({ ipc, service, getSidebar, onModelsChanged = () => {} }) {
   ipc.handle('get-ai-control-custom-api', safe(() => service.getCustomApi()));
   ipc.handle('set-ai-control-custom-api', safe((payload) => {
     const result = service.setCustomApi(payload);
@@ -32,6 +34,13 @@ function registerAiSettingsIpc({ ipc, service, onModelsChanged = () => {} }) {
     return result;
   }));
   ipc.handle('ai-control-custom-model-discover', safe((payload) => service.fetchModels(payload)));
+  return ipc.handle('ai-control-set-last-model', wrapIpcResult((event, { modelId }) => {
+    const sidebar = getSidebar?.();
+    if (!sidebar || sidebar.isDestroyed?.() || event.sender !== sidebar || event.senderFrame !== sidebar.mainFrame) {
+      throw new AppError('FORBIDDEN', '仅 AI 控制侧栏可以保存模型选择');
+    }
+    return service.setLastModelId(modelId);
+  }, { fallbackCode: 'AI_MODEL_SELECTION_WRITE_FAILED' }));
 }
 
 module.exports = { registerAiSettingsIpc };

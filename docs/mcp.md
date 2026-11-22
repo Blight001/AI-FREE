@@ -1,8 +1,6 @@
 # AI-FREE MCP 工具清单
 
-更新时间：2026-08-10
-
-AI-FREE 的完整浏览器 MCP 目录有 13 个工具。实际对话注入的工具随 Chromium 连接和对话意图变化；例如 `browser_environment` 在本地 AI 对话中按需注入。
+实际目录随浏览器连接、软件功能和入口变化。Chromium 已连接且本机账号工具可用时，外部与侧栏各列出 14 项（侧栏包含环境配置意图时）。两端的完整对照、差异和验收顺序见 [MCP 双入口一致性审计与计划](mcp-entry-parity.md)。
 
 开发者模式下打开 **首页 → MCP 管理** 可查看当前目录、连接条件、JSON Schema、示例提示词及 JSON-RPC 请求和模拟返回。查看示例不会调用工具、读取会话或展示实际模型 Prompt。AI 对话不再受旧的累计 MCP 调用次数设置限制；停止、超时和单批异常请求保护保留。
 
@@ -11,13 +9,14 @@ AI-FREE 的完整浏览器 MCP 目录有 13 个工具。实际对话注入的工
 | 工具组 | 数量 | 可用条件 | 代码真源 |
 | --- | ---: | --- | --- |
 | 外部软件栏目 | 1 | 软件运行期间始终可用 | [`ai-browser-window-tools.js`](../src/app/backend/services/ai-browser-window-tools.js) |
-| 浏览器高级环境 | 1 | 用户消息命中环境/指纹/代理等配置意图 | [`ai-browser-window-tools.js`](../src/app/backend/services/ai-browser-window-tools.js) |
+| 浏览器高级环境 | 1 | 外部常驻，侧栏随环境/指纹/代理等配置意图注入 | [`ai-browser-window-tools.js`](../src/app/backend/services/ai-browser-window-tools.js) |
 | AI 工作区命令 | 1 | 软件运行期间始终可用 | [`ai-sandbox-file-tools.js`](../src/app/backend/services/ai-sandbox-file-tools.js) |
+| 本机账号 | 1 | 本机账号库可用 | [`provider-account-tools.js`](../src/app/backend/features/account/provider-account-tools.js) |
 | 浏览器自动化 | 10 | 页面工具需要已握手的内置 Chromium；外部网关可在未连接时执行 `browser_control overview` | [`native-browser-tool-definitions.js`](../src/app/backend/services/native-browser-tool-definitions.js) |
 
-AI-FREE 本地 AI 对话使用下表中的“内部名称”。连接 HeySure 后，设备向服务器注册时会统一添加 `aifree.` 前缀。
+内置和外部入口使用下表中的本地工具名。外部目录公开 `browser_workflow`，侧栏提供 `browser_page_batch`。连接 HeySure 后，支持注册的设备工具带 `aifree.` 前缀。设备服务以实际外部目录为输入，注册时转换工具名。
 
-| 内部名称 | HeySure 注册名称 | 用途 |
+| 本地工具名 | 既有 HeySure 名称示例 | 用途 |
 | --- | --- | --- |
 | `windows_tab` | `aifree.windows+tab` | 查询、显示、新建、编辑和关闭外部软件栏目 |
 | `browser_environment` | `aifree.browser+environment` | 按需读取或增量修改栏目的浏览器环境与指纹 |
@@ -32,6 +31,8 @@ AI-FREE 本地 AI 对话使用下表中的“内部名称”。连接 HeySure �
 | `browser_wait` | `aifree.browser+wait` | 等待元素、文本或 URL 条件成立，或等待指定时间 |
 | `browser_control` | `aifree.browser+control` | 浏览器总览以及页面接管、状态检查和释放 |
 | `browser_workflow` | `aifree.browser+workflow` | 执行、暂停、恢复及诊断多步自动化流程 |
+| `browser_page_batch` | — | 侧栏执行参数已知的同页动作与等待 |
+| `account_manage` | `aifree.account+manage` | 按栏目管理本机账号，读取脱敏信息，使用账号引用填写 |
 
 ## 外部软件栏目工具
 

@@ -507,10 +507,6 @@ html.theme-light #new-browser-window-btn:hover:not(:disabled) {
   box-shadow: 0 3px 10px color-mix(in srgb, var(--shell-accent) 18%, transparent);
 }
 
-.tab.active .tab-title {
-  font-weight: 700;
-}
-
 /* 网络魔法已应用的浏览器标签：紫色流动光效背景。 */
 .tab.network-magic {
   overflow: hidden;

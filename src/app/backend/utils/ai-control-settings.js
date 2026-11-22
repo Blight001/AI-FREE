@@ -6,13 +6,14 @@ function normalizeCustomAiApiConfig(value = {}) {
   const source = value && typeof value === 'object' ? value : {};
   return {
     enabled: source.enabled === true,
-    name: String(source.name || '自定义 API').trim().slice(0, 80) || '自定义 API',
+    name: String(source.name || '').trim().slice(0, 80) || String(source.model || '').trim().slice(0, 80) || '自定义 API',
     baseUrl: String(source.baseUrl || '').trim().slice(0, 2048),
     apiKey: String(source.apiKey || '').trim().slice(0, 4096),
     model: String(source.model || '').trim().slice(0, 200),
     supportsImageInput: source.supportsImageInput === true,
     supportsTools: source.supportsTools !== false,
     supportsReasoning: source.supportsReasoning !== false,
+    streamOutput: source.streamOutput !== false,
     customProtocol: source.customProtocol === true,
     contextWindow: boundedInteger(source.contextWindow, 0, 2000000),
     maxOutputTokens: boundedInteger(source.maxOutputTokens, 0, 2000000),
@@ -67,6 +68,7 @@ function toPublicCustomAiApiConfig(config = {}) {
     supportsImageInput: normalized.supportsImageInput,
     supportsTools: normalized.supportsTools,
     supportsReasoning: normalized.supportsReasoning,
+    streamOutput: normalized.streamOutput,
     customProtocol: normalized.customProtocol,
     contextWindow: normalized.contextWindow,
     maxOutputTokens: normalized.maxOutputTokens,

@@ -1,5 +1,6 @@
   function applySession(session) {
     state.currentSession = session || null;
+    state.modelSelectionFromHistory = Boolean(session);
     state.messages = Array.isArray(session?.messages) ? [...session.messages] : [];
     const modelSelect = el('ai-chat-model');
     if (modelSelect && session?.modelId) {
@@ -11,6 +12,7 @@
     }
     updateSessionTitleUi();
     renderConversation();
+    resetAiChatScroll();
     renderHistoryList();
     syncSendState();
   }
@@ -212,6 +214,8 @@
     if (!options.skipSave && currentMessages().length) {
       await persistCurrentSession();
     }
+    state.modelSelectionFromHistory = false;
+    selectDefaultAiModel();
     state.currentSession = {
       id: makeSessionId(),
       title: '新对话',
@@ -224,9 +228,11 @@
     };
     state.messages = [];
     state.lastQuotaCost = null;
+    renderQuota(state.quota);
     setStatus('');
     updateSessionTitleUi();
     renderWelcome();
+    resetAiChatScroll();
     await refreshHistoryList();
     syncSendState();
     el('ai-chat-input')?.focus();

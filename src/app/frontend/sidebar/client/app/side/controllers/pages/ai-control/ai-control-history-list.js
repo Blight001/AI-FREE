@@ -116,6 +116,7 @@
   function createHistoryActions(session) {
     const actions = document.createElement('div');
     actions.className = 'ai-select-option-actions';
+    actions.appendChild(createHistoryPinButton(session));
     for (const action of ['rename', 'delete']) {
       const isRename = action === 'rename';
       const button = document.createElement('button');
@@ -133,6 +134,24 @@
       actions.appendChild(button);
     }
     return actions;
+  }
+
+  function createHistoryPinButton(session) {
+    const pinned = Boolean(session.pinnedAt);
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'ai-select-option-action ai-select-option-pin';
+    button.title = pinned ? '取消置顶' : '置顶对话';
+    button.dataset.historyPinId = String(session.id);
+    button.setAttribute('aria-label', button.title);
+    button.setAttribute('aria-pressed', String(pinned));
+    button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 9V4l1-1H7l1 1v5a3 3 0 0 1-3 3v2h14v-2a3 3 0 0 1-3-3zM12 14v7"/></svg>';
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      void toggleHistoryPin(session, button);
+    });
+    return button;
   }
 
   function createHistoryItem(session, currentId, shell) {
@@ -155,64 +174,51 @@
     if (showDraft) menu.appendChild(createDraftHistoryButton(shell));
     if (!sessions.length && !showDraft) {
       menu.appendChild(createEmptyHistoryButton());
-      renderRecentHistory();
       return;
     }
     sessions.forEach((session) => menu.appendChild(createHistoryItem(session, currentId, shell)));
-    renderRecentHistory();
   }
 
-  function createRecentHistoryButton(session) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'ai-chat-recent-item';
-
-    const copy = document.createElement('span');
-    copy.className = 'ai-chat-recent-copy';
-    const title = document.createElement('span');
-    title.className = 'ai-chat-recent-title';
-    title.textContent = session.title || '新对话';
-
-    const meta = document.createElement('span');
-    meta.className = 'ai-chat-recent-meta';
-    meta.textContent = [formatRelativeTime(session.updatedAt), session.preview]
-      .filter(Boolean)
-      .join(' · ') || '历史对话';
-
-    copy.append(title, meta);
-    button.appendChild(copy);
-    button.addEventListener('click', () => {
-      if (!state.loading) void loadSessionById(session.id);
-    });
-    return button;
+  function sortHistorySummaries(items) {
+    return items.sort((a, b) => (Number(b.pinnedAt) || 0) - (Number(a.pinnedAt) || 0)
+      || (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0));
   }
 
-  function renderRecentHistory() {
-    const welcome = el('ai-chat-messages')?.querySelector('.ai-chat-welcome');
-    if (!welcome) return;
-    welcome.querySelector('.ai-chat-recent')?.remove();
-    const currentId = String(state.currentSession?.id || '');
-    const sessions = (Array.isArray(state.sessionList) ? state.sessionList : [])
-      .filter((session) => String(session?.id || '') !== currentId)
-      .slice(0, 5);
-    if (!sessions.length) {
-      return;
+  function applyHistoryPin(id, pinnedAt, focused) {
+    state.sessionList = sortHistorySummaries(state.sessionList.map((item) => String(item.id) === id ? { ...item, pinnedAt } : item));
+    renderHistoryList();
+    if (focused) {
+      Array.from(el('ai-chat-history-menu')?.querySelectorAll('[data-history-pin-id]') || [])
+        .find((item) => item.dataset.historyPinId === id)?.focus();
     }
+  }
 
-    const recent = document.createElement('section');
-    recent.className = 'ai-chat-recent';
-    recent.setAttribute('aria-label', '最近聊天');
-    const heading = document.createElement('span');
-    heading.className = 'ai-chat-recent-heading';
-    heading.textContent = '最近聊天';
-    const count = document.createElement('small');
-    count.textContent = `${sessions.length} 条`;
-    heading.appendChild(count);
-    const list = document.createElement('div');
-    list.className = 'ai-chat-recent-list';
-    sessions.forEach((session) => list.appendChild(createRecentHistoryButton(session)));
-    recent.append(heading, list);
-    welcome.appendChild(recent);
+  function readUpdatedHistoryPin(result, id, pinned) {
+    if (result?.ok) return result.data.pinnedAt;
+    const pinnedAt = pinned ? Date.now() : 0;
+    if (result?.error?.code === 'AI_HISTORY_NOT_FOUND' && setLocalHistoryPin(id, pinnedAt)) return pinnedAt;
+    throw new Error(result?.error?.message || '未能保存对话置顶状态');
+  }
+
+  const pendingHistoryPins = new Set();
+  async function toggleHistoryPin(session, button) {
+    const id = String(session.id);
+    const scope = historyLocalScope();
+    const pendingId = JSON.stringify([scope, id]);
+    if (pendingHistoryPins.has(pendingId)) return;
+    pendingHistoryPins.add(pendingId);
+    const pinned = !session.pinnedAt;
+    try {
+      await state.historySaveChains.get(id);
+      if (historyLocalScope() !== scope) return;
+      const result = await window.aiFree.ai.historyPin({ id, pinned });
+      if (historyLocalScope() !== scope) return;
+      applyHistoryPin(id, readUpdatedHistoryPin(result, id, pinned), document.activeElement === button);
+    } catch (error) {
+      setStatus(error?.message || '未能保存对话置顶状态', 'warning');
+    } finally {
+      pendingHistoryPins.delete(pendingId);
+    }
   }
 
   function mergeSessionLists(primary, secondary) {
@@ -221,10 +227,10 @@
       if (!item?.id) return;
       const prev = map.get(item.id);
       if (!prev || (Number(item.updatedAt) || 0) >= (Number(prev.updatedAt) || 0)) {
-        map.set(item.id, item);
+        map.set(item.id, prev ? { ...item, pinnedAt: prev.pinnedAt } : item);
       }
     });
-    return Array.from(map.values()).sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0));
+    return sortHistorySummaries(Array.from(map.values()));
   }
 
   async function refreshHistoryList() {
@@ -280,6 +286,7 @@
       messages,
       createdAt: state.currentSession.createdAt || Date.now(),
       updatedAt: Date.now(),
+      pinnedAt: Number(state.sessionList.find((item) => item.id === state.currentSession.id)?.pinnedAt) || 0,
       ...extra,
     };
   }

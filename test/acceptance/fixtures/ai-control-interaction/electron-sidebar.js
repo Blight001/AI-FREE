@@ -25,6 +25,7 @@ const { createAiWorkspaceService } = ai('ai-workspace-service');
 
 const CONNECTION = 'interaction-fixture';
 const RED_PATH = 'source-red/sample.png';
+const TEXT_PATH = 'approval-notes.txt';
 const ARTIFACT = '.ai-chat-message-artifact';
 const APPROVAL = '#ai-chat-upload-confirmation';
 const DOWNLOAD_PROMPT = 'Fetch red fixture';
@@ -169,10 +170,10 @@ async function initial(ui, doubles, history) {
 }
 
 async function approval(ui, doubles, title, message, answer) {
-  doubles.nextAction('upload', { path: RED_PATH, selector: '#fixture-file' }, answer);
+  doubles.nextAction('upload', { path: TEXT_PATH, selector: '#fixture-file' }, answer);
   await ui.send(message);
   await ui.visible(APPROVAL, title);
-  await ui.visible(APPROVAL, RED_PATH);
+  await ui.visible(APPROVAL, TEXT_PATH);
 }
 
 async function reopen(ui, doubles) {
@@ -189,6 +190,7 @@ async function reopen(ui, doubles) {
   assert.equal(doubles.modelRequests(), 0);
 
   Object.assign(doubles.tab, { title: 'B - Upload target', url: fixture.urls.b, pageToken: 'b-document' });
+  await fs.writeFile(path.join(fixture.workspace, TEXT_PATH), 'Test notes');
   await approval(ui, doubles, doubles.tab.title, 'Cancel the upload', 'Upload cancelled.');
   assert.equal(doubles.uploads.length, 0);
   await ui.click('#ai-chat-confirmation-cancel');
@@ -204,16 +206,17 @@ async function reopen(ui, doubles) {
   assert.equal(doubles.uploads.length, 0);
 
   doubles.tab.pageToken = 'b-document';
-  await approval(ui, doubles, doubles.tab.title, 'Select the file on B', 'File selection checked.');
-  await ui.click('#ai-chat-confirmation-accept');
+  doubles.nextAction('upload', { path: RED_PATH, selector: '#fixture-file' }, 'File selection checked.');
+  await ui.send('Select the image on B');
   await ui.visible('.ai-chat-answer', 'File selection checked.');
+  assert.equal(await ui.has(APPROVAL), false);
   assert.equal(doubles.outcomes.at(-1).uploadVerification, 'file_selected');
   assert.deepEqual(doubles.uploads, [{ target: doubles.tab.title, path: fixture.files.red.path }]);
 
   doubles.dropResult();
   const priorRequests = doubles.modelRequests();
-  await approval(ui, doubles, doubles.tab.title, 'Lose the upload response');
-  await ui.click('#ai-chat-confirmation-accept');
+  doubles.nextAction('upload', { path: RED_PATH, selector: '#fixture-file' });
+  await ui.send('Lose the upload response');
   await ui.visible('.ai-chat-answer', '上传结果待核验');
   assert.equal(doubles.uploads.length, 2);
   assert.equal(doubles.modelRequests(), priorRequests + 1);

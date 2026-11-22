@@ -70,7 +70,7 @@ html.browser-settings-page .settings-container {
 
 
 .settings-container { width: 100%; max-width: var(--content-max); margin: 0 auto; padding: 8px 2px 24px; box-sizing: border-box; }
-.browser-default-settings-btn { min-height: 36px; padding: 0 14px; border: 1px solid rgba(91, 116, 153, .52); border-radius: 9px; color: #c7d6e9; background: rgba(29, 38, 53, .8); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+.browser-default-settings-btn { min-height: 36px; padding: 0 14px; border: 1px solid rgba(91, 116, 153, .52); border-radius: 9px; color: #c7d6e9; background: rgba(29, 38, 53, .8); font: inherit; font-size: 14px; cursor: pointer; }
 .browser-default-settings-btn:hover { border-color: var(--brand); color: #fff; }
 
 .browser-settings-dialog-panel { display: flex; flex-direction: column; width: 720px; padding: 0; overflow: hidden; border: 1px solid rgba(91, 116, 153, .46); border-radius: 16px; background: #151b25; box-shadow: 0 24px 70px rgba(0, 0, 0, .48); }

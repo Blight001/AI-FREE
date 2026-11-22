@@ -74,6 +74,7 @@ function registerBootstrapIPC(deps) {
       httpClient: deps.resolveGlobalHttpClient(),
       extensionManager: deps.extensionManager,
       providerAccountVault: deps.providerAccountVault,
+      aiModelConfig: deps.aiModelConfig,
       browserAutomationBridge: deps.browserAutomationBridge,
       externalCodexLink: deps.externalCodexLink,
       loadTranslateExtension: deps.loadTranslateExtension,

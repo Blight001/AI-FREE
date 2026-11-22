@@ -111,6 +111,7 @@ function createAndRegisterAccountServices(deps, ipc) {
 function createAndRegisterAiServices(deps, ipc) {
   const aiSupport = createAiSupportService({
     readStoreConfigSafe: deps.readStoreConfigSafe,
+    aiModelConfig: deps.aiModelConfig,
     computeDeviceId: deps.computeDeviceId,
     licenseCache: deps.licenseCache,
     getGlobalHttpClient: deps.getGlobalHttpClient,
@@ -143,6 +144,7 @@ function createAndRegisterAiServices(deps, ipc) {
     ipc,
     historyRepository: createAiChatHistoryRepository(),
     getCredentials: () => deps.readStoreConfigSafe()?.userCredentials || {},
+    getSidebar: () => deps.getSideView?.()?.webContents,
   });
 }
 

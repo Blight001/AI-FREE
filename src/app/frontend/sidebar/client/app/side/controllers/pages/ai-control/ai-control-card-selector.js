@@ -34,7 +34,7 @@
     event.preventDefault();
     if (item.disabled) return;
     const next = String(item.dataset.value ?? '');
-    if (context.select.value !== next) {
+    if (context.select.value !== next || context.shell.dataset.aiSelect === 'model') {
       context.select.value = next;
       context.select.dispatchEvent(new Event('change', { bubbles: true }));
     } else {

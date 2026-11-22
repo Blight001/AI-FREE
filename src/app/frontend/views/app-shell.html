@@ -556,7 +556,7 @@
           <dialog id="home-custom-model-dialog" data-home-panel="home-model-settings" aria-labelledby="home-custom-model-title">
             <form id="home-custom-model-form" method="dialog" class="home-model-dialog-form">
               <header><h2 id="home-custom-model-title">添加模型</h2><button type="button" data-model-dialog-close aria-label="关闭">×</button></header>
-              <label>显示名称<input id="home-model-name" type="text" maxlength="80" required></label>
+              <label>显示名称<input id="home-model-name" type="text" maxlength="80" placeholder="留空时使用模型名称"></label>
               <label>API 地址<input id="home-model-base-url" type="url" maxlength="2048" placeholder="https://api.openai.com/v1" required></label>
               <label>API Key<input id="home-model-api-key" type="password" maxlength="4096" autocomplete="off" placeholder="可留空；编辑时留空保留已保存的 Key"></label>
               <div class="home-model-discovery"><button id="home-model-discover" type="button">获取模型列表</button><span id="home-model-discovery-status" role="status"></span></div>
@@ -566,6 +566,7 @@
                 <label><input id="home-model-tools" type="checkbox" checked>工具调用</label>
                 <label><input id="home-model-images" type="checkbox">图片输入</label>
                 <label><input id="home-model-reasoning" type="checkbox">思考模式</label>
+                <label><input id="home-model-stream-output" type="checkbox" checked>流式输出</label>
                 <label><input id="home-model-custom-protocol" type="checkbox">发送推理协议字段</label>
               </fieldset>
               <div class="home-model-limits">

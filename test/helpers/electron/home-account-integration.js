@@ -8,6 +8,7 @@ const { rendererProbe, poll } = require('../flows/electron-controls');
 const { clickHomeBackdrop, visitBrowserAndReturn } = require('./home-dialog-scope');
 const { registerUiIPC } = require('../../../src/app/backend/ipc/register/ui');
 const { createIpcRegistry } = require('../../../src/app/backend/ipc/registry');
+const { checkAiPreferences, checkAiScroll } = require('./ai-control-preferences');
 
 function bindAccountRouting(win, sidebar) {
   const events = new Map();
@@ -40,9 +41,13 @@ async function chooseModelTokenLimits(shell) {
     const context = document.getElementById('home-model-context-window-preset');
     const output = document.getElementById('home-model-max-output-preset');
     const input = document.getElementById('home-model-max-output');
+    const stream = document.getElementById('home-model-stream-output');
     if (!(context instanceof HTMLSelectElement) || !(output instanceof HTMLSelectElement) || !(input instanceof HTMLInputElement)) {
       throw new Error('Missing model token limit controls');
     }
+    if (!(stream instanceof HTMLInputElement)) throw new Error('Missing model streaming control');
+    const streamDefault = stream.checked;
+    stream.click();
     const defaults = [context.value, output.value];
     context.value = '131072';
     context.dispatchEvent(new Event('change', { bubbles: true }));
@@ -51,9 +56,9 @@ async function chooseModelTokenLimits(shell) {
     input.value = '123.5';
     const fractionRejected = input.validity.stepMismatch;
     input.value = '12345';
-    return { defaults, fractionRejected, visible: input.getBoundingClientRect().height > 0, valid: input.willValidate && input.validity.valid };
+    return { defaults, streamDefault, fractionRejected, visible: input.getBoundingClientRect().height > 0, valid: input.willValidate && input.validity.valid };
   });
-  assert.deepEqual(customState, { defaults: ['', ''], fractionRejected: true, visible: true, valid: true });
+  assert.deepEqual(customState, { defaults: ['', ''], streamDefault: true, fractionRejected: true, visible: true, valid: true });
 }
 
 async function checkModelTokenLimitsReopen(shell) {
@@ -67,11 +72,12 @@ async function checkModelTokenLimitsReopen(shell) {
       outputVisible: input.getBoundingClientRect().height > 0,
       outputValidated: input.willValidate,
       contextValidated: context.willValidate,
+      stream: /** @type {HTMLInputElement} */ (document.getElementById('home-model-stream-output')).checked,
     };
   };
   await shell(() => document.getElementById('home-model-list').querySelector('button').click());
   assert.deepEqual(await shell(readLimits), {
-    presets: ['131072', 'custom'], output: '12345', outputVisible: true, outputValidated: true, contextValidated: false,
+    presets: ['131072', 'custom'], output: '12345', outputVisible: true, outputValidated: true, contextValidated: false, stream: false,
   });
   await shell(() => {
     const cancel = document.querySelector('#home-custom-model-dialog footer [data-model-dialog-close]');
@@ -79,7 +85,7 @@ async function checkModelTokenLimitsReopen(shell) {
     document.getElementById('home-model-add').click();
   });
   assert.deepEqual(await shell(readLimits), {
-    presets: ['', ''], output: '', outputVisible: false, outputValidated: false, contextValidated: false,
+    presets: ['', ''], output: '', outputVisible: false, outputValidated: false, contextValidated: false, stream: true,
   });
   await shell(() => {
     const cancel = document.querySelector('#home-custom-model-dialog footer [data-model-dialog-close]');
@@ -347,7 +353,7 @@ async function checkSharedAvatar(shell) {
   await checkAvatar(original);
 }
 
-async function checkHomeAccountIntegration(win, layout, setSession) {
+async function checkHomeAccountIntegration(win, layout, setSession, enableAiPreferences) {
   const sidebar = new WebContentsView({ webPreferences: { contextIsolation: true,
     preload: path.join(layout.root, 'src/app/backend/preload.js') } });
   win.contentView.addChildView(sidebar);
@@ -378,6 +384,11 @@ async function checkHomeAccountIntegration(win, layout, setSession) {
     assert.equal(await ai(() => (/** @type {HTMLTextAreaElement} */ (document.querySelector('textarea#ai-chat-input'))).value), draft);
     await checkSharedAvatar(shell);
     await checkVipAndAnnouncements(win, layout, shell, setSession);
+    enableAiPreferences();
+    const reload = () => sidebar.webContents.loadFile(layout.pages.ai);
+    await reload();
+    await checkAiPreferences(ai, reload);
+    await checkAiScroll(ai);
   } finally {
     dispose();
     win.contentView.removeChildView(sidebar);

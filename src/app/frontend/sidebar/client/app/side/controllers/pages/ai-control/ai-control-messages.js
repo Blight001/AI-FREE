@@ -247,7 +247,7 @@
   }
 
   function appendMessage(role, content, options = {}) {
-    const container = el('ai-chat-messages');
+    const container = el('ai-chat-message-list');
     if (!container) return null;
     if (role === 'tool' || role === 'system') return null;
     if (role === 'assistant' && !hasAssistantMessageContent(content, options)) return null;
@@ -273,7 +273,6 @@
       attachUserBubbleActions(row, content, messageIndex);
     }
     container.appendChild(row);
-    container.scrollTop = container.scrollHeight;
     return row;
   }
 
@@ -313,20 +312,19 @@
 
   function renderWelcome() {
     if (typeof syncWorkspaceDraftSession === 'function') syncWorkspaceDraftSession();
-    const container = el('ai-chat-messages');
+    const container = el('ai-chat-message-list');
     if (!container) return;
     container.innerHTML = '';
     const welcome = document.createElement('div');
     welcome.className = 'ai-chat-welcome';
     welcome.appendChild(createWelcomeHero());
     container.appendChild(welcome);
-    renderRecentHistory();
     updateSessionTitleUi();
   }
 
   function renderConversation() {
     if (typeof syncWorkspaceDraftSession === 'function') syncWorkspaceDraftSession();
-    const container = el('ai-chat-messages');
+    const container = el('ai-chat-message-list');
     if (!container) return;
     container.innerHTML = '';
     const messages = currentMessages();

@@ -89,6 +89,7 @@ test('自定义 API 配置可识别且公开配置不会泄露 API Key', () => {
     supportsImageInput: false,
     supportsTools: true,
     supportsReasoning: true,
+    streamOutput: true,
     customProtocol: false,
     contextWindow: 0,
     maxOutputTokens: 0,

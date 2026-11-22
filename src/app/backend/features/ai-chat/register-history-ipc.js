@@ -1,6 +1,8 @@
 'use strict';
 
-function registerAiHistoryIpc({ ipc, historyRepository, getCredentials }) {
+const { AppError, wrapIpcResult } = require('../../../contracts/ipc-result');
+
+function registerAiHistoryIpc({ ipc, historyRepository, getCredentials, getSidebar }) {
   ipc.handle('ai-control-history-list', async () => {
     try {
       return historyRepository.listSessions(getCredentials());
@@ -50,6 +52,13 @@ function registerAiHistoryIpc({ ipc, historyRepository, getCredentials }) {
       return { ok: false, message: error?.message || String(error) };
     }
   });
+  return ipc.handle('ai-control-history-pin', wrapIpcResult((event, { id, pinned }) => {
+    const sidebar = getSidebar?.();
+    if (!sidebar || sidebar.isDestroyed?.() || event.sender !== sidebar || event.senderFrame !== sidebar.mainFrame) {
+      throw new AppError('FORBIDDEN', '仅 AI 控制侧栏可以设置对话置顶');
+    }
+    return historyRepository.setSessionPinned(getCredentials(), id, pinned);
+  }, { fallbackCode: 'AI_HISTORY_PIN_WRITE_FAILED' }));
 }
 
 module.exports = { registerAiHistoryIpc };

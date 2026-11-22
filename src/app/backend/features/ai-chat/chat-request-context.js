@@ -70,11 +70,12 @@ function createIdentityRecovery(deps) {
 }
 
 function resolveChatAccess(deps, input) {
-  const store = deps.readStoreConfigSafe();
   const modelId = String(input.modelId || '').trim();
-  return isCustomAiModelId(modelId)
-    ? resolveCustomAccess(store, modelId)
-    : resolveBuiltinAccess(deps, store, input, modelId);
+  if (isCustomAiModelId(modelId)) {
+    const modelStore = deps.aiModelConfig ? deps.aiModelConfig.readStore() : deps.readStoreConfigSafe();
+    return resolveCustomAccess(modelStore, modelId);
+  }
+  return resolveBuiltinAccess(deps, deps.readStoreConfigSafe(), input, modelId);
 }
 
 function normalizeChatOptions(input) {
@@ -149,6 +150,7 @@ function prepareChatRequest(deps, event, input, chatRuns, getWindowTools) {
   const options = normalizeChatOptions(input);
   options.initialMessages = buildInlineAttachmentMessages(deps.aiSandboxDir, options.initialMessages);
   if (access.useCustomApi && !access.customApi.supportsTools) options.disableTools = true;
+  if (access.useCustomApi && access.customApi.streamOutput === false) options.streamOutput = false;
   const resolvedConnections = resolveConnections(deps, options);
   if (resolvedConnections.error) return resolvedConnections;
   const resolvedCards = resolveAutomationCards(deps, options);

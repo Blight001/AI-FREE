@@ -7,6 +7,7 @@ const {
   createChatEmitter,
   createIdentityRecovery,
   normalizeChatOptions,
+  prepareChatRequest,
   resolveAutomationCards,
   resolveChatAccess,
   resolveConnections,
@@ -33,6 +34,17 @@ test('流式文字默认开启，显式关闭时仍保留对话事件通道', ()
   assert.equal(normalizeChatOptions({ stream: true }).streamOutput, true);
   assert.equal(normalizeChatOptions({ stream: true, streamOutput: false }).streamOutput, false);
   assert.equal(normalizeChatOptions({ stream: true }).useStream, true);
+});
+
+test('流式输出按当前自定义模型配置决定，旧配置缺少该项时仍开启', () => {
+  const id = '__custom_openai_api__';
+  const model = { id, enabled: true, baseUrl: 'https://models.example.test', model: 'sample' };
+  const deps = { aiModelConfig: { readStore: () => ({ aiControlSettings: { customApis: [model] } }) } };
+  const prepare = () => prepareChatRequest(deps, {}, { modelId: id, stream: true }, {}, () => null);
+  assert.equal(prepare().streamOutput, true);
+  model.streamOutput = false;
+  assert.equal(prepare().streamOutput, false);
+  assert.equal(prepare().useStream, true);
 });
 
 test('内置模型要求登录和服务可用，自定义模型要求完整配置', () => {

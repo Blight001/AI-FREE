@@ -207,7 +207,6 @@
       localInteraction: true,
       automationCardId: '',
       stream: true,
-      streamOutput: state.streamOutput,
       requestId: run.requestId,
       attachmentPaths: run.attachmentPaths,
       artifactReferences: run.artifactReferences || [],

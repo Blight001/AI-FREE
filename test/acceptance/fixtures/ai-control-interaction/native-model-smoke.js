@@ -40,7 +40,7 @@ function chatClient(fixture, bridge, browserConnectionId) {
     const event = { sender: { id: 1, isDestroyed: () => false, send(_channel, message) {
       if (message.type !== 'upload_confirmation') return;
       approval = message;
-      service.decide(event, { requestId, id: message.id, accepted: true });
+      service.decide(event, { requestId, id: message.id, accepted: false });
     } } };
     const result = await service.chat(event, { requestId, modelId: CUSTOM_AI_MODEL_ID, stream: true, localInteraction: true,
       messages: [{ role: 'user', content: prompt }], attachmentPaths: options.paths, artifactReferences: options.artifacts,
@@ -81,7 +81,7 @@ async function exerciseCandidate(fixture, manager, bridge) {
   assert.equal(artifact.sha256, fixture.files.red.sha256);
   await manager.importSession(connection.profileId, { targetUrl: fixture.urls.dropOnce });
   const { result: selected, approval } = await chat('QA SELECT B', { paths: [artifact.path], artifacts: [artifact] });
-  assert.deepEqual(approval?.files, [artifact.path], `${selected.message.content} ${JSON.stringify(selected.message.tool_events)}`);
+  assert.equal(approval, null, `${selected.message.content} ${JSON.stringify(selected.message.tool_events)}`);
   const state = await selectedState(fixture);
   assert.equal(state.b.lastSelected.sha256, artifact.sha256);
   assert.equal(state.b.receivedCount, 0);
