@@ -1,8 +1,8 @@
 'use strict';
 
 const { collectConnectionTools } = require('./chat-tool-context');
-const { browserSessionTool, guardedBrowserRoute, recordChatTabResult, resolvePageGuard, routeFailure } = require('./chat-browser-target');
-const { PAGE_BATCH_TOOL, executeChatPageBatch } = require('./chat-page-batch');
+const { guardedBrowserRoute, recordChatTabResult, requiresChatPageGuard, resolvePageGuard, routeFailure } = require('./chat-browser-target');
+const { PAGE_BATCH_TOOL } = require('../../services/browser-page-batch');
 const { dispatchChatUpload } = require('./chat-browser-upload');
 const { recoverChatUpload } = require('./chat-upload-recovery');
 const { commandMetadata, executeLocalCommand, isLocalCommand, visibleCommandOutput } = require('./chat-local-command');
@@ -10,6 +10,7 @@ const { createDownloadArtifact, verifyWorkspaceArtifactSync } = require('./ai-wo
 const { mcpToolResult } = require('../../services/mcp-tool-result');
 const {
   browserReference,
+  isBrowserOverview,
   normalizeToolError,
   resolveBrowserConnection,
   resolveDispatchTimeout,
@@ -43,6 +44,9 @@ function resolvePluginTarget(args, connections, describeConnections, controlledC
 }
 
 async function dispatchPluginTool(context, toolName, args) {
+  if (isBrowserOverview(toolName, args) && context.bridge?.getBrowserOverview) {
+    return context.waitForAbort(context.bridge.getBrowserOverview(sanitizeBrowserRoutingArgs(args)));
+  }
   const target = resolvePluginTarget(
     args,
     context.connections,
@@ -64,9 +68,17 @@ async function dispatchPluginTool(context, toolName, args) {
   return dispatchSelectedBrowser(context, target.connection, toolName, dispatchArgs, resolveDispatchTimeout(toolName, args));
 }
 
+function dispatchPageBatch(context, connectionId, args, timeoutMs, guard) {
+  return context.bridge.dispatch(connectionId, PAGE_BATCH_TOOL.name, args, {
+    timeoutMs, expectedPageToken: guard?.pageToken, signal: context.signal,
+    hasInsertedMessages: context.hasInsertedMessages, reportBatchProgress: context.reportBatchProgress,
+    waitForAbort: context.waitForAbort,
+  });
+}
+
 async function dispatchSelectedBrowser(context, connection, toolName, args, timeoutMs) {
   const local = context.localInteraction;
-  const guardRequired = local && toolName !== 'browser_tab' && !browserSessionTool(toolName, args);
+  const guardRequired = requiresChatPageGuard(context, connection.id, toolName, args);
   const target = guardRequired ? await context.waitForAbort(resolvePageGuard(context, connection, toolName, args)) : null;
   if (target && !target.ok) return routeFailure(target.error.code, target.error.message);
   const guard = target?.data;
@@ -74,9 +86,7 @@ async function dispatchSelectedBrowser(context, connection, toolName, args, time
     timeoutMs, allowAppSurface: !local, signal: context.signal,
     ...(guard ? { expectedPageToken: guard.pageToken } : {}),
   });
-  if (toolName === PAGE_BATCH_TOOL.name) {
-    return executeChatPageBatch(context, connection, args, dispatch);
-  }
+  if (toolName === PAGE_BATCH_TOOL.name) return dispatchPageBatch(context, connection.id, args, timeoutMs, guard);
   if (local && toolName === 'browser_file' && String(args.action).trim().toLowerCase() === 'upload') {
     const result = await dispatchChatUpload({ ...context, boundTarget: guard }, connection.id, args, dispatch);
     return recoverChatUpload(context, guard, result);
@@ -107,6 +117,14 @@ function normalizeToolFailure(error, toolName) {
 function prepareToolResult(toolResult, toolName) {
   const failed = toolResult?.success === false || toolResult?.ok === false;
   if (!failed) return { failed: false, result: toolResult, failure: '' };
+  const structuredError = toolResult?.error;
+  if (toolResult?.ok === false && typeof structuredError?.code === 'string' && typeof structuredError?.message === 'string') {
+    return { failed: true, result: toolResult, failure: structuredError.message };
+  }
+  return prepareLegacyFailure(toolResult, toolName);
+}
+
+function prepareLegacyFailure(toolResult, toolName) {
   const failure = String(toolResult?.error || toolResult?.message || `${toolName} 执行失败`);
   return {
     failed: true,
@@ -143,7 +161,13 @@ function appendReadyConnectionTools(context, connection) {
   if (!Array.isArray(context.toolDefinitions)) return;
   const known = new Set(context.toolDefinitions.map((tool) => String(tool?.name || '')));
   const ready = collectConnectionTools([connection], context.windowTools, context.localInteraction);
-  context.toolDefinitions.push(...ready.filter((tool) => !known.has(tool.name)));
+  for (const tool of ready) {
+    if (!known.has(tool.name)) context.toolDefinitions.push(tool);
+    else if (tool.name === 'browser_control') {
+      const index = context.toolDefinitions.findIndex((existing) => existing.name === tool.name);
+      context.toolDefinitions[index] = tool;
+    }
+  }
 }
 
 function readyWindowConnection(context, toolResult) {

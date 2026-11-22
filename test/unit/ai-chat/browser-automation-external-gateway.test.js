@@ -21,7 +21,7 @@ function createFixture(root, overrides = {}) {
       destructive: true,
     }],
     has: (name) => name === 'software_window',
-    execute: async (name, args) => ({ success: true, name, args }),
+    execute: overrides.executeSoftware || (async (name, args) => ({ success: true, name, args })),
   };
   const connections = overrides.connections || [{
     id: 'connection-1',
@@ -303,4 +303,36 @@ test('external gateway serves the Streamable HTTP MCP JSON-RPC contract', async 
     await new Promise((resolve) => server.close(resolve));
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+
+test('closing an MCP HTTP request cancels the running software tool', { timeout: 3000 }, async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-external-abort-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  let start;
+  const started = new Promise((resolve) => { start = resolve; });
+  let finish;
+  const finished = new Promise((resolve) => { finish = resolve; });
+  const { gateway } = createFixture(root, { executeSoftware: async (_name, _args, options) => {
+    start(options?.signal);
+    if (!options?.signal) return { success: false };
+    return new Promise((resolve) => options.signal.addEventListener('abort', () => {
+      finish(true);
+      resolve({ success: false });
+    }, { once: true }));
+  } });
+  const server = http.createServer((req, res) => gateway.handle(req, res, new URL(req.url, 'http://127.0.0.1')));
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(undefined)));
+  const address = server.address();
+  assert.ok(address && typeof address !== 'string');
+  const request = http.request({ host: '127.0.0.1', port: address.port, method: 'POST', path: '/mcp/v1',
+    headers: { Authorization: 'Bearer ' + gateway.token } });
+  request.on('error', () => {});
+  t.after(() => { request.destroy(); });
+  request.end(JSON.stringify({ jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'software_window' } }));
+  const signal = await started;
+  assert.ok(signal instanceof AbortSignal);
+  request.destroy();
+  assert.equal(await finished, true);
 });

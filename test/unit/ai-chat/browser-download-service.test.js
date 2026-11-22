@@ -236,3 +236,24 @@ test('browser download forwards proxyUrl to the network fetch', async () => {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('native reference download commits the resource name and cleans its isolated staging directory', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-reference-download-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const service = createBrowserDownloadService({ sandboxDir: root });
+  const bytes = Buffer.from('fixture-reference-bytes');
+  const result = await service.downloadElement({ timeout_ms: 1000 }, async (temporaryPath) => {
+    fs.writeFileSync(`${temporaryPath}.png`, bytes);
+    return { success: true, resourceUrl: 'http://fixture.test/assets/og.png', stagingExtension: '.png' };
+  });
+  assert.equal(result.file_name, 'og.png');
+  assert.deepEqual(fs.readFileSync(result.absolute_path), bytes);
+  assert.deepEqual(fs.readdirSync(root), ['og.png']);
+
+  const blocked = await service.downloadElement({ timeout_ms: 1000 }, async (temporaryPath) => {
+    fs.writeFileSync(`${temporaryPath}.png.crdownload`, Buffer.alloc(0));
+    return { success: false, errorCode: 'ELEMENT_DOWNLOAD_START_FAILED' };
+  }, { preserveNativeFailure: true });
+  assert.equal(blocked.errorCode, 'ELEMENT_DOWNLOAD_START_FAILED');
+  assert.deepEqual(fs.readdirSync(root), ['og.png']);
+});

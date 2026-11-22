@@ -22,7 +22,7 @@ async function runSidebarPhases(t, phases) {
   }
 }
 
-test('Electron sidebar binds, previews, restores history and handles upload decisions', { timeout: 70000 },
+test('Electron sidebar binds, previews, restores history and uploads JSON and PNG directly', { timeout: 70000 },
   (t) => runSidebarPhases(t, ['initial', 'reopen']));
 
 test('Real Chromium reload invalidates an in-progress operation and the next turn downloads and previews without manual binding', {

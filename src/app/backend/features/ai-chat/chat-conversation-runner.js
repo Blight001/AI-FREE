@@ -264,7 +264,6 @@ async function executeToolRound(state, result, toolCalls, round) {
   const content = String(result.message?.content || '').trim();
   if (content) state.traceEvents.push({ type: 'step', round, content });
   const execution = await executeToolCalls({
-    approval: state.run?.approval,
     artifacts: state.artifacts,
     artifactReferences: state.artifactReferences,
     browserTargets: state.browserTargets,

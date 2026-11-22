@@ -28,6 +28,14 @@ function withBrowserRouteParam(tool = {}, description) {
   };
 }
 
+function isBrowserOverview(toolName, args) {
+  return toolName === 'browser_control' && String(args.action || '').trim().toLowerCase() === 'overview';
+}
+
+function isBrowserNavigationWait(toolName, args) {
+  return toolName === 'browser_wait' && args.condition === 'url_matches' && !args.selector && !args.ref;
+}
+
 function browserReference(args = {}) {
   return String(args.change_browser ?? args.browser_id ?? args.browser_name ?? args.browser ?? '').trim();
 }
@@ -108,6 +116,8 @@ module.exports = {
   addBrowserRouteToSchema,
   browserReference,
   findConnectionByReference,
+  isBrowserOverview,
+  isBrowserNavigationWait,
   normalizeToolError,
   normalizeToolSchema,
   resolveBrowserConnection,

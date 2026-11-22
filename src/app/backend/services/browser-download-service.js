@@ -191,6 +191,20 @@ async function hashFile(targetPath) {
   return hash.digest('hex');
 }
 
+async function snapshotUploadPaths(paths) {
+  const snapshots = [];
+  let totalSize = 0;
+  for (const absolutePath of paths) {
+    const { size } = await fs.promises.stat(absolutePath);
+    totalSize += size;
+    if (totalSize > MAX_ALLOWED_BYTES) {
+      throw Object.assign(new Error('待上传文件超过工作区上传大小限制'), { code: 'UPLOAD_STAGING_LIMIT' });
+    }
+    snapshots.push({ absolutePath, size, sha256: await hashFile(absolutePath) });
+  }
+  return snapshots;
+}
+
 async function waitForNativeDownload(targetPath, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   let stableSize = -1;
@@ -208,10 +222,22 @@ async function waitForNativeDownload(targetPath, timeoutMs) {
   throw new Error('Chromium 元素下载超时');
 }
 
-function nativeDownloadName(input) {
-  if (input.filename) return sanitizeFileName(input.filename);
+function nativeDownloadName(requestedName, resourceUrl) {
+  if (requestedName) return sanitizeFileName(requestedName);
+  try {
+    const url = normalizeUrl(resourceUrl);
+    const resourceName = decodeURIComponent(url.pathname.split('/').pop() || '');
+    if (path.extname(resourceName)) return sanitizeFileName(resourceName);
+  } catch (_) {}
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  return sanitizeFileName(`image-element-${timestamp}.bin`);
+  return `image-element-${timestamp}.bin`;
+}
+
+function nativeStagingFile(stagingPath, extension = '') {
+  if (extension !== '' && !/^\.[a-z0-9]{1,16}$/i.test(extension)) {
+    throw new Error('Chromium 返回了无效的元素下载临时文件后缀');
+  }
+  return stagingPath + extension;
 }
 
 async function writeJsonAtomic(targetPath, value, overwrite) {
@@ -275,31 +301,37 @@ function createBrowserDownloadService(options = {}) {
     const timeoutMs = Math.min(300000, Math.max(1000, Number(input.timeout_ms) || 120000));
     const maxBytes = Math.min(MAX_ALLOWED_BYTES, Math.max(1, Number(input.max_bytes) || DEFAULT_MAX_BYTES));
     const directory = resolveTargetDirectory(sandboxDir, input.directory);
-    const targetPath = availableTarget(directory.target, nativeDownloadName(input), input.overwrite === true);
-    const stagingPath = path.join(directory.target, `.${path.basename(targetPath)}.${process.pid}.${crypto.randomBytes(5).toString('hex')}.native-download`);
+    // Native and legacy kernels may use different suffixes. Keep all their
+    // intermediate files within a directory owned by this one download.
+    const stagingDirectory = await fs.promises.mkdtemp(path.join(directory.target, '.native-download-'));
+    const stagingPath = path.join(stagingDirectory, 'resource.native-download');
     try {
       const nativeResult = await trigger(stagingPath);
       if (nativeResult?.success === false) {
         if (preserveNativeFailure) return nativeResult;
         throw new Error(nativeResult.error || 'Chromium 未能启动元素下载');
       }
-      const stat = await waitForNativeDownload(stagingPath, timeoutMs);
+      const { stagingExtension, ...download } = nativeResult || {};
+      const temporaryFile = nativeStagingFile(stagingPath, stagingExtension);
+      const stat = await waitForNativeDownload(temporaryFile, timeoutMs);
       if (stat.size > maxBytes) throw new Error(`下载文件超过大小限制 ${maxBytes} bytes`);
-      const sha256 = await hashFile(stagingPath);
-      await commitTempFile(stagingPath, targetPath, input.overwrite === true);
+      const sha256 = await hashFile(temporaryFile);
+      const fileName = nativeDownloadName(input.filename, download.resourceUrl);
+      const targetPath = availableTarget(directory.target, fileName, input.overwrite === true);
+      await commitTempFile(temporaryFile, targetPath, input.overwrite === true);
       return {
-        ...nativeResult, success: true, action: 'download_element',
+        ...download, success: true, action: 'download_element',
         file_name: path.basename(targetPath), relative_path: path.relative(sandboxDir, targetPath),
         absolute_path: targetPath, size: stat.size, sha256,
       };
     } finally {
-      await fs.promises.rm(stagingPath, { force: true }).catch(() => {});
-      await fs.promises.rm(`${stagingPath}.crdownload`, { force: true }).catch(() => {});
+      await fs.promises.rm(stagingDirectory, { recursive: true, force: true, maxRetries: 3 });
     }
   }
 
   return {
     resolveUploadPaths: (values) => resolveUploadFiles(sandboxDir, values),
+    snapshotUploadPaths,
     downloadElement,
     execute: async (input = {}, context = {}) => {
       const action = String(input.action || 'download').trim().toLowerCase();

@@ -1,6 +1,6 @@
 # AI-FREE MCP 工具清单
 
-实际目录随浏览器连接、软件功能和入口变化。Chromium 已连接且本机账号工具可用时，外部与侧栏各列出 14 项（侧栏包含环境配置意图时）。两端的完整对照、差异和验收顺序见 [MCP 双入口一致性审计与计划](mcp-entry-parity.md)。
+实际目录随浏览器连接、软件功能和入口变化。Chromium 已连接且本机账号工具可用时，外部与侧栏各列出 15 项（侧栏包含环境配置意图时）。两端的完整对照、差异和验收顺序见 [MCP 双入口一致性审计与计划](mcp-entry-parity.md)。
 
 开发者模式下打开 **首页 → MCP 管理** 可查看当前目录、连接条件、JSON Schema、示例提示词及 JSON-RPC 请求和模拟返回。查看示例不会调用工具、读取会话或展示实际模型 Prompt。AI 对话不再受旧的累计 MCP 调用次数设置限制；停止、超时和单批异常请求保护保留。
 
@@ -12,9 +12,9 @@
 | 浏览器高级环境 | 1 | 外部常驻，侧栏随环境/指纹/代理等配置意图注入 | [`ai-browser-window-tools.js`](../src/app/backend/services/ai-browser-window-tools.js) |
 | AI 工作区命令 | 1 | 软件运行期间始终可用 | [`ai-sandbox-file-tools.js`](../src/app/backend/services/ai-sandbox-file-tools.js) |
 | 本机账号 | 1 | 本机账号库可用 | [`provider-account-tools.js`](../src/app/backend/features/account/provider-account-tools.js) |
-| 浏览器自动化 | 10 | 页面工具需要已握手的内置 Chromium；外部网关可在未连接时执行 `browser_control overview` | [`native-browser-tool-definitions.js`](../src/app/backend/services/native-browser-tool-definitions.js) |
+| 浏览器自动化 | 11 | 页面工具需要已握手的内置 Chromium。两个入口均可在未连接时执行 `browser_control overview` | [`native-browser-tool-definitions.js`](../src/app/backend/services/native-browser-tool-definitions.js) |
 
-内置和外部入口使用下表中的本地工具名。外部目录公开 `browser_workflow`，侧栏提供 `browser_page_batch`。连接 HeySure 后，支持注册的设备工具带 `aifree.` 前缀。设备服务以实际外部目录为输入，注册时转换工具名。
+内置和外部入口使用下表中的本地工具名。两个入口均提供 `browser_workflow` 和 `browser_page_batch`。连接 HeySure 后，支持注册的设备工具带 `aifree.` 前缀。设备服务以实际外部目录为输入，注册时转换工具名。
 
 | 本地工具名 | 既有 HeySure 名称示例 | 用途 |
 | --- | --- | --- |
@@ -31,8 +31,14 @@
 | `browser_wait` | `aifree.browser+wait` | 等待元素、文本或 URL 条件成立，或等待指定时间 |
 | `browser_control` | `aifree.browser+control` | 浏览器总览以及页面接管、状态检查和释放 |
 | `browser_workflow` | `aifree.browser+workflow` | 执行、暂停、恢复及诊断多步自动化流程 |
-| `browser_page_batch` | — | 侧栏执行参数已知的同页动作与等待 |
+| `browser_page_batch` | — | 执行参数已知的同页动作与等待 |
 | `account_manage` | `aifree.account+manage` | 按栏目管理本机账号，读取脱敏信息，使用账号引用填写 |
+
+### 按引用批量导入账号
+
+用 `account_manage` 的 `categories` 获取目标 `provider`。调用 `action=import` 时传入该栏目 ID 和 `command`，可选 `directory`（工作区相对目录）和 `shell`（`default`、`cmd`、`powershell`）。AI 根据用户指定的数据来源编写本机转换命令。命令沿用 `run_command` 的权限和工作目录规则，标准输出为 UTF-8 JSON 数组，每项恰含字符串 `email`（邮箱或栏目允许的用户名）和 `password`。
+
+通过字段名、计数或合成示例判断格式。凭据在本机转换和账号库之间传递，命令参数只包含转换逻辑和非敏感路径。标准输出和错误输出均不进入工具回执。每批最多 200 条且标准输出最多 64 KiB，超限可分批。导入失败或在写入前取消时整批不写入。账号库一次加密提交，已有账号自动跳过，回执只包含 `imported` 和 `duplicates`。无需额外确认。
 
 ## 外部软件栏目工具
 
@@ -105,15 +111,18 @@ Cookie 属于登录会话数据，不属于 `browser_environment.settings` 的�
 
 ### `browser_file`
 
+侧栏的页面绑定路径当前支持 `download_element`、`upload` 和 `save_session`。同一工具中的软件、会话和设备操作受各入口能力约束，详见 [全工具对照](mcp-entry-parity.md#全工具对照)。
+
 - 作用：`download` 下载 HTTP/HTTPS 文件；`upload` 把 AI 工作区中的本地文件上传到当前页面；`save_session` 保存当前标签页 Cookie、`localStorage` 和 `sessionStorage`；`info` 返回 AI 工作区路径。
 - 默认目录：`download` 写入安装目录下的 `AI-Workspace` 根目录；`save_session` 默认写入 `AI-Workspace/sessions`。
 - 子目录：`directory` 只接受 AI 工作区内相对路径，例如 `downloads/models`；拒绝绝对路径、`..` 逃逸和指向工作区外的链接目录。
 - 下载参数：`url`、`filename`、`media_type`、`transport`、`use_cookies`、`overwrite`、`timeout_ms`、`max_bytes`、`tab_id`、`ref`/`element`、`x`/`y`。媒体下载应将 `browser_observe` 返回的 `category` 传给 `media_type`；`transport` 可取 `auto`、`browser`、`software`。
-- 元素下载：`action=download_element` 接受最近一次 `browser_observe` 的 `ref`（也接受 `element` 别名）或视口 `x`/`y`。旧 Chromium 若未实现 `download-element`，会回退为对 `mediaUrl`/`downloadUrl` 的软件下载。
+- 元素下载：`action=download_element` 接受最近一次 `browser_observe` 的 `ref`（也接受 `element` 别名）或视口 `x`/`y`。成功回执中的 `pageClickDispatched: false` 表明工具直接保存了资源。旧 Chromium 若未实现 `download-element`，会回退为对 `mediaUrl`/`downloadUrl` 的软件下载。
+- 网页下载流程：站点要求点击下载按钮、记录下载或解锁后续步骤时，用 `browser_action` 的 `click` 点击真实入口。对照点击前后的 `browser_control` `overview` 确认 AI-Workspace 新文件和实际名称。上传后以网页预览或站点收件回执确认成功。`file_selected` 只确认浏览器处理了文件选择。
 - 软件下载网络：`action=download` 使用当前 Chromium 的 Cookie、页面 Referer，以及该 Profile 的代理（Clash/网络魔法）。不要绕过代理直连 `assets.grok.com` 等外网 CDN。没有 `url` 但带了 `ref` 或坐标时，按 `download_element` 处理。
 - 上传参数：本机调用使用 `path` 或 `paths` 指定 AI 工作区文件；HeySure 远程调用还可使用当前数字成员服务器工作区的 `file_ref` 或 `file_refs`。AI-FREE 会通过 HeySure 创建默认 5 分钟临时链接，下载并校验后物化到本机 `AI-Workspace/Incoming/<task_id>/`。两类参数不能混用。使用 `selector` 或 `ref` 定位页面文件输入控件；多文件可设置 `mode=open-multiple`。
 - 上传目标：`action=upload` 把工作区文件放入当前网页文件控件；`action=upload_to_server` 直接把 `path` 指定的 AI 工作区文件上传到 HeySure 成员工作区并返回 `file_ref`，不经过网页。兼容旧调用：`action=download`、`url=file:///...` 且 `save_to_server=true` 时按 `upload_to_server` 处理。
-- 会话参数：`filename`、`directory`、`overwrite`、`tab_id`。保存结果只返回路径和 Cookie 数量，不把 Cookie 原文放入聊天结果。
+- 会话导出使用当前活动标签，支持 `filename`、`directory` 和 `overwrite`。外部 MCP 与侧栏都要求已加载的 HTTP(S) 页面及支持文档绑定会话导出的 Chromium。目标文档失效时返回 `BROWSER_TARGET_CHANGED`。遇到 `BROWSER_RUNTIME_UPDATE_REQUIRED` 时需要更新内核。工具回执只包含文件元数据和 Cookie 数量。同名文件默认追加编号。需要精确文件名时可指定独立子目录，并以 `file_name` 回填。
 - Cookie 规则：`use_cookies` 默认开启，但只发送与目标 URL 域名、路径、Secure 属性和有效期匹配的 Cookie；重定向后会重新匹配，不向其它域泄漏。
 - 网络边界：禁止 localhost、`.local`、IPv4/IPv6 私网、链路本地、组播和保留地址。每次重定向都重新解析，并将实际连接固定到已审核 IP，防止 DNS 重绑定。
 - 写入规则：先写同目录随机 `.part` 文件，再原子提交；默认不覆盖同名文件。默认大小上限 250 MiB、硬上限 1 GiB。

@@ -25,9 +25,8 @@ const { createAiWorkspaceService } = ai('ai-workspace-service');
 
 const CONNECTION = 'interaction-fixture';
 const RED_PATH = 'source-red/sample.png';
-const TEXT_PATH = 'approval-notes.txt';
+const PROFILE_PATH = 'settings-profile.json';
 const ARTIFACT = '.ai-chat-message-artifact';
-const APPROVAL = '#ai-chat-upload-confirmation';
 const DOWNLOAD_PROMPT = 'Fetch red fixture';
 const DOWNLOAD_ANSWER = 'The red fixture is ready.';
 
@@ -63,7 +62,8 @@ function createDoubles() {
       }
       assert.equal(args.action, 'upload');
       assert.equal(options.expectedPageToken, 'b-document');
-      assert.deepEqual(args.paths, [fixture.files.red.path]);
+      assert.equal(args.paths.length, 1);
+      assert.ok([fixture.files.red.path, path.join(fixture.workspace, PROFILE_PATH)].includes(args.paths[0]));
       uploads.push({ target: tab.title, path: args.paths[0] });
       if (loseUploadResult) throw new Error('Fixture transport lost the upload result');
       return { success: true, action: 'upload' };
@@ -169,13 +169,6 @@ async function initial(ui, doubles, history) {
   }), 'persisted title and artifact digest');
 }
 
-async function approval(ui, doubles, title, message, answer) {
-  doubles.nextAction('upload', { path: TEXT_PATH, selector: '#fixture-file' }, answer);
-  await ui.send(message);
-  await ui.visible(APPROVAL, title);
-  await ui.visible(APPROVAL, TEXT_PATH);
-}
-
 async function reopen(ui, doubles) {
   await ui.visible('button[aria-label="新建对话"]');
   await ui.click('#ai-chat-history-trigger');
@@ -190,35 +183,26 @@ async function reopen(ui, doubles) {
   assert.equal(doubles.modelRequests(), 0);
 
   Object.assign(doubles.tab, { title: 'B - Upload target', url: fixture.urls.b, pageToken: 'b-document' });
-  await fs.writeFile(path.join(fixture.workspace, TEXT_PATH), 'Test notes');
-  await approval(ui, doubles, doubles.tab.title, 'Cancel the upload', 'Upload cancelled.');
-  assert.equal(doubles.uploads.length, 0);
-  await ui.click('#ai-chat-confirmation-cancel');
-  await ui.visible('.ai-chat-answer', 'Upload cancelled.');
-  assert.equal(doubles.outcomes.at(-1).errorCode, 'UPLOAD_NOT_CONFIRMED');
-  assert.equal(doubles.uploads.length, 0);
-
-  await approval(ui, doubles, doubles.tab.title, 'Replace the document during approval', 'Target checked.');
-  doubles.tab.pageToken = 'b-replacement-document';
-  await ui.click('#ai-chat-confirmation-accept');
-  await ui.visible('.ai-chat-answer', 'Target checked.');
-  assert.equal(doubles.outcomes.at(-1).errorCode, 'BROWSER_TARGET_CHANGED');
-  assert.equal(doubles.uploads.length, 0);
-
-  doubles.tab.pageToken = 'b-document';
+  const profile = path.join(fixture.workspace, PROFILE_PATH);
+  await fs.writeFile(profile, '{"theme":"dark"}');
+  assert.equal(await ui.evaluate(() => document.querySelector('[aria-label="上传确认"]')), null);
+  doubles.nextAction('upload', { path: PROFILE_PATH, selector: '#fixture-file' }, 'Profile selected.');
+  await ui.send('Select the settings profile on B');
+  await ui.visible('.ai-chat-answer', 'Profile selected.');
+  assert.equal(doubles.outcomes.at(-1).uploadVerification, 'file_selected');
+  assert.deepEqual(doubles.uploads, [{ target: doubles.tab.title, path: profile }]);
   doubles.nextAction('upload', { path: RED_PATH, selector: '#fixture-file' }, 'File selection checked.');
   await ui.send('Select the image on B');
   await ui.visible('.ai-chat-answer', 'File selection checked.');
-  assert.equal(await ui.has(APPROVAL), false);
   assert.equal(doubles.outcomes.at(-1).uploadVerification, 'file_selected');
-  assert.deepEqual(doubles.uploads, [{ target: doubles.tab.title, path: fixture.files.red.path }]);
+  assert.deepEqual(doubles.uploads.map(({ path: uploaded }) => uploaded), [profile, fixture.files.red.path]);
 
   doubles.dropResult();
   const priorRequests = doubles.modelRequests();
   doubles.nextAction('upload', { path: RED_PATH, selector: '#fixture-file' });
   await ui.send('Lose the upload response');
   await ui.visible('.ai-chat-answer', '上传结果待核验');
-  assert.equal(doubles.uploads.length, 2);
+  assert.equal(doubles.uploads.length, 3);
   assert.equal(doubles.modelRequests(), priorRequests + 1);
 
   await ui.click('#ai-chat-history-trigger');
@@ -255,7 +239,16 @@ async function checkHistoryLayout(ui) {
 async function exerciseRealSidebar(ui, history) {
   const prompt = 'QA DOWNLOAD RED';
   await ui.send(prompt);
-  await ui.visible('.ai-chat-answer', 'The fixture sequence stopped.');
+  try {
+    await ui.visible('.ai-chat-answer', 'The fixture sequence stopped.');
+  } catch (error) {
+    const results = history.sessions().flatMap(({ id }) => (history.readSession(id)?.messages || [])
+      .filter(({ role }) => role === 'tool').map(({ name, content }) => {
+        const { errorCode, error: message } = JSON.parse(content);
+        return { name, errorCode, message };
+      }));
+    assert.fail(`${error.message}\nFixture tool outcomes: ${JSON.stringify(results)}`);
+  }
   assert.equal(await ui.has(ARTIFACT), false);
   await ui.until(() => history.sessions().some(({ id }) => history.readSession(id)?.messages.some((message) =>
     message.role === 'tool' && message.name === 'browser_control' && message.content.includes('BROWSER_TARGET_CHANGED'))),

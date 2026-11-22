@@ -15,7 +15,6 @@ const INVOKE_CHANNELS = [
   { channel: 'ai-control-chat', kind: 'invoke', domain: 'ai', registrar: 'src/app/backend/features/ai-chat/register-chat-ipc.js', requestSchema: 'ai.chat' },
   { channel: 'ai-control-chat-insert', kind: 'invoke', domain: 'ai', registrar: 'src/app/backend/features/ai-chat/register-chat-ipc.js', requestSchema: 'ai.chat-insert' },
   { channel: 'ai-control-chat-stop', kind: 'invoke', domain: 'ai', registrar: 'src/app/backend/features/ai-chat/register-chat-ipc.js', requestSchema: 'ai.chat-stop' },
-  { channel: 'ai-control-chat-approval', kind: 'invoke', domain: 'ai', registrar: 'src/app/backend/features/ai-chat/register-chat-ipc.js', requestSchema: 'ai.chat-approval' },
   { channel: 'ai-control-get-automation-cards', kind: 'invoke', domain: 'ai', registrar: 'src/app/backend/features/ai-chat/register-support-ipc.js' },
   { channel: 'ai-control-get-browser-connections', kind: 'invoke', domain: 'ai', registrar: 'src/app/backend/features/ai-chat/register-support-ipc.js' },
   { channel: 'ai-control-workflow', kind: 'invoke', domain: 'ai', registrar: 'src/app/backend/features/ai-chat/register-support-ipc.js', requestSchema: 'ai.workflow' },

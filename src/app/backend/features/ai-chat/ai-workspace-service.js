@@ -165,27 +165,17 @@ function createDownloadArtifact({ toolName, action, result, toolCallId }) {
   });
 }
 
-const IMAGE_HEADER_BYTES = 16;
-const IMAGE_HEADERS = Object.freeze({
-  'image/gif': /^(474946383761|474946383961)/,
-  'image/jpeg': /^ffd8ff/,
-  'image/png': /^89504e470d0a1a0a0000000d49484452/,
-  'image/webp': /^52494646[0-9a-f]{8}57454250565038(20|4c|58)/,
-});
-
-function fileSnapshot({ absolutePath, path: relativePath, stat, sha256, identity, prefix }) {
-  const { mimeType } = fileKind(relativePath);
-  const isRasterImage = IMAGE_HEADERS[mimeType]?.test(prefix.toString('hex')) === true;
-  return { absolutePath, path: relativePath, size: stat.size, sha256, identity, isRasterImage };
+function fileSnapshot({ absolutePath, path: relativePath, stat, sha256, identity }) {
+  return { absolutePath, path: relativePath, size: stat.size, sha256, identity };
 }
 
 function inspectWorkspaceFileSync(workspaceDir, relativePath) {
-  return fileSnapshot(inspectWorkspaceFile(workspaceRoot(workspaceDir), relativePath, null, IMAGE_HEADER_BYTES));
+  return fileSnapshot(inspectWorkspaceFile(workspaceRoot(workspaceDir), relativePath));
 }
 
 function verifyWorkspaceArtifactSync(workspaceDir, reference) {
   const artifact = assertFileArtifact(reference);
-  return fileSnapshot(inspectWorkspaceFile(workspaceRoot(workspaceDir), artifact.path, artifact, IMAGE_HEADER_BYTES));
+  return fileSnapshot(inspectWorkspaceFile(workspaceRoot(workspaceDir), artifact.path, artifact));
 }
 
 function importSelectedFiles(root, selectedPaths) {

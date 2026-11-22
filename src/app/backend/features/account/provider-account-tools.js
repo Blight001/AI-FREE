@@ -2,6 +2,7 @@
 
 const { AppError, fail, ok } = require('../../../contracts/ipc-result');
 const { fillProviderCredential } = require('./provider-credential-fill');
+const { importProviderAccounts } = require('./provider-account-import');
 
 const fieldText = (maxLength) => ({ type: 'string', maxLength });
 const provider = fieldText(64);
@@ -18,6 +19,10 @@ const actions = {
   categories: action('列出账号栏目和栏目 ID。'),
   list: action('按栏目读取脱敏账号和引用 ID。', { provider }),
   add: action('打开本机新增表单，由用户填写并保存。', { provider }),
+  import: action('将用户指定的工作区数据批量录入现有栏目。由你根据来源格式编写本机转换命令，stdout 只输出 UTF-8 JSON 数组，每项仅含字符串 email 和 password。请勿把真实凭据放进命令参数、对话或临时文件。探查格式时只输出计数、字段名或合成示例，避免用 run_command 或工作区总览回显敏感文件名。已有账号自动跳过，仅返回计数。', {
+    provider, command: fieldText(20000), directory: fieldText(512),
+    shell: { type: 'string', enum: ['default', 'cmd', 'powershell'] },
+  }, ['provider', 'command']),
   update: action('提供非敏感 note 时更新备注，省略时打开本机表单更换凭据。', { ...accountRef, note: fieldText(2048) }, ['provider', 'id']),
   delete: action('请求本机确认后将账号移入回收站。', accountRef),
   trash: action('读取回收站中脱敏的账号和回收记录 ID。'),
@@ -64,6 +69,13 @@ function validateInput(schema, input) {
   ));
 }
 
+function parseAccountRequest(name, input) {
+  if (name !== TOOL_NAME || !input || typeof input !== 'object' || Array.isArray(input)) return null;
+  const { action: selected, ...args } = input;
+  if (typeof selected !== 'string' || !Object.hasOwn(actions, selected) || !validateInput(actions[selected], args)) return null;
+  return { selected, args };
+}
+
 function maskLogin(value) {
   const [local, domain] = String(value).split('@');
   const prefix = local.length > 2 ? Array.from(local)[0] : '';
@@ -87,7 +99,7 @@ async function removeAccountWithApproval(vault, confirm, { provider, id }, signa
   return vault.remove(provider, id);
 }
 
-function createProviderAccountTools({ vault, bridge, runtime, confirm, openEditor, onChanged }) {
+function createProviderAccountTools({ vault, bridge, runtime, confirm, openEditor, onChanged, runImportCommand = undefined }) {
   const handlers = {
     categories: () => ({ categories: vault.listCategories() }),
     list: (input) => ({ accounts: vault.list(input.provider).map(maskedAccount) }),
@@ -105,6 +117,10 @@ function createProviderAccountTools({ vault, bridge, runtime, confirm, openEdito
       return changed({ account: maskedAccount(vault.updateNote(input.provider, input.id, input.note)) });
     },
     delete: async (input, signal) => changed({ deleted: await removeAccountWithApproval(vault, confirm, input, signal) }),
+    import: async (input, signal) => {
+      const result = await importProviderAccounts(vault, runImportCommand, input, signal);
+      return result.imported ? changed(result) : result;
+    },
     trash: () => ({ accounts: vault.listTrash().map(({ id, email, provider, category, deletedAt }) => ({
       ...maskedAccount({ id, email }), provider, category, deletedAt,
     })) }),
@@ -127,15 +143,11 @@ function createProviderAccountTools({ vault, bridge, runtime, confirm, openEdito
     has: (name) => name === TOOL_NAME,
     /** @param {Record<string, unknown>} [input] */
     async execute(name, input = {}, options = undefined) {
-      if (name !== TOOL_NAME || !input || typeof input !== 'object' || Array.isArray(input)) {
-        return fail(new AppError('ACCOUNT_INVALID_INPUT', '账号操作参数无效'));
-      }
-      const { action: selected, ...args } = input;
-      if (typeof selected !== 'string' || !Object.hasOwn(actions, selected) || !validateInput(actions[selected], args)) {
-        return fail(new AppError('ACCOUNT_INVALID_INPUT', '账号操作参数无效'));
-      }
+      const request = parseAccountRequest(name, input);
+      if (!request) return fail(new AppError('ACCOUNT_INVALID_INPUT', '账号操作参数无效'));
+      const { selected, args } = request;
       try {
-        options?.signal?.throwIfAborted();
+        if (selected !== 'import') options?.signal?.throwIfAborted();
         return ok(await handlers[selected](args, options?.signal));
       } catch (error) {
         return fail(error instanceof AppError ? error : new AppError('ACCOUNT_OPERATION_FAILED', '账号操作失败，请检查本机账号库与浏览器状态'));

@@ -136,7 +136,7 @@ async function executeStep(host, connection, session, prepared, config, deadline
   catch (error) { return { ...prepared, result: errorResult(error, executed), executed }; }
   let after;
   let difference;
-  executed = result.success === false ? 'unknown' : true;
+  executed = result.success === false ? (result.actionExecuted ?? 'unknown') : true;
   if (result.success !== false) {
     if (args.wait_for_stable !== false && Number(args.timeout_ms ?? 5000) > 0) {
       session.status = 'waiting';

@@ -33,7 +33,8 @@ test('目录提供当前工具的参数、提示词、模拟协议返回和连�
   const result = handle(event);
   assert.equal(result.ok, true);
   const { tools } = result.data;
-  assert.equal(new Set(tools.map(({ name }) => name)).size, 13);
+  assert.equal(new Set(tools.map(({ name }) => name)).size, tools.length);
+  assert.ok(tools.some(({ name }) => name === 'browser_page_batch'));
   for (const { name, inputSchema, sample } of tools) {
     assert.ok(sample.prompt);
     assert.equal(sample.request.params.name, name);

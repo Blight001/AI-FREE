@@ -62,6 +62,48 @@ test('MCP exposes one account tool and rejects invalid actions without side effe
   assert.deepEqual(vault.listTrash(), []);
 });
 
+test('MCP imports local converter output atomically without exposing it or replacing existing accounts', async (t) => {
+  let notifications = 0;
+  const newLogin = 'new_user@example.test';
+  const newPassword = 'fixture_new.password';
+  const args = { provider: 'google', command: 'fixture converter', directory: 'auth/HK', shell: 'powershell' };
+  let stdout = JSON.stringify([{ email: username, password: 'replacement' }, { email: newLogin, password: newPassword }]);
+  const { execute, vault, ref } = setup(t, {
+    runImportCommand: async (input, { onProgress }) => {
+      assert.deepEqual(input, { command: args.command, directory: args.directory, shell: args.shell });
+      assert.equal(onProgress, undefined);
+      return { success: true, stdout, stderr: newPassword };
+    },
+    onChanged: () => { notifications += 1; },
+  });
+  assert.deepEqual(await execute('import', args), { ok: true, data: { imported: 1, duplicates: 1 } });
+  const added = vault.list(ref.provider).find(({ email }) => email === newLogin);
+  assert.equal(vault.getPassword(ref.provider, added.id), newPassword);
+  assert.equal(vault.getPassword(ref.provider, ref.id), password);
+  assert.deepEqual(await execute('import', args), { ok: true, data: { imported: 0, duplicates: 2 } });
+  stdout = JSON.stringify([{ email: 'would-write@example.test', password }, { email: newPassword }]);
+  const rejected = await execute('import', args);
+  assert.equal(rejected.error.code, 'ACCOUNT_IMPORT_INVALID_OUTPUT');
+  assert.equal(JSON.stringify(rejected).includes(newPassword), false);
+  assert.equal(notifications, 1);
+  assert.equal(vault.list(ref.provider).length, 2);
+});
+
+test('canceled import does not commit converter output', async (t) => {
+  const stop = new AbortController();
+  const { accountTools, vault } = setup(t, {
+    runImportCommand: async (_input, { signal }) => {
+      assert.equal(signal, stop.signal);
+      stop.abort();
+      return { success: true, stdout: JSON.stringify([{ email: 'new@example.test', password }]) };
+    },
+    onChanged: () => assert.fail('canceled import must not update the vault'),
+  });
+  const result = await accountTools.execute('account_manage', { action: 'import', provider: 'google', command: 'fixture' }, { signal: stop.signal });
+  assert.equal(result.error.code, 'ACCOUNT_IMPORT_CANCELED');
+  assert.equal(vault.list('google').length, 1);
+});
+
 test('account tools expose only masked identities and route new credentials to the local editor', async (t) => {
   const { execute, vault, ref } = setup(t);
   const listed = await execute('list', { provider: 'google' });

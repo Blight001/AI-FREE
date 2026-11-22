@@ -263,6 +263,7 @@ function normalizeDownloadElementPayload(source) {
   return {
     selector, ref: optionalText(source.ref, 128), ...coordinates,
     targetPath, timeoutMs: boundedInteger(source.timeout_ms ?? source.timeout, 120000, 1000, 300000),
+    ...(source.preserveResourceExtension === true ? { preserveResourceExtension: true } : {}),
   };
 }
 

@@ -27,6 +27,10 @@ module.exports = {
     { success: true, action: 'download', file_name: 'example.txt', relative_path: 'example.txt', mime_type: 'text/plain' }],
   browser_media: ['列出当前网页可发现的媒体资源，不下载。', { action: 'list', limit: 10 },
     { success: true, count: 0, media: [] }],
+  browser_page_batch: ['接管并观察后，填写标题并等待预览状态出现。', { steps: [
+    { tool: 'browser_action', arguments: { action: 'type', selector: '#title', text: '示例标题' } },
+    { tool: 'browser_wait', arguments: { selector: '#status', condition: 'text_contains', value: '预览就绪' } },
+  ] }, { success: true, requested: 2, completed: 2, notAttempted: 0 }],
   browser_workflow: ['查看最近的自动化报告，只返回摘要，不包含截图。',
     { action: 'report', include_details: false, include_images: false },
     { success: true, mode: 'automation', status: 'idle', reportCount: 0 }, '没有报告时，仅返回自动化状态。'],

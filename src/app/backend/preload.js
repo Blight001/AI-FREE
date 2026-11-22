@@ -42,7 +42,6 @@ contextBridge.exposeInMainWorld('aiFree', Object.freeze({
     chat: invokeChannel('ai-control-chat'),
     chatInsert: invokeChannel('ai-control-chat-insert'),
     chatStop: invokeChannel('ai-control-chat-stop'),
-    chatApproval: invokeChannel('ai-control-chat-approval'),
     getAutomationCards: invokeChannel('ai-control-get-automation-cards'),
     getBrowserConnections: invokeChannel('ai-control-get-browser-connections'),
     workflow: invokeChannel('ai-control-workflow'),

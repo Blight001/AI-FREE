@@ -27,7 +27,7 @@
 
 账号栏目末尾的加号打开自定义栏目命名弹窗；自定义标签可通过上下文菜单改名或删除，确认删除账号或栏目后，受影响的账号进入回收站。回收站入口在当前栏目的「添加账号」右侧，汇总所有栏目的已删账号，可恢复，彻底删除前需确认，没有自动清理期限。栏目 ID 在改名时保持不变，版本 3 的加密账号库兼容版本 1、2。
 
-账号管理通过单个 `account_manage` MCP 工具提供 `categories`、`list`、`add`、`update`、`delete`、`trash`、`restore`、`purge` 和 `fill` 操作。例如，列出 Google 账号时传 `{"action":"list","provider":"google"}`。已有自动化卡片中的独立账号工具调用须改用 `account_manage` 并设置对应的 `action`，其余参数沿用。模型只读取脱敏账号和引用 ID，可通过引用直接填写已接管的 HTTPS 页面。移入回收站和彻底删除均需本机确认。
+账号管理通过单个 `account_manage` MCP 工具提供 `categories`、`list`、`add`、`import`、`update`、`delete`、`trash`、`restore`、`purge` 和 `fill` 操作。例如，列出 Google 账号时传 `{"action":"list","provider":"google"}`。已有自动化卡片中的独立账号工具调用须改用 `account_manage` 并设置对应的 `action`，其余参数沿用。模型读取脱敏账号和引用 ID，可通过引用直接填写已接管的 HTTPS 页面。批量导入使用 AI 编写的本机转换命令，账号库验证统一记录并一次加密提交，模型只收到计数。移入回收站和彻底删除均需本机确认。
 
 `backend/services/` 尚未完全按业务域收敛，里面同时存在窗口/标签服务、跨域桥接和历史模块。目录名不代表这些模块都是通用服务。新逻辑优先放入 `features/<domain>/`；修改既有模块时先确认真实调用方和生命周期，再决定是否迁移，避免复制出第二份实现。
 

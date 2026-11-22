@@ -10,10 +10,14 @@ const {
 const { waitForBrowserCondition } = require('./native-browser-wait');
 const { browserFile, resolvedFileAction } = require('./native-browser-file');
 const { PAGE_TOKEN, bindPage, bindingFailure, boundToolFailure, expectedPageToken, runtimeBindingFailure } = require('./native-browser-page-binding');
-const { resolveObservedTarget, recoverObservedTarget, rememberObservation } = require('./native-browser-ref-store');
+const {
+  EXTERNAL_OBSERVATIONS, clearObservations, resolveObservedTarget, recoverObservedTarget, rememberObservation,
+} = require('./native-browser-ref-store');
 const { browserMedia } = require('./native-browser-media');
 const { executeBrowserTab } = require('./native-browser-tabs');
+const { PAGE_BATCH_TOOL, executePageBatch } = require('./browser-page-batch');
 const { BrowserWorkflow } = require('./browser-workflow');
+const { requestsWorkflowAction } = require('./browser-workflow-tool-definition');
 const { createBrowserPointerScheduler } = require('../features/browser/browser-pointer-scheduler');
 const { NATIVE_SURFACES } = require('../features/browser/browser-native-pointer');
 const { requestsAccessibility, accessibilityUnavailable, attachScreenshot, actionObservation } = require('./native-browser-feedback');
@@ -174,6 +178,7 @@ class NativeBrowserAutomation {
     this.getBrowserRecords = options.getBrowserRecords;
     this.observeTargets = new Map();
     this.observationHistory = new Map();
+    this.externalObservations = { observeTargets: new Map(), observationHistory: new Map() };
     this.takeoverConnections = new Set();
     this.pointerScheduler = createBrowserPointerScheduler();
     this.workflow = new BrowserWorkflow(this);
@@ -186,6 +191,11 @@ class NativeBrowserAutomation {
     )).map((state) => publicConnection(state, findTab(this.getTabs, state.profileId)));
     this.workflow.prune(connections);
     const onlineIds = new Set(connections.map(({ id }) => id));
+    for (const store of [this, this.externalObservations]) {
+      for (const id of store.observeTargets.keys()) {
+        if (!onlineIds.has(id)) clearObservations(this, id);
+      }
+    }
     for (const id of this.takeoverConnections) {
       if (!onlineIds.has(id)) void this.releasePointerSession(id);
     }
@@ -231,7 +241,10 @@ class NativeBrowserAutomation {
     if (text(args.action) === 'upload_file') throw new Error('文件上传请使用 browser_file action=upload');
     const blocked = fileUploadRequired(this.resolveObservedTarget(connection, args));
     if (blocked) return blocked;
-    return this.workflow.action(connection, args);
+    if (expectedPageToken(connection) && !requestsWorkflowAction(args)) {
+      return this.browserActionRaw(connection, args, signal);
+    }
+    return this.workflow.action(connection, args, signal);
   }
 
   async browserActionRaw(connection, args, signal = undefined) {
@@ -342,10 +355,10 @@ class NativeBrowserAutomation {
     if (tool === 'browser_action') return this.browserAction(connection, input, signal);
     if (tool === 'browser_wait') return this.browserWait(connection, input, signal);
     if (tool === 'browser_tab') return this.browserTab(connection, input);
-    if (tool === 'browser_file') return this.browserFile(connection, input);
+    if (tool === 'browser_file') return this.browserFile(connection, input, signal);
     if (tool === 'browser_media') return browserMedia(this, connection, input);
     if (tool === 'browser_control') return this.browserControl(connection, input);
-    if (tool === 'browser_workflow') return this.workflow.control(connection, input);
+    if (tool === 'browser_workflow') return this.workflow.control(connection, input, signal);
     return null;
   }
 
@@ -370,7 +383,7 @@ class NativeBrowserAutomation {
     const targets = new Map(decorated.items
       .map((item) => observedTarget(item, observationId, { url: decorated.url })).filter(Boolean));
     for (const target of targets.values()) target[PAGE_TOKEN] = expectedPageToken(connection);
-    rememberObservation(this, connection.id, observationId, targets);
+    rememberObservation(this, connection, observationId, targets);
     return attachScreenshot(this, connection, decorated, input);
   }
 
@@ -398,15 +411,22 @@ class NativeBrowserAutomation {
     return { success: true, waitedMs, cardStep: { name: `等待 ${waitedMs}ms`, type: 'wait', timeout: waitedMs } };
   }
 
-  browserFile(connection, args) {
-    return browserFile(this, connection, args);
+  browserFile(connection, args, signal = undefined) {
+    return browserFile(this, connection, args, signal);
   }
 
   async dispatch(connectionId, tool, args = {}, options = {}) {
     const connection = this.requireConnection(connectionId);
+    connection[EXTERNAL_OBSERVATIONS] = options.externalObservations === true;
     const input = args && typeof args === 'object' ? args : {};
     const toolName = normalizeToolName(tool);
+    if (toolName === PAGE_BATCH_TOOL.name) return this.pageBatch(connection, input, options);
     if (options.expectedPageToken !== undefined) return this.dispatchBound(connection, toolName, input, options.expectedPageToken, options.signal);
+    return this.dispatchUnbound(connection, toolName, input, options);
+  }
+
+  dispatchUnbound(connection, toolName, input, options) {
+    const connectionId = connection.id;
     if (appSurfaceDisallowed(input, options)) return appPointerUnavailable();
     const blocked = this.workflow.blocked(connection, toolName, input);
     if (blocked) return blocked;
@@ -417,13 +437,22 @@ class NativeBrowserAutomation {
     if (basicResult) return basicResult;
     if (toolName === 'manage_card' && this.cardService?.execute) {
       return this.cardService.execute(input, {
-        timeoutMs: options.timeoutMs,
+        timeoutMs: options.timeoutMs, signal: options.signal,
         dispatch: (nextTool, nextArgs) => this.executeCardTool
           ? this.executeCardTool(connectionId, nextTool, nextArgs, options)
           : this.dispatch(connectionId, nextTool, nextArgs, options),
       });
     }
     throw new Error(`未知的 Chromium 原生自动化工具: ${text(toolName) || '(空)'}`);
+  }
+
+  pageBatch(connection, input, options) {
+    const token = options.expectedPageToken;
+    if (!token) return bindingFailure('BROWSER_TARGET_REQUIRED', '页面批处理需要有效的页面绑定');
+    const context = { ...options, waitForAbort: options.waitForAbort || ((value) => value) };
+    return executePageBatch(context, connection, input, (args, tool) => this.dispatchBound(
+      connection, tool, tool === 'browser_action' ? { ...args, after: 'none' } : args, token, options.signal,
+    ));
   }
 
   // Keep capability, result and error semantics aligned with external MCP.
@@ -441,9 +470,7 @@ class NativeBrowserAutomation {
     }
     const bound = bindPage(connection, token);
     try {
-      // Workflow retries and diagnostics are not part of the bound action contract.
-      return await (tool === 'browser_action'
-        ? this.browserActionRaw(bound, input, signal) : this.dispatchBasicTool(bound, tool, input, signal));
+      return await this.dispatchBasicTool(bound, tool, input, signal);
     } catch (error) {
       return runtimeBindingFailure(error);
     }

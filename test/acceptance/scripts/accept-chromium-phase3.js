@@ -10,6 +10,7 @@ const { app, BrowserWindow } = require('electron');
 const { createBrowserRuntimeManager } = require('../../../src/app/backend/browser-runtime');
 const { MAX_MESSAGE_BYTES, PROTOCOL_VERSION } = require('../../../src/app/backend/browser-runtime/chromium-command-client');
 const { acceptPageBinding } = require('../../helpers/flows/chromium-page-binding-cases');
+const { acceptMcpFileParity, acceptMcpSessionParity, serveMcpFileFixture } = require('../../helpers/flows/chromium-mcp-file-parity');
 const { verifySidebarReload, verifyTakeoverPointer } = require('../../helpers/flows/chromium-takeover-pointer');
 const { acceptChromiumRobustness } = require('../../helpers/flows/chromium-runtime-robustness');
 const { resolveTestResources } = require('../../helpers/flows/chromium-candidate-resources');
@@ -56,6 +57,7 @@ function createTestServer() {
     });
     response.setHeader('Content-Type', 'text/html; charset=utf-8');
     response.setHeader('Cache-Control', 'no-store');
+    if (serveMcpFileFixture(url, response)) return;
     if (url.pathname === '/tutorial-entry') {
       response.writeHead(302, { Location: '/page?profile=a' });
       response.end();
@@ -118,6 +120,9 @@ function createTestServer() {
         <button type="button" style="position:fixed;left:8px;top:8px;width:180px;height:36px">+ Reference image</button>
         <input id="reference-file" type="file" style="position:fixed;left:8px;top:8px;width:180px;height:36px;opacity:0;cursor:pointer">
         <input id="disabled-reference-file" type="file" disabled style="position:fixed;left:210px;top:8px;width:40px;height:36px;opacity:0">
+        <label for="linked-reference-file" style="position:fixed;left:8px;top:90px;width:36px;height:36px">+</label>
+        <input id="linked-reference-file" type="file" hidden>
+        <a id="attachment-link" href="/asset-one.svg" download="reference.svg" style="position:fixed;left:48px;top:130px">Download reference</a>
         <img id="attachment-image" src="/asset-one.svg" style="position:fixed;left:48px;top:48px;width:32px;height:32px" alt="fixture image">
         <script>
           if (new URL(location.href).searchParams.has('pointer-race')) {
@@ -132,12 +137,14 @@ function createTestServer() {
             fetch('/file-result?name=' + encodeURIComponent(file?.name || '')
               + '&size=' + Number(file?.size || 0) + '&contents=' + encodeURIComponent(text || '')).catch(() => {});
           });
-          document.querySelector('#reference-file').addEventListener('change', async (event) => {
+          for (const id of ['reference-file', 'linked-reference-file']) {
+            document.getElementById(id).addEventListener('change', async (event) => {
             const file = event.target.files[0];
             const text = await file?.text().catch(() => 'read-error');
-            fetch('/reference-result?trusted=' + event.isTrusted + '&name=' + encodeURIComponent(file?.name || '')
+            fetch('/reference-result?id=' + id + '&trusted=' + event.isTrusted + '&name=' + encodeURIComponent(file?.name || '')
               + '&contents=' + encodeURIComponent(text || '')).catch(() => {});
-          });
+            });
+          }
         </script>`);
       return;
     }
@@ -299,7 +306,7 @@ async function launchProfile(profileId, targetUrl, options = {}) {
     geolocationPermission: options.geolocationPermission,
     environmentSettings: options.environmentSettings,
     extraArgs: ['--enable-logging=stderr'],
-  }, { x: 0, y: 41, width: 1180, height: 719 });
+  }, { x: 0, y: 41, width: options.width || 1180, height: 719 });
   assert.equal(state.status, 'ready');
   assert.equal(state.bridgeConnected, true);
   assert(state.sessionId && state.browserHwnd);
@@ -424,15 +431,27 @@ app.whenReady().then(async () => {
     return shutdown(0);
   }
 
+  if (process.argv.includes('--session-export-only')) {
+    const profileId = 'phase3_session_export';
+    const url = `${origin}/mcp-session-fixture`;
+    const { state } = await launchProfile(profileId, url, { width: 520 });
+    const workspace = path.join(runtimeRoot, 'AI-Workspace');
+    await acceptMcpSessionParity({ manager, profileId, url, workspace });
+    await stopAndAssertReleased(profileId, state.pid);
+    return shutdown(0);
+  }
+
   if (process.argv.includes('--page-binding-only')) {
     const profileId = 'phase3_binding';
     const url = `${origin}/file-input?profile=b`;
-    const { state } = await launchProfile(profileId, url);
+    const { state } = await launchProfile(profileId, url, { width: 520 });
     const workspace = path.join(runtimeRoot, 'AI-Workspace');
     fs.mkdirSync(workspace, { recursive: true });
     const uploadPath = path.join(workspace, 'page-binding.txt');
     fs.writeFileSync(uploadPath, 'page-binding acceptance');
     await acceptPageBinding({ manager, pid: state.pid, profileId, url, uploadPath, requests, waitForRequest });
+    await acceptMcpFileParity({ manager, profileId, url: `${origin}/mcp-reference-composer`, workspace, requests });
+    await acceptMcpSessionParity({ manager, profileId, url: `${origin}/mcp-session-fixture`, workspace });
     await stopAndAssertReleased(profileId, state.pid);
     return shutdown(0);
   }

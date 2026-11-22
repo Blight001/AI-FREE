@@ -7,7 +7,6 @@ const path = require('node:path');
 const { test } = require('node:test');
 const { resolveConnections } = require('../../../src/app/backend/features/ai-chat/chat-request-context');
 const { captureChatTarget } = require('../../../src/app/backend/features/ai-chat/chat-browser-target');
-const { createChatRunRegistry } = require('../../../src/app/backend/features/ai-chat/chat-run-registry');
 const { CONFIRMED_UPLOAD_FILES } = require('../../../src/app/backend/browser-runtime/chromium-upload-staging');
 const { dispatchChatUpload } = require('../../../src/app/backend/features/ai-chat/chat-browser-upload');
 
@@ -120,24 +119,9 @@ test('the local sidebar reloads a selected tab and binds input to the new docume
   assert.equal((await dispatchPluginTool(context, 'browser_action', { action: 'click', selector: '#go' })).success, true);
 });
 
-test('approval belongs to one request and renderer and cannot be replayed', async () => {
-  const registry = createChatRunRegistry();
-  const owner = { sender: { id: 1 } };
-  const stranger = { sender: { id: 2 } };
-  const { run } = registry.begin(owner, 'turn');
-  const pending = run.approval.request('operation', () => {});
-  assert.equal(registry.decide(stranger, 'turn', 'operation', true).ok, false);
-  assert.equal(registry.decide(owner, 'turn', 'operation', true).ok, true);
-  assert.equal(await pending, true);
-  assert.equal(registry.decide(owner, 'turn', 'operation', true).ok, false);
-  const cancelled = run.approval.request('operation-2', () => {});
-  registry.stop(owner, 'turn');
-  assert.equal(await cancelled, false);
-});
-
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aVbcAAAAASUVORK5CYII=', 'base64');
 
-function uploadContext(t, decide, contents = 'original') {
+function uploadContext(t, contents = PNG) {
   const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-upload-check-'));
   const file = path.join(workspaceDir, 'tile.png');
   fs.writeFileSync(file, contents);
@@ -148,13 +132,11 @@ function uploadContext(t, decide, contents = 'original') {
   return {
     workspaceDir, uploadState: { unverified: false }, boundTarget: { connectionId: 'a', pageToken: 'page' },
     bridge: { getConnection: () => ({ id: 'a', name: 'A' }), dispatch: async () => ({ activeTab: { pageToken: 'page' } }) },
-    approval: { request: async (_id, notify) => { notify(); return decide(file); } },
-    emit: () => {},
   };
 }
 
 test('an image upload goes straight to the bound page with a verified file snapshot', async (t) => {
-  const context = uploadContext(t, () => assert.fail('must not ask for image approval'), PNG);
+  const context = uploadContext(t);
   const result = await dispatchChatUpload(context, 'a', { path: 'tile.png', selector: '#reference' }, async (args) => {
     const [snapshot] = args[CONFIRMED_UPLOAD_FILES];
     assert.deepEqual(args.paths, [path.join(context.workspaceDir, 'tile.png')]);
@@ -167,34 +149,44 @@ test('an image upload goes straight to the bound page with a verified file snaps
   assert.equal(result.uploadVerification, 'file_selected');
 });
 
-test('upload with an image and a non-image still awaits confirmation', async (t) => {
-  let confirmations = 0;
-  const context = uploadContext(t, () => { confirmations++; return false; }, PNG);
-  const nonImage = path.join(context.workspaceDir, 'notes.txt');
-  fs.writeFileSync(nonImage, 'notes');
-  const result = await dispatchChatUpload(context, 'a', { paths: ['tile.png', 'notes.txt'] },
-    () => assert.fail('must not dispatch an unconfirmed mixed batch'));
-  assert.equal(result.errorCode, 'UPLOAD_NOT_CONFIRMED');
-  assert.equal(confirmations, 1);
+test('JSON and mixed uploads go straight to the bound page with verified snapshots', async (t) => {
+  const context = uploadContext(t);
+  const json = '{"theme":"dark"}';
+  fs.writeFileSync(path.join(context.workspaceDir, 'profile.json'), json);
+  for (const paths of [['profile.json'], ['tile.png', 'profile.json']]) {
+    const result = await dispatchChatUpload(context, 'a', { paths }, async (args) => {
+      const snapshots = args[CONFIRMED_UPLOAD_FILES];
+      assert.deepEqual(snapshots.map((snapshot) => snapshot.path), paths);
+      assert.equal(snapshots.at(-1).size, Buffer.byteLength(json));
+      return { success: true };
+    });
+    assert.equal(result.uploadVerification, 'file_selected');
+  }
 });
 
-test('skipping image approval does not bypass a stale browser target', async (t) => {
-  const context = uploadContext(t, () => assert.fail('must not ask for image approval'), PNG);
+test('upload rejects a stale browser target before dispatch', async (t) => {
+  const context = uploadContext(t);
   context.boundTarget.pageToken = 'old-document';
   const result = await dispatchChatUpload(context, 'a', { path: 'tile.png' }, () => assert.fail('must not dispatch'));
   assert.equal(result.errorCode, 'BROWSER_TARGET_CHANGED');
 });
 
-test('declined or changed upload does not reach browser dispatch', async (t) => {
-  const rejected = uploadContext(t, () => false);
-  const changed = uploadContext(t, (file) => { fs.writeFileSync(file, 'replacement'); return true; });
+test('stopped uploads and changed artifacts do not reach dispatch', async (t) => {
+  const context = uploadContext(t);
   const dispatch = () => assert.fail('must not dispatch');
-  assert.equal((await dispatchChatUpload(rejected, 'a', { path: 'tile.png' }, dispatch)).errorCode, 'UPLOAD_NOT_CONFIRMED');
-  assert.equal((await dispatchChatUpload(changed, 'a', { path: 'tile.png' }, dispatch)).errorCode, 'UPLOAD_FILE_CHANGED');
+  const controller = new AbortController();
+  controller.abort();
+  const cancelled = await dispatchChatUpload({ ...context, signal: controller.signal }, 'a', { path: 'tile.png' }, dispatch);
+  assert.equal(cancelled.errorCode, 'UPLOAD_CANCELLED');
+  assert.equal(cancelled.actionExecuted, false);
+  const reference = { path: 'tile.png', size: PNG.length, sha256: '0'.repeat(64), kind: 'image' };
+  const changed = await dispatchChatUpload({ ...context, artifactReferences: [reference] }, 'a', { path: reference.path }, dispatch);
+  assert.equal(changed.errorCode, 'UPLOAD_NOT_READY');
+  assert.equal(changed.actionExecuted, false);
 });
 
 test('lost upload receipt marks verification required without a second dispatch', async (t) => {
-  const context = uploadContext(t, () => true);
+  const context = uploadContext(t);
   let calls = 0;
   const result = await dispatchChatUpload(context, 'a', { path: 'tile.png', page_url: 'https://wrong.test' }, async (args) => {
     calls += 1;

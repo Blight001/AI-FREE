@@ -190,7 +190,7 @@
     }
     if (snapshot.uploadVerification === 'file_selected') return '文件已选入控件';
     if (snapshot.errorCode === 'UPLOAD_OUTCOME_UNVERIFIED') return '结果待核验';
-    if (snapshot.errorCode === 'UPLOAD_NOT_CONFIRMED') return '上传已取消';
+    if (snapshot.errorCode === 'UPLOAD_CANCELLED') return '上传已取消';
     if (status === 'running') return '调用中';
     return status === 'error' ? '调用失败' : '调用';
   }

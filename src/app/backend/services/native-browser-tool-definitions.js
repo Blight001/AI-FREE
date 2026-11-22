@@ -1,12 +1,15 @@
 'use strict';
 const { BROWSER_WORKFLOW_TOOL, checkedActionProperties } = require('./browser-workflow-tool-definition');
 
+const { PAGE_BATCH_TOOL } = require('./browser-page-batch');
+
 const objectSchema = (properties, required = []) => ({
   type: 'object', properties, ...(required.length ? { required } : {}),
 });
 
 const NATIVE_BROWSER_TOOL_DEFINITIONS = Object.freeze([
   BROWSER_WORKFLOW_TOOL,
+  PAGE_BATCH_TOOL,
   {
     name: 'browser_control',
     description: '读取软件完整浏览器态势，或显式管理当前页面自动化接管。overview 无需先选择或打开浏览器，返回全部浏览器记录、当前打开窗口及其标签页、AI-Workspace 目录树；status 查看当前页；acquire 开始接管；release 停止接管。',
@@ -31,7 +34,7 @@ const NATIVE_BROWSER_TOOL_DEFINITIONS = Object.freeze([
   },
   {
     name: 'browser_file', destructive: true,
-    description: '通过 AI 工作区安全下载 URL 或页面图片、把工作区文件上传到网页或 HeySure 服务器，或保存当前浏览器会话。网页要求选择文件时必须使用 upload，并同时提供 AI-Workspace 内的 path/paths 和文件控件 selector/ref；不要先用 browser_action 点击文件控件。upload_to_server 是直接上传 HeySure 并返回 file_ref。download_element 接受 browser_observe 返回的 ref/element，或 x/y 坐标；旧内核或不支持的图片节点会自动回退为带当前页面 Cookie 和浏览器代理的 URL 下载。download 走同一代理，避免 assets.grok.com 等 CDN 直连超时。',
+    description: '通过 AI 工作区安全下载 URL 或页面图片、把工作区文件上传到网页或 HeySure 服务器，或保存当前浏览器会话。网页要求选择文件时必须使用 upload，并同时提供 AI-Workspace 内的 path/paths 和文件控件 selector/ref；不要先用 browser_action 点击文件控件。upload_to_server 是直接上传 HeySure 并返回 file_ref。download_element 只保存资源字节。用 browser_observe 的 filter=media 或 filter=link 查找目标，再传入 ref 与 observation_id。网页要求点击下载、记录下载步骤或用下载解锁后续操作时，用 browser_action click 激活页面上的下载入口，再用 browser_control overview 对比 AI-Workspace 验证新文件的实际路径和大小。文件控件使用 filter=file-input 查找可执行的 ref。上传返回 file_selected 后，先观察页面的预览或收件回执再提交。绑定页面的操作遇到过期引用或目标变化时需重新观察。',
     input_schema: objectSchema({
       action: { type: 'string', enum: ['download', 'download_element', 'upload', 'upload_to_server', 'save_session', 'info'] },
       url: { type: 'string', description: '下载用绝对 URL 或相对于当前页面的 URL' },
@@ -42,6 +45,7 @@ const NATIVE_BROWSER_TOOL_DEFINITIONS = Object.freeze([
       selector: { type: 'string' },
       ref: { type: 'string', description: 'browser_observe 返回的元素 id；download_element 优先使用' },
       element: { type: 'string', description: 'ref 的别名，兼容按元素引用下载' },
+      observation_id: { type: 'string', description: '产生 ref 的 browser_observe 快照 ID' },
       x: { type: 'number', description: 'download_element 的视口 X 坐标；ref 会自动解析为元素暴露点' },
       y: { type: 'number', description: 'download_element 的视口 Y 坐标；ref 会自动解析为元素暴露点' },
       path: { type: 'string', description: 'AI-Workspace 内任意类型的单个文件路径；upload_to_server 必填' },
@@ -157,4 +161,18 @@ const NATIVE_BROWSER_TOOL_DEFINITIONS = Object.freeze([
   },
 ]);
 
-module.exports = { NATIVE_BROWSER_TOOL_DEFINITIONS };
+const CONTROL_TOOL = NATIVE_BROWSER_TOOL_DEFINITIONS.find((tool) => tool.name === 'browser_control');
+
+function browserControlDefinition(connected) {
+  if (connected) return CONTROL_TOOL;
+  return {
+    ...CONTROL_TOOL,
+    description: '列出软件浏览器记录、打开的窗口和 AI-Workspace。浏览器连接后可管理自动化接管。',
+    input_schema: objectSchema({
+      ...CONTROL_TOOL.input_schema.properties,
+      action: { type: 'string', enum: ['overview'] },
+    }, ['action']),
+  };
+}
+
+module.exports = { NATIVE_BROWSER_TOOL_DEFINITIONS, browserControlDefinition };

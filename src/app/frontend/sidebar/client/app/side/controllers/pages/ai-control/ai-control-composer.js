@@ -183,8 +183,6 @@
     tool_result: (run, event) => run.streamView?.upsertTool(event.tool || {}, event.round),
     tool_progress: (run, event) => run.streamView?.upsertTool(event.tool || {}, event.round),
     artifacts: (run, event) => renderAssistantArtifacts(run.streamView, event.artifacts),
-    upload_confirmation: (run, event) => showChatUploadConfirmation(run, event),
-    upload_confirmation_closed: (_run, event) => closeChatUploadConfirmation(event.id),
     user_inserted: (run) => handleInsertedStreamMessage(run),
   };
 
@@ -296,7 +294,6 @@
 
   function finishChatSend(run) {
     run.unsubscribeStream?.();
-    closeChatUploadConfirmation();
     state.loading = false;
     state.stopping = false;
     state.activeRequestId = '';

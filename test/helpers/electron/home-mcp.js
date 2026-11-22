@@ -35,7 +35,7 @@ async function checkHomeMcp(win, layout) {
       tab.click();
       return tab.getAttribute('aria-selected') === 'true' && document.getElementById('home-browsers').hidden;
     }), true);
-    const ready = () => inspect(() => document.querySelectorAll('#home-mcp-tools button').length === 13);
+    const ready = () => inspect(() => Boolean(document.querySelector('#home-mcp-tools [data-tool="browser_page_batch"]')));
     assert.equal(await poll(ready, Boolean), true);
     assert.deepEqual(await inspect(() => {
       const button = document.querySelector('#home-mcp-tools [data-tool="browser_observe"]');

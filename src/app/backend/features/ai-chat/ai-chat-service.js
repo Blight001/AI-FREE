@@ -1,7 +1,7 @@
 'use strict';
 
 const { createAiBrowserWindowTools } = require('../../services/ai-browser-window-tools');
-const { createAiSandboxFileTools } = require('../../services/ai-sandbox-file-tools');
+const { createAiSandboxFileTools, RUN_COMMAND_TOOL_NAME } = require('../../services/ai-sandbox-file-tools');
 const { createProviderAccountTools } = require('../account/provider-account-tools');
 const { createProviderAccountUi } = require('../account/provider-account-ui');
 const { combineToolSets } = require('../../services/combine-tool-sets');
@@ -37,7 +37,7 @@ async function waitForBrowserConnection(deps, target = {}, timeoutMs = 20000) {
   return null;
 }
 
-function buildAccountTools(deps) {
+function buildAccountTools(deps, fileTools) {
   if (!deps.providerAccountVault) return null;
   const ui = createProviderAccountUi({
     getMainWindow: deps.getMainWindow,
@@ -49,6 +49,7 @@ function buildAccountTools(deps) {
     vault: deps.providerAccountVault,
     bridge: deps.browserAutomationBridge,
     runtime: deps.browserRuntimeManager,
+    runImportCommand: (args, options) => fileTools.execute(RUN_COMMAND_TOOL_NAME, args, options),
     ...ui,
   });
 }
@@ -74,7 +75,7 @@ function createAiChatService(deps = {}) {
           waitForBrowserConnection: (target) => waitForBrowserConnection(deps, target),
         });
         const fileTools = createAiSandboxFileTools({ sandboxDir: deps.aiSandboxDir });
-        const accountTools = buildAccountTools(deps);
+        const accountTools = buildAccountTools(deps, fileTools);
         aiBrowserWindowTools = combineToolSets(windowTools, fileTools, accountTools);
       } catch (error) {
         logger.warn?.('[AI窗口工具] 初始化失败:', error?.message || error);
@@ -115,7 +116,6 @@ function createAiChatService(deps = {}) {
 
     return {
       chat, getWindowTools: getAiBrowserWindowTools, insert, stop,
-      decide: (event, input) => chatRuns.decide(event, input.requestId, input.id, input.accepted),
     };
 }
 

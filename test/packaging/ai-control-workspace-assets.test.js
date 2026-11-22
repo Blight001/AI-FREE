@@ -12,20 +12,19 @@ test('AI 控制页装配上传、工作文件和 @ 引用资源', () => {
   for (const id of [
     'ai-chat-attach', 'ai-chat-attachment-chips', 'ai-chat-workspace-panel',
     'ai-chat-workspace-upload', 'ai-chat-workspace-files', 'ai-chat-workspace-preview',
-    'ai-chat-mention-menu', 'ai-chat-upload-confirmation',
+    'ai-chat-mention-menu',
   ]) {
     assert.match(html, new RegExp(`id=["']${id}["']`));
   }
   for (const relativePath of [
     'client/app/side/controllers/pages/ai-control/ai-control-files.js',
-    'client/app/side/controllers/pages/ai-control/ai-control-browser-target.js',
     'client/app/side/styles/modules/ai-control-files.css',
-    'client/app/side/styles/modules/ai-control-browser-target.css',
     'client/app/side/styles/modules/website-console-theme.css',
   ]) {
     assert.equal(fs.existsSync(path.join(sidebarRoot, relativePath)), true, relativePath);
     assert.match(html, new RegExp(relativePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
+  assert.doesNotMatch(html, /ai-chat-(?:upload-confirmation|confirmation-)|ai-control-browser-target/);
   assert.doesNotMatch(html, /id="(?:ai-chat-browser|ai-chat-target)"/);
   const fileCss = fs.readFileSync(path.join(
     sidebarRoot, 'client/app/side/styles/modules/ai-control-files.css',

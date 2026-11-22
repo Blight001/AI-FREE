@@ -45,6 +45,21 @@ test('an old kernel rejects the wire envelope and never receives an unbound retr
   assert.deepEqual(attempts, ['page-bound-command']);
 });
 
+test('session export on an older page-binding kernel fails without retrying unbound', async () => {
+  const attempts = [];
+  const runtime = commandRuntime({ send: async (...args) => {
+    attempts.push(args);
+    throw Object.assign(new Error('Unsupported page-bound command'), { code: 'BROWSER_TARGET_TOOL_UNSUPPORTED' });
+  } });
+  await assert.rejects(dispatchRuntimeAutomationByProcessId(runtime, PID, 'get-session-data', {}, OPTIONS), {
+    code: 'BROWSER_RUNTIME_UPDATE_REQUIRED',
+  });
+  assert.equal(attempts.length, 1);
+  assert.equal(attempts[0][0], 'page-bound-command');
+  assert.equal(attempts[0][1].command, 'get-session-data');
+  assert.equal(attempts[0][1].expectedPageToken, OPTIONS.expectedPageToken);
+});
+
 test('a page action cancelled while queued never reaches the Chromium command client', async () => {
   const controller = new AbortController();
   const runtime = commandRuntime({ send: async () => assert.fail('Cancelled action reached Chromium') });

@@ -49,7 +49,8 @@ class BrowserWorkflow {
     return failure('WORKFLOW_BUSY', '当前流程正在执行，请先暂停并等待当前步骤结束');
   }
 
-  async action(connection, args) {
+  async action(connection, args, signal = undefined) {
+    signal?.throwIfAborted();
     const state = this.session(connection);
     if (state.busy) return failure('WORKFLOW_BUSY', '当前浏览器正在执行流程');
     if (state.steps && state.status === 'paused') return failure('WORKFLOW_PAUSED', '流程已暂停，请接管页面后恢复，或取消流程');
@@ -57,7 +58,7 @@ class BrowserWorkflow {
     state.status = 'running'; state.steps = null; state.identityAnchor = undefined;
     try {
       const result = await performStep(this.host, connection, state, 'browser_action', args,
-        (input) => this.host.browserActionRaw(connection, { ...input, after: 'none' }));
+        (input) => this.host.browserActionRaw(connection, { ...input, after: 'none' }, signal));
       state.status = result.success ? 'completed' : 'paused';
       return result;
     } catch (error) {
@@ -72,7 +73,8 @@ class BrowserWorkflow {
     }
   }
 
-  async control(connection, args) {
+  async control(connection, args, signal = undefined) {
+    signal?.throwIfAborted();
     const state = this.session(connection);
     const action = args.action || 'status';
     if (action === 'status') return this.statusWithHistory(state, args);
@@ -80,8 +82,8 @@ class BrowserWorkflow {
     if (action === 'pause' || action === 'cancel') return this.pause(connection, state, action);
     if (state.busy) return failure('WORKFLOW_BUSY', '当前步骤尚未结束');
     if (action === 'set_mode') return this.configure(state, args);
-    if (action === 'run') return this.start(connection, state, args);
-    if (action === 'resume') return this.resume(connection, state);
+    if (action === 'run') return this.start(connection, state, args, signal);
+    if (action === 'resume') return this.resume(connection, state, signal);
     return failure('INVALID_WORKFLOW_ACTION', '未知流程操作');
   }
 
@@ -112,7 +114,7 @@ class BrowserWorkflow {
     return { ...this.status(state), pausePending: state.busy };
   }
 
-  async start(connection, state, args) {
+  async start(connection, state, args, signal) {
     if (args.mode) {
       const configured = this.configure(state, args);
       if (!configured.success) return configured;
@@ -129,7 +131,7 @@ class BrowserWorkflow {
     state.flowDiagnostics = { pageErrors: 0, failedRequests: 0, consoleErrors: 0, events: [] };
     state.pageDiagnosticsCursor = 0;
     state.timeoutMs = Math.min(120000, Math.max(1000, Number(args.timeout_ms) || 120000));
-    return this.run(connection, state, 1);
+    return this.run(connection, state, 1, signal);
   }
 
   flowDefaults(args, state) {
@@ -142,7 +144,7 @@ class BrowserWorkflow {
     };
   }
 
-  async resume(connection, state) {
+  async resume(connection, state, signal) {
     if (state.status !== 'paused' || !state.steps) return failure('WORKFLOW_NOT_PAUSED', '没有可恢复的流程');
     const previous = state.lastStep;
     let start = state.failedStep || state.currentStep;
@@ -152,16 +154,21 @@ class BrowserWorkflow {
       if (!verified.difference.passed) return { ...failure('BUSINESS_STATE_MISMATCH', '接管后状态仍未满足预期'), difference: verified.difference };
       start += 1;
     }
+    signal?.throwIfAborted();
     state.mode = state.preferredMode;
-    return this.run(connection, state, start);
+    return this.run(connection, state, start, signal);
   }
 
-  async run(connection, state, start) {
+  async run(connection, state, start, signal) {
     state.busy = true; state.pauseRequested = false; state.cancelRequested = false;
     state.status = 'running'; state.deadline = Date.now() + state.timeoutMs;
     const card = { name: 'browser_workflow', steps: state.steps.map((step) => ({
       type: 'mcp', name: step.name, tool: step.tool, arguments: step.arguments || {},
     })) };
+    // Both entry points pause at the same step boundary on caller cancellation.
+    // Let in-flight input settle so its outcome can be verified before resume.
+    const pauseAtBoundary = () => { state.pauseRequested = true; };
+    signal?.addEventListener('abort', pauseAtBoundary, { once: true });
     try {
       const result = start > card.steps.length ? { success: true } : await runCard(card, { start_step: start },
         (tool, args) => this.runStep(connection, state, tool, args), {
@@ -176,6 +183,7 @@ class BrowserWorkflow {
       state.status = 'paused'; state.reason = error.message;
       return { ...this.status(state), ...failure('WORKFLOW_FAILED', error.message) };
     } finally {
+      signal?.removeEventListener('abort', pauseAtBoundary);
       state.busy = false;
       if (state.cancelRequested) state.status = 'cancelled';
       await this.host.browserControl(connection, { action: 'release' }).catch(() => {});

@@ -1,8 +1,7 @@
 'use strict';
 
 const { performance } = require('node:perf_hooks');
-const { checkedActionProperties } = require('../../services/browser-workflow-tool-definition');
-const { NATIVE_BROWSER_TOOL_DEFINITIONS } = require('../../services/native-browser-tool-definitions');
+const { checkedActionProperties } = require('./browser-workflow-tool-definition');
 
 const MAX_STEPS = 50;
 const MAX_STEP_TIMEOUT_MS = 10000;
@@ -11,8 +10,6 @@ const STEP_TOOLS = ['browser_action', 'browser_wait'];
 const NOT_SUPPORTED_BY_BOUND_ACTION = new Set([
   ...Object.keys(checkedActionProperties), 'scope', 'has_text', 'to_ref', 'observation_options',
 ]);
-const SCHEMAS = new Map(NATIVE_BROWSER_TOOL_DEFINITIONS.filter(({ name }) => STEP_TOOLS.includes(name))
-  .map(({ name, input_schema }) => [name, input_schema.properties]));
 
 const PAGE_BATCH_TOOL = {
   name: 'browser_page_batch',
@@ -60,8 +57,8 @@ function validWait(args) {
 function validStep(step, available) {
   if (!isObject(step) || Object.keys(step).length !== 2 || !isObject(step.arguments)) return false;
   const { tool, arguments: args } = step;
-  const schema = SCHEMAS.get(tool);
-  if (!schema || !available.has(tool)) return false;
+  const schema = available.get(tool);
+  if (!schema || !STEP_TOOLS.includes(tool)) return false;
   if (Object.entries(args).some(([key, value]) => !validField(schema, key, value))) return false;
   if (args.timeout_ms !== undefined && (args.timeout_ms <= 0 || args.timeout_ms > MAX_STEP_TIMEOUT_MS)) return false;
   return tool === 'browser_action' ? validAction(args) : validWait(args);
@@ -76,7 +73,7 @@ function validatePlan(args, connection) {
   if (Object.keys(args).length !== 1 || !Array.isArray(steps) || !steps.length || steps.length > MAX_STEPS) {
     return batchFailure('BROWSER_PAGE_BATCH_INVALID', `请提供 1–${MAX_STEPS} 个页面操作步骤；未执行任何步骤`);
   }
-  const available = new Set((connection.tools || []).map(({ name }) => name));
+  const available = new Map((connection.tools || []).map(({ name, input_schema }) => [name, input_schema?.properties]));
   const invalidStep = steps.findIndex((step) => !validStep(step, available)) + 1;
   if (!invalidStep) return null;
   return { ...batchFailure('BROWSER_PAGE_BATCH_INVALID', `第 ${invalidStep} 步的工具或参数不支持批处理；未执行任何步骤`),
@@ -109,7 +106,7 @@ function interruption(context, deadline) {
   return null;
 }
 
-async function executeChatPageBatch(context, connection, args, dispatch) {
+async function executePageBatch(context, connection, args, dispatch) {
   const invalid = validatePlan(args, connection);
   if (invalid) return invalid;
   const { steps } = args;
@@ -126,4 +123,4 @@ async function executeChatPageBatch(context, connection, args, dispatch) {
   return { success: true, requested, completed: requested, notAttempted: 0 };
 }
 
-module.exports = { PAGE_BATCH_TOOL, executeChatPageBatch };
+module.exports = { PAGE_BATCH_TOOL, executePageBatch };

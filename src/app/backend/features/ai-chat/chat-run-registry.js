@@ -1,7 +1,5 @@
 'use strict';
 
-const { createChatApproval, chatError } = require('./chat-browser-target');
-
 function runKey(event, requestId) {
   return `${event?.sender?.id || 0}:${String(requestId || '').trim()}`;
 }
@@ -17,7 +15,7 @@ function createChatRunRegistry() {
       previous.controller.abort();
     }
     const controller = new AbortController();
-    const run = { controller, approval: createChatApproval(controller.signal), insertedMessages: [], stopped: false };
+    const run = { controller, insertedMessages: [], stopped: false };
     runs.set(key, run);
     return { key, run };
   }
@@ -39,18 +37,11 @@ function createChatRunRegistry() {
 
   function finish(key, run) {
     if (key && runs.get(key) === run) {
-      run.approval.cancel();
       runs.delete(key);
     }
   }
 
-  function decide(event, requestId, id, accepted) {
-    const run = runs.get(runKey(event, requestId));
-    if (!run?.approval.decide(id, accepted)) return chatError('APPROVAL_EXPIRED', '该确认已失效');
-    return { ok: true, data: { accepted } };
-  }
-
-  return { begin, decide, finish, get: (event, requestId) => runs.get(runKey(event, requestId)), insert, stop };
+  return { begin, finish, get: (event, requestId) => runs.get(runKey(event, requestId)), insert, stop };
 }
 
 module.exports = { createChatRunRegistry, runKey };

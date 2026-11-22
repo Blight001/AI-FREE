@@ -30,7 +30,7 @@ function uploadTurn(t, { observe, upload }) {
   let modelCalls = 0;
   const request = {
     localInteraction: true, workspaceDir, connections: [connection],
-    run: { controller, insertedMessages: [], approval: { request: async () => true } },
+    run: { controller, insertedMessages: [] },
     emit() {},
     bridge: {
       getConnection: () => connection,

@@ -7,6 +7,8 @@ const { buildChatToolContext } = require('../../../src/app/backend/features/ai-c
 const { syncWindowToolControl } = require('../../../src/app/backend/features/ai-chat/chat-tool-executor');
 const { NATIVE_BROWSER_TOOL_DEFINITIONS } = require('../../../src/app/backend/services/native-browser-tool-definitions');
 
+const { executePageBatch } = require('../../../src/app/backend/services/browser-page-batch');
+
 const toolName = 'browser_page_batch';
 const action = (name, args) => ({ tool: 'browser_action', arguments: { action: name, ...args } });
 const steps = [
@@ -23,7 +25,7 @@ const steps = [
 ];
 const pageToken = 'initial-document';
 const connection = { id: 'native:editor', name: 'Editor', tools: NATIVE_BROWSER_TOOL_DEFINITIONS.filter(
-  ({ name }) => ['browser_action', 'browser_wait', 'browser_workflow'].includes(name),
+  ({ name }) => ['browser_action', 'browser_wait', 'browser_workflow', 'browser_page_batch'].includes(name),
 ) };
 
 async function runBatch({ input = { steps }, onStep = () => ({ success: true }), otherCalls = [] } = {}) {
@@ -43,6 +45,8 @@ async function runBatch({ input = { steps }, onStep = () => ({ success: true }),
       async dispatch(id, name, args, options) {
         assert.equal(id, connection.id);
         if (name === 'browser_tab') return { activeTab: { url: 'http://editor.test/', pageToken } };
+        if (name === toolName) return executePageBatch(options, connection, args,
+          (input, tool) => this.dispatch(id, tool, input, { ...options, allowAppSurface: false }));
         order.push(name);
         actions.push({ args, options });
         return onStep(actions.length, controller, options, insertedMessages);
@@ -66,7 +70,7 @@ async function runBatch({ input = { steps }, onStep = () => ({ success: true }),
 test('one advertised call runs ten mixed page steps in order without returning to the model', async () => {
   const { toolContext, result, batchResult, order, actions } = await runBatch();
   assert.ok(toolContext.tools.some((tool) => tool.name === toolName));
-  assert.ok(!toolContext.tools.some((tool) => tool.name === 'browser_workflow'));
+  assert.ok(toolContext.tools.some((tool) => tool.name === 'browser_workflow'));
   assert.equal(result.message.content, 'Finished');
   assert.deepEqual(order, ['model', ...steps.map(({ tool }) => tool), 'model']);
   assert.deepEqual(actions.map(({ args }) => args), steps.map((step) => step.arguments));
@@ -158,7 +162,7 @@ test('unsupported nested routing and features reject the entire plan before any 
   }
 });
 
-test('opening a browser during a sidebar turn adds the batch tool, not the nested workflow', () => {
+test('opening a browser during a sidebar turn adds both orchestration tools', () => {
   const context = {
     localInteraction: true, browserControl: { connectionId: '' }, connections: [], toolDefinitions: [],
     bridge: { getConnection: () => connection }, emit() {},
@@ -166,7 +170,7 @@ test('opening a browser during a sidebar turn adds the batch tool, not the neste
   const ready = { success: true, control_browser_id: connection.id };
   syncWindowToolControl(context, 'windows_tab', { action: 'open' }, ready);
   syncWindowToolControl(context, 'windows_tab', { action: 'open' }, ready);
-  assert.deepEqual(context.toolDefinitions.map(({ name }) => name), ['browser_action', 'browser_wait', toolName]);
+  assert.deepEqual(context.toolDefinitions.map(({ name }) => name), connection.tools.map(({ name }) => name));
   const external = buildChatToolContext({ connections: [connection], initialMessages: [] });
   assert.deepEqual(external.tools.map(({ name }) => name), connection.tools.map(({ name }) => name));
 });

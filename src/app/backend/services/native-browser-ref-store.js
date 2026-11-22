@@ -4,6 +4,7 @@ const { observedRef } = require('./native-browser-file');
 const { observedTarget } = require('./native-browser-observation');
 const { PAGE_TOKEN, expectedPageToken } = require('./native-browser-page-binding');
 
+const EXTERNAL_OBSERVATIONS = Symbol('external-mcp-observations');
 const OBSERVATION_HISTORY_LIMIT = 3;
 const OBSERVATION_HISTORY_TTL_MS = 30000;
 
@@ -39,6 +40,17 @@ function matchesPage(target, token) {
   return target && (token === undefined || target[PAGE_TOKEN] === token);
 }
 
+function observationStore(owner, connection) {
+  return connection[EXTERNAL_OBSERVATIONS] === true ? owner.externalObservations : owner;
+}
+
+function clearObservations(owner, connectionId) {
+  for (const store of [owner, owner.externalObservations]) {
+    store.observeTargets.delete(connectionId);
+    store.observationHistory.delete(connectionId);
+  }
+}
+
 function resolveObservedTarget(owner, connection, args) {
   const ref = observedRef(args);
   if (!ref) return args;
@@ -46,12 +58,13 @@ function resolveObservedTarget(owner, connection, args) {
   const token = expectedPageToken(connection);
   if (token === undefined && text(input.selector)) return input;
   const observation = text(input.observation_id ?? input.observationId);
-  const target = owner.observeTargets.get(connection.id)?.get(ref);
+  const store = observationStore(owner, connection);
+  const target = store.observeTargets.get(connection.id)?.get(ref);
   if (matchesPage(target, token) && (!observation || observation === target.observationId)) {
     return mergeObservedTarget(target, input);
   }
   if (!observation) return { ...input, observedRefExpired: true };
-  const historical = findHistoricTarget(owner, connection.id, observation, ref);
+  const historical = findHistoricTarget(store, connection.id, observation, ref);
   return matchesPage(historical, token)
     ? { ...input, observedRefRecoveryCandidate: historical }
     : { ...input, observationMismatch: true };
@@ -85,11 +98,12 @@ function pruneObservationHistory(owner, connectionId) {
   else owner.observationHistory.delete(connectionId);
 }
 
-function rememberObservation(owner, connectionId, observationId, targets) {
-  owner.observeTargets.set(connectionId, targets);
-  const history = owner.observationHistory.get(connectionId) || [];
+function rememberObservation(owner, connection, observationId, targets) {
+  const store = observationStore(owner, connection);
+  store.observeTargets.set(connection.id, targets);
+  const history = store.observationHistory.get(connection.id) || [];
   history.push({ observationId, createdAt: Date.now(), targets });
-  owner.observationHistory.set(connectionId, history.slice(-OBSERVATION_HISTORY_LIMIT));
+  store.observationHistory.set(connection.id, history.slice(-OBSERVATION_HISTORY_LIMIT));
 }
 
 async function recoverObservedTarget(owner, connection, input) {
@@ -131,4 +145,4 @@ async function recoverObservedTarget(owner, connection, input) {
 }
 
 
-module.exports = { resolveObservedTarget, recoverObservedTarget, rememberObservation };
+module.exports = { EXTERNAL_OBSERVATIONS, clearObservations, resolveObservedTarget, recoverObservedTarget, rememberObservation };

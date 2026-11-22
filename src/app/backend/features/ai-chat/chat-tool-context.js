@@ -1,7 +1,7 @@
 'use strict';
 
 const { limitAiControlMessages } = require('../../lib/ai-control-message-window');
-const { PAGE_BATCH_TOOL } = require('./chat-page-batch');
+const { browserControlDefinition } = require('../../services/native-browser-tool-definitions');
 const {
   findConnectionByReference,
   withBrowserRouteParam,
@@ -20,19 +20,17 @@ function createConnectionResolver(connections) {
   return { findConnectionByRef, describeConnections };
 }
 
-function collectConnectionTools(connections, windowTools, localInteraction) {
+function collectConnectionTools(connections, windowTools, _localInteraction) {
   const seenToolNames = new Set();
   const definitions = [];
   for (const item of connections) {
     for (const tool of (Array.isArray(item.tools) ? item.tools : [])) {
       const toolName = String(tool?.name || '').trim();
       if (!toolName || windowTools?.has?.(toolName) || seenToolNames.has(toolName)) continue;
-      if (localInteraction && toolName === 'browser_workflow') continue;
       seenToolNames.add(toolName);
       definitions.push(withBrowserRouteParam(tool));
     }
   }
-  if (localInteraction && seenToolNames.has('browser_action')) definitions.push(withBrowserRouteParam(PAGE_BATCH_TOOL));
   return definitions;
 }
 
@@ -52,7 +50,7 @@ function selectedWindowTools(windowTools, initialMessages) {
 
 function appendDownloadWorkflow(workflow, available) {
   if (!available.has('browser_observe') || !available.has('browser_file')) return;
-  workflow.push('用户要求下载页面上可见的图片元素时，先主动调用 browser_observe filter:"media" 获取 ref，再调用 browser_file action=download_element 并传 ref（可选 filename）；不要找下载按钮或用截图代替。若旧内核不支持原生元素下载，会自动用 item.mediaUrl/downloadUrl 经浏览器代理下载。也可直接 action=download 传入图片 URL。下载图片/视频/音频时把条目的 category 传给 media_type；不得根据链接文字猜测地址');
+  workflow.push('按 browser_file 的工具说明区分保存资源与操作网页下载入口，上传后核对用户可见的收件结果');
   if (available.has('browser_media')) workflow.push('下载网页视频或音频素材时优先调用 browser_media action=list，再用返回的 ref 调用 action=download；不要猜测页面中未观察到的媒体地址。当前工具支持页面媒体元素和可解析直链，不能处理 DRM 或需要分片合并的 HLS/DASH。');
 }
 
@@ -164,13 +162,14 @@ function buildChatToolContext(options = {}) {
   const resolver = createConnectionResolver(connections);
   const tools = [...selectedWindowTools(windowTools, initialMessages),
     ...collectConnectionTools(connections, windowTools, options.localInteraction)];
+  if (!connections.length && options.localInteraction) tools.push(withBrowserRouteParam(browserControlDefinition(false)));
   const cardContext = createCardCatalogContext(automationCards, connections);
   const mcpContext = createMcpContext(tools, connections, resolver, controlledConnectionId, initialMessages);
   const localBoundary = options.localInteraction ? {
     role: 'system', ai_free_card_context: true,
     content: '用户任务需要操作浏览器时，自行选择匹配的浏览器。先用 browser_tab list 查看标签并接管，需要时调用 browser_tab 刷新、导航或切换标签。接管跟随同一浏览器的活动标签，页面变化后先重新观察。'
       + '当 browser_page_batch 可用且同页的多步参数已知时，优先一次提交；若某步依赖新观察、业务判断或授权，则在那一步前结束本批。批后按任务需要核对页面结果，不能把输入已发出当成业务成功。'
-      + '页面变化时重新观察并核对当前目标，需要时列出标签并切换。不要自动重试结果未知的操作。仅上传 PNG、JPEG、GIF 或 WebP 图片时可直接执行，其他文件或混合上传需侧栏确认。文件已选仍需检查站点回执。',
+      + '页面变化时重新观察并核对当前目标，需要时列出标签并切换。不要自动重试结果未知的操作。上传使用 AI-Workspace 中的文件。文件已选后检查站点回执。',
   } : null;
   return {
     ...resolver,

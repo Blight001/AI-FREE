@@ -134,7 +134,6 @@
     initCustomSelects();
     bindAiHeaderEvents();
     bindAiChatScroll();
-    bindChatUploadConfirmation();
     bindChatForm();
     bindChatInput();
     if (typeof bindChatWorkspace === 'function') bindChatWorkspace();

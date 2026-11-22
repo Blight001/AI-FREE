@@ -5,7 +5,8 @@ const { createAutomationCardMcpRouter } = require('./automation-card-mcp-router'
 const { createNativeAutomationCardService } = require('./native-automation-card-service');
 const { createAutomationRunManager } = require('./automation-run-manager');
 const { createNativeBrowserAutomation } = require('./native-browser-automation');
-const { NATIVE_BROWSER_TOOL_DEFINITIONS } = require('./native-browser-tool-definitions');
+const { browserControlDefinition } = require('./native-browser-tool-definitions');
+const { dispatchExternalBrowserTool } = require('./external-browser-page-routing');
 
 const DEFAULT_PORT = 18765;
 
@@ -46,7 +47,7 @@ class BrowserAutomationBridgeRuntime {
     this.server = null;
     this.externalMcpGateway = createBrowserAutomationExternalGateway({
       descriptorPath: options.externalMcpDescriptorPath,
-      dispatch: (...args) => this.dispatch(...args),
+      dispatch: (...args) => dispatchExternalBrowserTool((...request) => this.dispatch(...request), ...args),
       getConnection: (...args) => this.getConnection(...args),
       listConnections: () => this.listConnections(),
       getActiveConnectionId: () => {
@@ -55,7 +56,7 @@ class BrowserAutomationBridgeRuntime {
       },
       getAccess: options.getExternalMcpAccess,
       logger: this.logger,
-      overviewTool: NATIVE_BROWSER_TOOL_DEFINITIONS.find((tool) => tool.name === 'browser_control'),
+      getOverviewTool: browserControlDefinition,
       getBrowserOverview: (args) => this.nativeAutomation.browserOverview(args),
     });
   }
@@ -213,8 +214,8 @@ class BrowserAutomationBridgeRuntime {
     return this.cardMcpRouter.listTools();
   }
 
-  callExternalMcpTool(name, args = {}) {
-    return this.externalMcpGateway.callTool(name, args);
+  callExternalMcpTool(name, args = {}, signal = undefined) {
+    return this.externalMcpGateway.callTool(name, args, signal);
   }
 }
 
@@ -225,6 +226,7 @@ function createBrowserAutomationBridge(options = {}) {
     callExternalMcpTool: (...args) => runtime.callExternalMcpTool(...args),
     dispatch: (...args) => runtime.dispatch(...args),
     getConnection: (...args) => runtime.getConnection(...args),
+    getBrowserOverview: (args) => runtime.nativeAutomation.browserOverview(args),
     getCardCacheState: () => runtime.getCardCacheState(),
     getExternalMcpConnectionInfo: () => runtime.getExternalMcpConnectionInfo(),
     getExternalMcpStatus: () => runtime.getExternalMcpStatus(),

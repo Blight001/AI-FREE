@@ -1,6 +1,6 @@
 'use strict';
 
-const { randomUUID } = require('node:crypto');
+const { isBrowserNavigationWait } = require('../../services/automation-tool-contract');
 const { setTimeout: delay } = require('node:timers/promises');
 
 const PAGE_TOOLS = new Set(['browser_action', 'browser_observe', 'browser_wait',
@@ -38,8 +38,19 @@ function readChatTarget(connection, connectionId, tab) {
 
 function browserSessionTool(toolName, args) {
   const action = text(args.action).toLowerCase();
-  return (toolName === 'browser_tab' && action === 'list')
+  // Cards own their step targets. URL-only waits explicitly observe navigation.
+  return ['manage_card', 'browser_workflow'].includes(toolName) || isBrowserNavigationWait(toolName, args)
+    || (toolName === 'browser_tab' && action === 'list')
     || (toolName === 'browser_control' && CONTROL_ACTIONS.has(action || 'status'));
+}
+
+function requiresChatPageGuard(context, connectionId, toolName, args) {
+  if (!context.localInteraction || toolName === 'browser_tab') return false;
+  // Preserve the observed document when taking over after an observation.
+  if (toolName === 'browser_control' && text(args.action).toLowerCase() === 'acquire') {
+    return context.browserTargets?.has(connectionId) === true;
+  }
+  return !browserSessionTool(toolName, args);
 }
 
 function explicitTabChange(toolName, args) {
@@ -113,44 +124,7 @@ function recordChatTabResult(context, connection, args, result) {
     ...(Array.isArray(result.tabs) ? { tabs: result.tabs.map(withoutPageToken) } : {}) };
 }
 
-function createChatApproval(signal) {
-  let pending = null;
-  function finish(accepted) {
-    if (!pending) return false;
-    const { resolve, timer } = pending;
-    pending = null;
-    clearTimeout(timer);
-    signal.removeEventListener('abort', cancel);
-    resolve(accepted);
-    return true;
-  }
-  const cancel = () => finish(false);
-  return {
-    request(id, notify) {
-      if (pending || signal.aborted) return Promise.resolve(false);
-      return new Promise((resolve) => {
-        pending = { id, resolve, timer: setTimeout(cancel, 60000) };
-        signal.addEventListener('abort', cancel, { once: true });
-        try { notify(); } catch (error) { cancel(); void error; }
-      });
-    },
-    decide: (id, accepted) => pending?.id === id && finish(accepted),
-    cancel,
-  };
-}
-
-async function confirmBrowserUpload(context, files) {
-  if (!context.approval || !context.boundTarget) return false;
-  const id = randomUUID();
-  const { title, host, browserName } = context.boundTarget;
-  const accepted = await context.approval.request(id, () => context.emit({
-    type: 'upload_confirmation', id, files, title, host, browserName,
-  }));
-  context.emit({ type: 'upload_confirmation_closed', id });
-  return accepted && !context.signal?.aborted;
-}
-
 module.exports = {
-  browserSessionTool, captureChatTarget, chatError, confirmBrowserUpload, createChatApproval,
-  guardedBrowserRoute, recordChatTabResult, resolvePageGuard, routeFailure,
+  browserSessionTool, captureChatTarget, chatError,
+  guardedBrowserRoute, recordChatTabResult, requiresChatPageGuard, resolvePageGuard, routeFailure,
 };

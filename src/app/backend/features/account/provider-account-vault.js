@@ -202,6 +202,23 @@ class ProviderAccountVault {
     return true;
   }
 
+  importCredentials(provider, accounts) {
+    const state = this.read();
+    const { custom } = categories.requireProvider(state.categories, provider);
+    const known = new Set(state.entries.filter((entry) => entry.provider === provider).map((entry) => entry.email));
+    const additions = [];
+    for (const account of accounts) {
+      const email = normalizeProviderLogin(account.email, custom !== false);
+      if (!email) throw new AppError('INVALID_ACCOUNT_LOGIN', '批量数据含有不符合目标栏目规则的账号');
+      const password = validatedPassword(account.password);
+      if (known.has(email)) continue;
+      known.add(email);
+      additions.push({ id: crypto.randomUUID(), provider, email, password, note: '', smsUrl: '' });
+    }
+    if (additions.length) this.write({ ...state, entries: [...state.entries, ...additions] });
+    return { imported: additions.length, duplicates: accounts.length - additions.length };
+  }
+
   listTrash() {
     return this.read().trash.map(trashSummary).reverse();
   }

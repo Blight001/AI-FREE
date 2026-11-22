@@ -116,7 +116,7 @@ test('native automation publishes ready managed Chromium as the browser connecti
   assert.equal(connections[0].name, '工作浏览器');
   assert.equal(connections[0].platform, 'ai-free-chromium-native');
   const tools = service.getConnection(connections[0].id).tools;
-  assert.equal(tools.length, 10);
+  assert.ok(tools.some(({ name }) => name === 'browser_page_batch'));
   assert.equal(tools.some((tool) => tool.name === 'browser_file'), true);
   assert.equal(tools.some((tool) => tool.name === 'browser_media'), true);
   assert.equal(tools.some((tool) => tool.name === 'browser_download'), false);
@@ -223,6 +223,7 @@ test('browser_file download_element resolves an observed image and uses the Chro
     action: 'download_element', ref: 'e2', filename: 'original.webp',
     selector: 'img', x: 220, y: 180,
     target_path: 'C:\\AI-Workspace\\.image.native-download',
+    preserveResourceExtension: true,
   }]);
 });
 

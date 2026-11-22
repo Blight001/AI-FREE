@@ -65,3 +65,7 @@
 0067-ai-free-keep-embedded-tab-strip.patch
 0068-ai-free-browser-takeover.patch
 0069-ai-free-transparent-file-inputs.patch
+0070-ai-free-file-link-and-label-targets.patch
+0071-ai-free-guarded-action-diagnostics.patch
+0072-ai-free-native-download-resource-extension.patch
+0073-ai-free-page-bound-session-export.patch

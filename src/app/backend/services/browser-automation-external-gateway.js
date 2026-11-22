@@ -6,6 +6,7 @@ const path = require('path');
 const { mcpToolResult } = require('./mcp-tool-result');
 const {
   addBrowserRouteToSchema,
+  isBrowserOverview,
   normalizeToolError,
   normalizeToolSchema,
   resolveBrowserConnection,
@@ -44,6 +45,18 @@ function mcpResponse(res, payload, statusCode = 200) {
     'MCP-Protocol-Version': MCP_PROTOCOL_VERSION,
   });
   res.end(body);
+}
+
+async function runWhileConnected(res, operation) {
+  const controller = new AbortController();
+  const disconnect = () => controller.abort();
+  res.once('close', disconnect);
+  try {
+    if (res.destroyed) disconnect();
+    return await operation(controller.signal);
+  } finally {
+    res.off('close', disconnect);
+  }
 }
 
 function mcpError(id, code, message, data = undefined) {
@@ -125,11 +138,6 @@ function addOverviewTool(tools, tool) {
   tools.set(overview.name, overview);
 }
 
-function isOverviewCall(toolName, args) {
-  return toolName === 'browser_control'
-    && String(args.action || '').trim().toLowerCase() === 'overview';
-}
-
 class BrowserAutomationExternalGateway {
   constructor(options = {}) {
     this.options = options;
@@ -208,14 +216,23 @@ class BrowserAutomationExternalGateway {
   listTools() {
     this.assertAccess();
     const tools = new Map();
-    addOverviewTool(tools, this.options.overviewTool);
+    const connections = this.connections();
+    const overviewTool = this.options.getOverviewTool?.(connections.length > 0) || this.options.overviewTool;
+    addOverviewTool(tools, overviewTool);
     for (const tool of this.getWindowTools?.()?.tools || []) {
       const normalized = normalizeSoftwareTool(tool);
       if (normalized.name) tools.set(normalized.name, normalized);
     }
-    const connections = this.connections();
     this.syncActiveConnection(connections);
     for (const connection of connections) this.addConnectionTools(tools, connection);
+    this.selectListedConnection(connections);
+    return {
+      tools: Array.from(tools.values()), connections: connections.map(publicConnection),
+      controlled_browser_id: this.controlledConnectionId,
+    };
+  }
+
+  selectListedConnection(connections) {
     const pendingName = this.pendingControlBrowserName.toLocaleLowerCase();
     const pending = pendingName
       ? connections.find((item) => String(item.browserName || item.name || '').trim().toLocaleLowerCase() === pendingName)
@@ -227,10 +244,6 @@ class BrowserAutomationExternalGateway {
       this.controlledConnectionId = String(controlled.id || '');
       if (pending?.id === controlled.id) this.pendingControlBrowserName = '';
     }
-    return {
-      tools: Array.from(tools.values()), connections: connections.map(publicConnection),
-      controlled_browser_id: this.controlledConnectionId,
-    };
   }
 
   addConnectionTools(tools, connection) {
@@ -254,21 +267,26 @@ class BrowserAutomationExternalGateway {
     throw new Error(`当前有 ${items.length} 个浏览器窗口，请通过 change_browser 选择唯一的控制窗口`);
   }
 
-  async callTool(name, rawArgs = {}) {
+  async callTool(name, rawArgs = {}, signal = undefined) {
     this.assertAccess();
+    signal?.throwIfAborted();
     const toolName = String(name || '').trim();
     const args = rawArgs && typeof rawArgs === 'object' && !Array.isArray(rawArgs) ? { ...rawArgs } : {};
-    if (isOverviewCall(toolName, args)) {
+    if (isBrowserOverview(toolName, args)) {
       return this.options.getBrowserOverview(sanitizeDispatchArgs(args));
     }
     const windowTools = this.getWindowTools?.();
-    if (windowTools?.has?.(toolName)) {
-      const result = await windowTools.execute(toolName, args);
-      if (result?.control_browser_requested === true) {
-        this.pendingControlBrowserName = String(result.name || '').trim();
-      }
-      return result;
-    }
+    if (windowTools?.has?.(toolName)) return this.callSoftwareTool(windowTools, toolName, args, signal);
+    return this.callBrowserTool(toolName, args, signal);
+  }
+
+  async callSoftwareTool(windowTools, toolName, args, signal) {
+    const result = await windowTools.execute(toolName, args, signal ? { signal } : undefined);
+    if (result?.control_browser_requested === true) this.pendingControlBrowserName = String(result.name || '').trim();
+    return result;
+  }
+
+  callBrowserTool(toolName, args, signal) {
     const connection = this.resolveConnection(args);
     this.controlledConnectionId = String(connection.id || '');
     this.assertBrowserTool(connection, toolName, args);
@@ -276,7 +294,7 @@ class BrowserAutomationExternalGateway {
       connection.id,
       toolName,
       sanitizeDispatchArgs(args),
-      { timeoutMs: resolveDispatchTimeout(toolName, args) },
+      { timeoutMs: resolveDispatchTimeout(toolName, args), ...(signal ? { signal } : {}) },
     );
   }
 
@@ -322,6 +340,7 @@ class BrowserAutomationExternalGateway {
       }
       await this.handleAuthorized(req, res, url);
     } catch (error) {
+      if (res.destroyed) return true;
       const normalized = normalizeToolError(error, {
         code: 'AI_FREE_MCP_CALL_FAILED',
         phase: 'external_gateway',
@@ -347,13 +366,15 @@ class BrowserAutomationExternalGateway {
   async respondMcpToolCall(res, id, params) {
     const name = String(params.name || '').trim();
     try {
-      const result = await this.callTool(name, params.arguments || {});
+      const result = await runWhileConnected(res, (signal) => this.callTool(name, params.arguments || {}, signal));
+      if (res.destroyed) return;
       mcpResponse(res, {
         jsonrpc: '2.0',
         id,
         result: mcpToolResult(result),
       });
     } catch (error) {
+      if (res.destroyed) return;
       const normalized = normalizeToolError(error, {
         code: 'AI_FREE_MCP_CALL_FAILED',
         phase: 'external_gateway',
@@ -436,7 +457,8 @@ class BrowserAutomationExternalGateway {
 
   async respondCall(req, res) {
     const body = await readJson(req);
-    const result = await this.callTool(body.name, body.arguments || body.args || {});
+    const result = await runWhileConnected(res, (signal) => this.callTool(body.name, body.arguments || body.args || {}, signal));
+    if (res.destroyed) return;
     jsonResponse(res, 200, { ok: true, result });
   }
 

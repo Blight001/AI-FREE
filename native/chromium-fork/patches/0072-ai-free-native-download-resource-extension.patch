@@ -1,0 +1,63 @@
+diff --git a/chrome/browser/ui/views/frame/ai_free_page_automation.cc b/chrome/browser/ui/views/frame/ai_free_page_automation.cc
+--- a/chrome/browser/ui/views/frame/ai_free_page_automation.cc
++++ b/chrome/browser/ui/views/frame/ai_free_page_automation.cc
+@@ -773,8 +773,28 @@
+   std::move(success).Run(std::move(response));
+ }
+ 
++// Chromium evaluates the target extension when protecting insecure downloads.
++// Derive it from the resource resolved by this document, never from a caller's
++// output filename. Chromium still decides whether the download is permitted.
++std::string DownloadResourceExtension(const GURL& url) {
++  const std::string name = url.ExtractFileName();
++  const size_t dot = name.find_last_of('.');
++  if (dot == std::string::npos || name.size() - dot > 17 ||
++      dot + 1 == name.size()) {
++    return {};
++  }
++  const std::string extension = name.substr(dot);
++  if (!std::ranges::all_of(extension.substr(1), [](char value) {
++        return base::IsAsciiAlpha(value) || base::IsAsciiDigit(value);
++      })) {
++    return {};
++  }
++  return extension;
++}
++
+ void StartElementDownload(content::GlobalRenderFrameHostId frame_id,
+                           base::FilePath target_path,
++                          bool preserve_resource_extension,
+                           AiFreeAutomationSuccess success,
+                           AiFreeAutomationFailure failure,
+                           AiFreePageGuard page_guard,
+@@ -810,12 +830,20 @@
+   auto parameters =
+       content::DownloadRequestUtils::CreateDownloadForWebContentsMainFrame(
+           contents, url, kElementDownloadTrafficAnnotation);
++  base::DictValue response = result->Clone();
++  if (preserve_resource_extension) {
++    const std::string extension = DownloadResourceExtension(url);
++    if (!extension.empty()) {
++      target_path = target_path.AddExtensionASCII(extension);
++    }
++    response.Set("stagingExtension", extension);
++  }
+   parameters->set_file_path(target_path);
+   parameters->set_referrer(contents->GetLastCommittedURL());
+   parameters->set_prefer_cache(true);
+   parameters->set_callback(base::BindOnce(
+       &OnElementDownloadStarted, std::move(success), std::move(failure),
+-      result->Clone()));
++      std::move(response)));
+   manager->DownloadUrl(std::move(parameters));
+ }
+ 
+@@ -837,6 +865,8 @@
+   input.Set("boundMedia", static_cast<bool>(page_guard));
+   ExecuteIsolated(web_contents, DownloadElementScript(input),
+                   base::BindOnce(&StartElementDownload, frame_id, target,
++                                 command.FindBool("preserveResourceExtension")
++                                     .value_or(false),
+                                  std::move(success), std::move(failure),
+                                  std::move(page_guard)));
+ }

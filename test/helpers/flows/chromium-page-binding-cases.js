@@ -32,6 +32,7 @@ async function acceptPageBinding({ manager, pid, profileId, url, uploadPath, req
   assert.notEqual(after.pageToken, before.pageToken);
   for (const { name, payload } of [
     { name: 'observe-page', payload: {} }, { name: 'capture-screenshot', payload: {} },
+    { name: 'get-session-data', payload: {} },
     { name: 'automation-takeover', payload: { action: 'acquire' } },
     { name: 'perform-action', payload: { action: 'wait', selector: '#file' } },
     { name: 'perform-action', payload: { action: 'upload_file', selector: '#file', selectionId: pending.selectionId } },
@@ -83,11 +84,29 @@ async function acceptTransparentFileInput({ command, select, token, uploadPath, 
     action: 'upload_file', selector: fileInput.selector, selectionId: armed.selectionId,
   }, token);
   assert.equal(uploaded.fileSelected, true, JSON.stringify(uploaded));
-  const request = await waitForRequest((item) => item.path === '/reference-result');
+  await assertReferenceReceipt(waitForRequest, uploadPath, 'reference-file');
+  await acceptLabelFileInput({ command, select, token, uploadPath, waitForRequest, result });
+}
+
+async function assertReferenceReceipt(waitForRequest, uploadPath, id) {
+  const request = await waitForRequest((item) => item.path === '/reference-result'
+    && new URLSearchParams(item.query).get('id') === id);
   const receipt = new URLSearchParams(request.query);
   assert.equal(receipt.get('trusted'), 'true');
   assert.equal(receipt.get('name'), path.basename(uploadPath));
   assert.equal(receipt.get('contents'), await fs.readFile(uploadPath, 'utf8'));
+}
+
+async function acceptLabelFileInput({ command, select, token, uploadPath, waitForRequest, result }) {
+  const fileInput = result.items.find((item) => item.selector === '#linked-reference-file');
+  assert(fileInput, 'Targeted observation must identify a hidden file input with an exposed associated label');
+  assert.equal(fileInput.requiresFileUpload, true);
+  const armed = (await select(token)).result;
+  const uploaded = await command('perform-action', {
+    action: 'upload_file', selector: fileInput.selector, selectionId: armed.selectionId,
+  }, token);
+  assert.equal(uploaded.fileSelected, true, JSON.stringify(uploaded));
+  await assertReferenceReceipt(waitForRequest, uploadPath, 'linked-reference-file');
 }
 
 async function assertConfirmedBytes({ manager, pid, uploadPath, token, command, waitForRequest, previousRequests }) {
@@ -117,6 +136,13 @@ async function acceptElementDownload(command, token, uploadPath) {
   await assert.rejects(command('download-element', input), { code: 'COMMAND_NOT_ALLOWED' });
   const result = await command('download-element', input, token);
   assert.equal(result.downloadStarted, true, JSON.stringify(result));
+  const linked = await command('download-element', {
+    selector: '#attachment-link', target_path: path.join(path.dirname(uploadPath), 'bound-link.native-download'),
+    preserveResourceExtension: true,
+  }, token);
+  assert.equal(linked.downloadStarted, true, JSON.stringify(linked));
+  assert.equal(new URL(linked.resourceUrl).pathname, '/asset-one.svg');
+  assert.equal(linked.stagingExtension, '.svg');
 }
 
 async function acceptPointerRace({ manager, profileId, url, requests, command, active, select }) {

@@ -248,13 +248,6 @@ const IPC_PAYLOAD_SCHEMAS = Object.freeze({
     stringField(channel, input, 'requestId');
     return input;
   },
-  'ai.chat-approval': (channel, payload) => {
-    const input = objectPayload(channel, payload);
-    stringField(channel, input, 'requestId', { required: true, maxLength: 256 });
-    stringField(channel, input, 'id', { required: true, maxLength: 256 });
-    if (typeof input.accepted !== 'boolean') fail(channel, 'accepted', '必须是布尔值');
-    return input;
-  },
   'ai.gift-code': (channel, payload) => {
     const input = objectPayload(channel, payload, { optional: true });
     stringField(channel, input, 'code');

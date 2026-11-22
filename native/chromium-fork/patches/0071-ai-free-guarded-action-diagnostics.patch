@@ -1,0 +1,71 @@
+diff --git a/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc b/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
+index 765edc9..16ae85a 100644
+--- a/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
++++ b/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
+@@ -885,6 +885,7 @@ std::string PageToken(const BridgeConnection& connection,
+ 
+ bool IsPageCommand(std::string_view name) {
+   return name == "observe-page" || name == "capture-screenshot" ||
++         name == "inspect-page-state" || name == "inspect-page-diagnostics" ||
+          name == "perform-action" || name == "download-element" ||
+          name == "automation-takeover" || name == "select-files" ||
+          name == "fill-account-field";
+diff --git a/chrome/browser/ui/views/frame/ai_free_page_automation.cc b/chrome/browser/ui/views/frame/ai_free_page_automation.cc
+index 3032d6c..c7a2258 100644
+--- a/chrome/browser/ui/views/frame/ai_free_page_automation.cc
++++ b/chrome/browser/ui/views/frame/ai_free_page_automation.cc
+@@ -90,6 +90,24 @@ void FailPageChanged(AiFreeAutomationFailure failure) {
+        "The bound page is no longer active");
+ }
+ 
++base::OnceCallback<void(base::Value)> GuardedDictionaryResult(
++    AiFreePageGuard guard,
++    AiFreeAutomationSuccess success,
++    AiFreeAutomationFailure failure,
++    std::string error_code,
++    std::string error_message) {
++  return base::BindOnce(
++      [](AiFreePageGuard guard, AiFreeAutomationSuccess success,
++         AiFreeAutomationFailure failure, const std::string& code,
++         const std::string& message, base::Value value) {
++        if (PageChanged(guard)) return FailPageChanged(std::move(failure));
++        const base::DictValue* result = value.GetIfDict();
++        if (!result) return Fail(std::move(failure), code, message);
++        std::move(success).Run(result->Clone());
++      }, std::move(guard), std::move(success), std::move(failure),
++      std::move(error_code), std::move(error_message));
++}
++
+ std::string CommandJson(const base::DictValue& command) {
+   return base::WriteJson(command).value_or("{}");
+ }
+@@ -1150,22 +1168,16 @@ bool HandleAiFreePageAutomationCommand(Browser* browser,
+   }
+   if (*type == "inspect-page-state") {
+     ExecuteIsolated(web_contents, InspectPageStateScript(command),
+-                   base::BindOnce(
+-                       [](AiFreeAutomationSuccess done, AiFreeAutomationFailure failed, base::Value value) {
+-                         const base::DictValue* result = value.GetIfDict();
+-                         if (!result) return Fail(std::move(failed), "INSPECT_RESULT_INVALID", "页面状态结果无效");
+-                         std::move(done).Run(result->Clone());
+-                       }, std::move(success), std::move(failure)));
++                 GuardedDictionaryResult(std::move(page_guard),
++                                         std::move(success), std::move(failure),
++                                         "INSPECT_RESULT_INVALID", "页面状态结果无效"));
+     return true;
+   }
+   if (*type == "inspect-page-diagnostics") {
+-    ExecuteIsolated(web_contents, InspectPageDiagnosticsScript(),
++    ExecuteMainWorld(web_contents, InspectPageDiagnosticsScript(),
+-                   base::BindOnce(
+-                       [](AiFreeAutomationSuccess done, AiFreeAutomationFailure failed, base::Value value) {
+-                         const base::DictValue* result = value.GetIfDict();
+-                         if (!result) return Fail(std::move(failed), "PAGE_DIAGNOSTICS_RESULT_INVALID", "页面诊断结果无效");
+-                         std::move(done).Run(result->Clone());
+-                       }, std::move(success), std::move(failure)));
++                 GuardedDictionaryResult(std::move(page_guard),
++                                         std::move(success), std::move(failure),
++                                         "PAGE_DIAGNOSTICS_RESULT_INVALID", "页面诊断结果无效"));
+     return true;
+   }
+   if (*type == "observe-page") {

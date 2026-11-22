@@ -265,7 +265,7 @@ test('binding B or drop-once permits only selection and never replays unknown re
   assertCall(select, 'browser_file', { action: 'upload', path: downloaded, selector: '#fixture-file' });
   for (const result of [
     { success: true, uploadVerification: 'file_selected' },
-    { success: false, errorCode: 'UPLOAD_NOT_CONFIRMED' },
+    { success: false, errorCode: 'UPLOAD_CANCELLED' },
     { success: false, errorCode: 'UPLOAD_OUTCOME_UNVERIFIED' },
   ]) {
     const reply = await complete([...acquired, ...toolResult(select, result)]);

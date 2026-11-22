@@ -1,5 +1,7 @@
 'use strict';
 
+const { clearObservations } = require('./native-browser-ref-store');
+
 const text = (value) => String(value ?? '').trim();
 const COMMANDS = Object.freeze({ close: 'close-tab', back: 'history-back', forward: 'history-forward' });
 const failed = (result) => result?.success === false || result?.ok === false;
@@ -13,8 +15,7 @@ function tabTarget(args) {
 }
 
 function clearPageState(service, connection) {
-  service.observeTargets.delete(connection.id);
-  service.observationHistory.delete(connection.id);
+  clearObservations(service, connection.id);
 }
 
 function unsupportedRuntime(error) {

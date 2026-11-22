@@ -1,0 +1,57 @@
+diff --git a/chrome/browser/ui/views/frame/ai_free_page_automation.cc b/chrome/browser/ui/views/frame/ai_free_page_automation.cc
+--- a/chrome/browser/ui/views/frame/ai_free_page_automation.cc
++++ b/chrome/browser/ui/views/frame/ai_free_page_automation.cc
+@@ -963,8 +963,10 @@
+ void OnCookies(AiFreeAutomationSuccess success,
+                AiFreeAutomationFailure failure,
+                base::DictValue storage,
++               AiFreePageGuard page_guard,
+                const net::CookieAccessResultList& included,
+                const net::CookieAccessResultList&) {
++  if (PageChanged(page_guard)) return FailPageChanged(std::move(failure));
+   base::ListValue cookies;
+   for (const auto& item : included) {
+     cookies.Append(CookieValue(item.cookie));
+@@ -977,7 +979,10 @@
+                GURL url,
+                AiFreeAutomationSuccess success,
+                AiFreeAutomationFailure failure,
++               AiFreePageGuard page_guard,
+                base::Value value) {
++  // A navigation or tab switch during either async read invalidates the export.
++  if (PageChanged(page_guard)) return FailPageChanged(std::move(failure));
+   const base::DictValue* storage = value.GetIfDict();
+   if (!storage || !storage->FindBool("success").value_or(false)) {
+     return Fail(std::move(failure), "STORAGE_READ_FAILED",
+@@ -989,7 +994,8 @@
+   manager->GetCookieList(url, net::CookieOptions::MakeAllInclusive(),
+                          net::CookiePartitionKeyCollection::ContainsAll(),
+                          base::BindOnce(&OnCookies, std::move(success),
+-                                        std::move(failure), storage->Clone()));
++                                        std::move(failure), storage->Clone(),
++                                        std::move(page_guard)));
+ }
+ 
+ void OnScreenshot(AiFreeAutomationSuccess success,
+@@ -1286,7 +1292,8 @@
+     const GURL url = web_contents->GetLastCommittedURL();
+     ExecuteIsolated(web_contents, StorageScript(),
+                     base::BindOnce(&OnStorage, browser->profile(), url,
+-                                   std::move(success), std::move(failure)));
++                                   std::move(success), std::move(failure),
++                                   std::move(page_guard)));
+     return true;
+   }
+   if (*type == "capture-screenshot") {
+diff --git a/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc b/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
+--- a/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
++++ b/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
+@@ -888,7 +888,7 @@
+          name == "inspect-page-state" || name == "inspect-page-diagnostics" ||
+          name == "perform-action" || name == "download-element" ||
+          name == "automation-takeover" || name == "select-files" ||
+-         name == "fill-account-field";
++         name == "fill-account-field" || name == "get-session-data";
+ }
+ 
+ bool IsCurrentPage(scoped_refptr<BridgeConnection> connection,

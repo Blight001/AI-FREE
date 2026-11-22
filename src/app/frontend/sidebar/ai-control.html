@@ -23,7 +23,6 @@
   <link rel="stylesheet" href="./client/styles/control-panel.css" />
   <link rel="stylesheet" href="./client/app/side/styles/side.css" />
   <link rel="stylesheet" href="./client/app/side/styles/modules/ai-control-files.css" />
-  <link rel="stylesheet" href="./client/app/side/styles/modules/ai-control-browser-target.css" />
   <link rel="stylesheet" href="./client/app/side/styles/modules/website-console-theme.css" />
 </head>
 <body>
@@ -78,13 +77,6 @@
             </header>
             <div id="ai-chat-workspace-files" class="ai-chat-workspace-files"></div>
           </div>
-          <section id="ai-chat-upload-confirmation" class="ai-chat-confirmation" aria-label="上传确认" hidden>
-            <div id="ai-chat-confirmation-summary" role="status"></div>
-            <div class="ai-chat-confirmation-actions">
-              <button id="ai-chat-confirmation-cancel" type="button">取消</button>
-              <button id="ai-chat-confirmation-accept" type="button">确认上传</button>
-            </div>
-          </section>
           <div id="ai-chat-mention-menu" class="ai-chat-mention-menu" role="listbox" hidden></div>
           <textarea id="ai-chat-input" rows="1" maxlength="12000" placeholder="输入消息，@ 引用工具或文件，Enter 发送"></textarea>
           <div class="ai-chat-footer-bar">
@@ -152,7 +144,6 @@
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-messages.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-data-loaders.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-files.js"></script>
-  <script src="./client/app/side/controllers/pages/ai-control/ai-control-browser-target.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-composer.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-bootstrap.js"></script>
 

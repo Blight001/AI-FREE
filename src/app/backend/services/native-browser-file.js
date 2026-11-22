@@ -146,7 +146,7 @@ async function downloadObservedResource(owner, connection, input, args, cause) {
 
 async function nativeElementDownload(owner, connection, target, args) {
   return owner.downloadService.downloadElement(args, (targetPath) => owner.runtimeCommand(
-    connection, 'download-element', { ...target, target_path: targetPath },
+    connection, 'download-element', { ...target, target_path: targetPath, preserveResourceExtension: true },
   ), { preserveNativeFailure: Boolean(expectedPageToken(connection)) });
 }
 
@@ -188,16 +188,23 @@ async function browserDownloadUrl(owner, connection, args) {
   return softwareDownload(owner, connection, args, args.url, { mediaType: args.media_type });
 }
 
+async function uploadPageUrl(owner, connection, args) {
+  const supplied = text(args.page_url || args.pageUrl);
+  if (supplied || expectedPageToken(connection)) return supplied;
+  return (await pageSession(owner, connection)).pageUrl;
+}
+
 async function prepareUpload(owner, connection, args) {
   if (!owner.downloadService?.resolveUploadPaths) throw new Error('AI 工作区文件服务不可用');
   const requested = Array.isArray(args.paths) ? args.paths : [args.path].filter(Boolean);
   const paths = owner.downloadService.resolveUploadPaths(requested);
   const mode = text(args.mode) || (paths.length > 1 ? 'open-multiple' : 'open');
-  const session = expectedPageToken(connection) || text(args.page_url || args.pageUrl)
-    ? null
-    : await owner.runtimeCommand(connection, 'get-session-data', {});
-  const confirmed = args[CONFIRMED_UPLOAD_FILES];
-  return { pageUrl: text(args.page_url || args.pageUrl || session?.url), paths, mode, ttlMs: 5000,
+  const pageUrl = await uploadPageUrl(owner, connection, args);
+  // Sidebar snapshots preserve any referenced artifact digest. Otherwise take
+  // a snapshot of the workspace files here before arming the chooser.
+  const confirmed = args[CONFIRMED_UPLOAD_FILES] || (expectedPageToken(connection)
+    ? await owner.downloadService.snapshotUploadPaths?.(paths) : null);
+  return { pageUrl, paths, mode, ttlMs: 5000,
     ...(confirmed ? { [CONFIRMED_UPLOAD_FILES]: confirmed } : {}),
   };
 }
@@ -243,16 +250,33 @@ function browserServerUpload(owner, args) {
   };
 }
 
-async function browserFile(owner, connection, args) {
+async function saveBrowserSession(owner, connection, args, signal) {
+  signal?.throwIfAborted();
+  const session = await owner.runtimeCommand(connection, 'get-session-data', {}, signal);
+  if (session?.success === false) return session;
+  signal?.throwIfAborted();
+  return owner.downloadService.execute({ ...args, session });
+}
+
+async function browserFile(owner, connection, args, signal = undefined) {
   const action = resolvedFileAction(args);
   if (isDirectServerUpload(action, args)) return browserServerUpload(owner, args);
-  if (action === 'upload') return { ...(await browserUpload(owner, connection, args)), action: 'upload' };
-  if (action === 'download_element') return browserDownloadElement(owner, connection, args);
+  if (action === 'upload') {
+    const result = await browserUpload(owner, connection, args);
+    return { ...result, action: 'upload', ...(result?.fileSelected ? {
+      uploadVerification: 'file_selected',
+      message: '文件已交给网页控件。请核对页面回执或预览，确认站点接收后再提交。',
+    } : {}) };
+  }
+  if (action === 'download_element') {
+    const result = await browserDownloadElement(owner, connection, args);
+    // Resource retrieval skips page click handlers. Keep this receipt identical across MCP entries.
+    return result?.success ? { ...result, pageClickDispatched: false } : result;
+  }
   if (!owner.downloadService?.execute) throw new Error('AI 工作区下载服务不可用');
   if (action === 'download') return browserDownloadUrl(owner, connection, args);
   if (action !== 'save_session') return owner.downloadService.execute(args);
-  const response = await owner.runtimeCommand(connection, 'get-session-data', {});
-  return owner.downloadService.execute({ ...args, session: response?.result || response });
+  return saveBrowserSession(owner, connection, args, signal);
 }
 
 module.exports = {
