@@ -85,14 +85,20 @@ test('automation bridge exposes authenticated external MCP without a legacy exte
     assert.equal((await post({ method: 'notifications/initialized' })).status, 202);
     const tools = await post({ id: 2, method: 'tools/list' });
     assert.equal(tools.status, 200);
-    assert.deepEqual((await tools.json()).result.tools.map(({ name }) => name), ['browser_control', 'software_window']);
+    assert.deepEqual((await tools.json()).result.tools.map(({ name }) => name), ['browser_control', 'manage_card', 'software_window']);
+    const callCard = async (id, args) => (await (await post({ id, method: 'tools/call',
+      params: { name: 'manage_card', arguments: args },
+    })).json()).result.structuredContent;
+    const created = await callCard(3, { action: 'write', cardData: { name: 'Offline HTTP fixture', steps: [{ type: 'end' }] } });
+    assert.ok(created.item.id);
+    assert.equal((await callCard(4, { action: 'get', id: created.item.id })).item.id, created.item.id);
     const descriptor = JSON.parse(fs.readFileSync(descriptorPath, 'utf8'));
     assert.equal(JSON.stringify(await configIpc.status()).includes(descriptor.token), false);
     const headers = { 'x-ai-free-mcp-token': descriptor.token };
     const listedResponse = await fetch(`${descriptor.endpoint}/mcp/v1/tools`, { headers });
     assert.equal(listedResponse.status, 200);
     const listed = await listedResponse.json();
-    assert.deepEqual(listed.tools.map((tool) => tool.name), ['browser_control', 'software_window']);
+    assert.deepEqual(listed.tools.map((tool) => tool.name), ['browser_control', 'manage_card', 'software_window']);
 
     const calledResponse = await fetch(`${descriptor.endpoint}/mcp/v1/call`, {
       method: 'POST',

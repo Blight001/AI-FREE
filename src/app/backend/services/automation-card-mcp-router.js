@@ -1,10 +1,12 @@
 'use strict';
 
 const {
+  browserReference,
   resolveBrowserConnection,
   resolveDispatchTimeout,
   sanitizeBrowserRoutingArgs,
 } = require('./automation-tool-contract');
+const { validateAutomationCardInputs } = require('./automation-card-inputs');
 
 const BLOCKED_CARD_TOOLS = new Set(['manage_card']);
 const CODEX_AIFREE_MARKER = '__aifree_';
@@ -32,6 +34,12 @@ function toolDefinition(source = {}) {
     destructive: source.destructive === true,
     input_schema: source.input_schema || source.inputSchema || { type: 'object', properties: {} },
   };
+}
+
+function requireToolSchema(tools, name, target) {
+  const source = tools?.find((tool) => normalizeCardToolName(tool.name) === name);
+  if (!source) throw new Error(`${target}不支持 MCP 工具: ${name}`);
+  return toolDefinition(source).input_schema;
 }
 
 function routeError(resolved) {
@@ -69,10 +77,16 @@ class AutomationCardMcpRouter {
     return Array.from(tools.values());
   }
 
-  requireBrowserTool(connection, toolName) {
-    const tools = this.getConnection(connection.id)?.tools || [];
-    if (tools.some((tool) => normalizeCardToolName(tool?.name) === toolName)) return;
-    throw new Error(`窗口「${text(connection.name) || connection.id}」不支持 MCP 工具: ${toolName}`);
+  resolveDestination(defaultConnectionId, args) {
+    let id = defaultConnectionId;
+    if (!id || browserReference(args)) {
+      const resolved = resolveBrowserConnection(this.listConnections(), args);
+      if (resolved.kind !== 'found') throw Object.assign(new Error(routeError(resolved)), { code: 'BROWSER_ROUTE_NOT_FOUND' });
+      id = resolved.connection.id;
+    }
+    const connection = this.getConnection(id);
+    if (!connection) throw Object.assign(new Error(`原浏览器连接已离线: ${id}`), { code: 'BROWSER_CONNECTION_NOT_FOUND' });
+    return { id, connection };
   }
 
   async execute(defaultConnectionId, name, rawArgs = {}, options = {}) {
@@ -81,17 +95,20 @@ class AutomationCardMcpRouter {
     if (BLOCKED_CARD_TOOLS.has(toolName)) throw new Error(`自动化卡片禁止递归调用 ${toolName}`);
     const args = rawArgs && typeof rawArgs === 'object' && !Array.isArray(rawArgs) ? { ...rawArgs } : {};
     const windowTools = this.getWindowTools();
-    if (windowTools?.has?.(toolName)) return windowTools.execute(toolName, args, options);
+    if (windowTools?.has?.(toolName)) {
+      validateAutomationCardInputs(requireToolSchema(windowTools.tools, toolName, '软件工具目录'), args);
+      return windowTools.execute(toolName, args, options);
+    }
 
-    const connections = this.listConnections();
-    const resolved = resolveBrowserConnection(connections, args, defaultConnectionId);
-    if (resolved.kind !== 'found') throw new Error(routeError(resolved));
-    this.requireBrowserTool(resolved.connection, toolName);
+    const { id, connection } = this.resolveDestination(defaultConnectionId, args);
+    const dispatchArgs = sanitizeBrowserRoutingArgs(args);
+    const schema = requireToolSchema(connection.tools, toolName, `窗口「${connection.name || id}」`);
+    validateAutomationCardInputs(schema, dispatchArgs);
     const timeoutMs = resolveDispatchTimeout(toolName, args);
     return this.dispatch(
-      resolved.connection.id,
+      id,
       toolName,
-      sanitizeBrowserRoutingArgs(args),
+      dispatchArgs,
       { ...options, timeoutMs },
     );
   }

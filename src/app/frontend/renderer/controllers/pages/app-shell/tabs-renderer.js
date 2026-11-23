@@ -66,7 +66,6 @@ function initializeTabElement(tab) {
   element.dataset.runtimeType = String(tab?.runtimeType || 'chromium');
   element.dataset.runtimeStatus = String(tab?.runtimeStatus || 'ready');
   element.dataset.browserHistoryId = String(tab?.browserHistoryId || '');
-  element.classList.toggle('network-magic', tab?.networkMagicEnabled === true);
   return element;
 }
 
@@ -215,7 +214,6 @@ function syncTabElement(tabElement, tab) {
   tabElement.title = buildTabTooltip(tab);
   tabElement.dataset.browserHistoryId = String(tab?.browserHistoryId || '');
   tabElement.dataset.runtimeStatus = String(tab?.runtimeStatus || 'starting');
-  tabElement.classList.toggle('network-magic', tab?.networkMagicEnabled === true);
   const runtimeBadge = tabElement.querySelector('.tab-runtime-actions');
   const crashed = tab?.runtimeType === 'chromium' && tab?.runtimeStatus === 'crashed';
   if (runtimeBadge && !crashed) {

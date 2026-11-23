@@ -60,12 +60,12 @@ const suites = {
   tests: ['prepare', 'tests'],
   native: ['native-build', 'native-tests', 'native-load'],
   acceptance: ['prepare', 'acceptance', 'embedded-policy'],
-  chromium: ['chromium-phase3', 'chromium-alignment', 'native-workflow', 'chromium-media'],
+  chromium: ['chromium-phase3', 'chromium-alignment', 'native-workflow', 'mcp-debug-panel', 'chromium-media'],
   packaged: ['packaged'],
   interactions: ['prepare', 'native-build', ...interactionChecks().map((entry) => entry.id)],
   full: ['patch-inventory', 'patch-replay', 'prepare', 'guardrails', 'verify', 'native-build',
     'native-tests', 'native-load', 'acceptance', 'embedded-policy', 'chromium-phase3',
-    'chromium-alignment', 'native-workflow', 'chromium-media', 'remote-browser-peer-generated',
+    'chromium-alignment', 'native-workflow', 'mcp-debug-panel', 'chromium-media', 'remote-browser-peer-generated',
     'source-pages', 'generated-pages', 'packaged-sidebar', 'remote-browser-peer-packaged', 'packaged'],
 };
 

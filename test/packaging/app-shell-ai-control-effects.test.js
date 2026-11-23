@@ -22,12 +22,6 @@ test('应用外壳不再渲染 AI 浏览器连接粒子或标签高亮', () => {
   }
 });
 
-test('网络魔法标签效果仍保持独立', () => {
-  const css = fs.readFileSync(path.join(appShellRoot, 'styles/app-shell.css'), 'utf8');
-  assert.match(css, /\.tab\.network-magic\s*\{/);
-  assert.match(css, /@keyframes networkMagicFlow\s*\{/);
-});
-
 test('浏览器窗口切换栏作为底部任务栏并提供 AI 控制入口', () => {
   const html = fs.readFileSync(path.join(appRoot, 'frontend/views/app-shell.html'), 'utf8');
   const css = fs.readFileSync(path.join(appShellRoot, 'styles/app-shell.css'), 'utf8');
@@ -81,16 +75,16 @@ test('内置代理收进底部任务栏魔法棒，首页空白页不再展示�
   const popupController = fs.readFileSync(path.join(
     appRoot, 'backend/features/network/network-magic-popup-controller.js',
   ), 'utf8');
-  const sidebarCss = fs.readFileSync(path.join(
-    appRoot, 'frontend/sidebar/client/app/side/styles/modules/network-magic-sidebar.css',
-  ), 'utf8');
   const emptyState = html.match(/id="browser-empty-state"[\s\S]*?<\/main>/)?.[0] || '';
 
   assert.match(html, /id="shell-app-version"[\s\S]*?id="theme-toggle-btn"[\s\S]*?id="shell-network-magic"/);
   assert.match(html, /id="shell-network-magic-toggle"[\s\S]*?class="network-magic-wand-icon"/);
   assert.match(popupHtml, /id="network-magic-sidebar-dialog"[\s\S]*?id="VPN-switch"[\s\S]*?开启魔法代理/);
-  assert.match(popupHtml, /id="vpn-node-selector-toggle-btn"[\s\S]*?切换节点/);
-  assert.match(popupHtml, /id="vpn-node-selector-panel"[\s\S]*?class="vpn-node-selector-dialog"/);
+  assert.match(popupHtml, /id="vpn-node-selector-grid"/);
+  for (const asset of ['styles/network-magic-popup.css', 'controllers/pages/app-shell/network-magic-node-groups.js']) {
+    assert.ok(popupHtml.includes(`../renderer/${asset}`));
+    assert.ok(fs.existsSync(path.join(appShellRoot, asset)));
+  }
   assert.doesNotMatch(html, /id="network-magic-sidebar-dialog"/);
   assert.doesNotMatch(html, /id="VPN-switch"/);
   assert.doesNotMatch(sidebarHtml, /id="network-magic-sidebar-dialog"/);
@@ -98,8 +92,6 @@ test('内置代理收进底部任务栏魔法棒，首页空白页不再展示�
   assert.doesNotMatch(emptyState, /id="VPN-switch"/);
   assert.doesNotMatch(emptyState, /内置代理/);
   assert.doesNotMatch(emptyState, /vpn-node-selector-toggle-btn/);
-  assert.match(sidebarCss, /\.network-magic-sidebar-dialog\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?inset:\s*0;/);
-  assert.match(sidebarCss, /html\.network-magic-popup-page \.vpn-node-selector-dialog\s*\{[\s\S]*?position:\s*relative;/);
   assert.match(controller, /toggleNetworkMagicPanel/);
   assert.match(controller, /readNetworkMagicButtonAnchor/);
   assert.doesNotMatch(controller, /openAiControlSidebar/);
@@ -172,7 +164,6 @@ test('浏览器任务项仅在聚焦时显示强调边框且关闭热区足够�
 
   assert.match(css, /\.tab\s*\{[\s\S]*?background-color:\s*transparent;[\s\S]*?border:\s*1px solid transparent;/);
   assert.match(css, /\.tab\.active\s*\{[\s\S]*?border-width:\s*2px;[\s\S]*?background-color:\s*color-mix/);
-  assert.match(css, /\.tab\.network-magic:not\(\.active\)\s*\{[\s\S]*?border-color:\s*transparent;[\s\S]*?background:\s*transparent;/);
   assert.match(css, /\.tab-close\s*\{[\s\S]*?width:\s*26px;[\s\S]*?height:\s*26px;/);
   assert.match(css, /\.tab-close:hover\s*\{[\s\S]*?background:/);
 });

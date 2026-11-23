@@ -4,9 +4,9 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { mcpToolResult } = require('./mcp-tool-result');
+const { dispatchAutomationMcpShortcut } = require('./automation-mcp-shortcuts');
 const {
   addBrowserRouteToSchema,
-  isBrowserOverview,
   normalizeToolError,
   normalizeToolSchema,
   resolveBrowserConnection,
@@ -100,6 +100,10 @@ function normalizeSoftwareTool(tool = {}) {
     destructive: tool.destructive === true,
     scope: 'software',
   };
+}
+
+function normalizeAutomationTool(tool = {}) {
+  return { ...addBrowserRouting(tool), scope: 'automation' };
 }
 
 function sanitizeCookieTool(tool) {
@@ -219,6 +223,8 @@ class BrowserAutomationExternalGateway {
     const connections = this.connections();
     const overviewTool = this.options.getOverviewTool?.(connections.length > 0) || this.options.overviewTool;
     addOverviewTool(tools, overviewTool);
+    const automationTool = normalizeAutomationTool(this.options.getAutomationTool?.() || {});
+    if (automationTool.name) tools.set(automationTool.name, automationTool);
     for (const tool of this.getWindowTools?.()?.tools || []) {
       const normalized = normalizeSoftwareTool(tool);
       if (normalized.name) tools.set(normalized.name, normalized);
@@ -260,28 +266,36 @@ class BrowserAutomationExternalGateway {
     const resolved = resolveBrowserConnection(items, args, this.controlledConnectionId);
     if (resolved.kind === 'found') return resolved.connection;
     if (resolved.kind === 'ambiguous') {
-      throw new Error(`存在多个名为「${resolved.reference}」的窗口，请在 change_browser 中使用连接 ID`);
+      throw this.browserRouteError(`存在多个名为「${resolved.reference}」的窗口，请在 change_browser 中使用连接 ID`);
     }
-    if (resolved.kind === 'not_found') throw new Error(`未找到 AI-FREE 浏览器窗口: ${resolved.reference}`);
-    if (resolved.kind === 'unavailable') throw new Error('当前没有已连接内部 MCP 的 AI-FREE 浏览器窗口');
-    throw new Error(`当前有 ${items.length} 个浏览器窗口，请通过 change_browser 选择唯一的控制窗口`);
+    if (resolved.kind === 'not_found') throw this.browserRouteError(`未找到 AI-FREE 浏览器窗口: ${resolved.reference}`);
+    if (resolved.kind === 'unavailable') throw this.browserRouteError('当前没有已连接内部 MCP 的 AI-FREE 浏览器窗口');
+    throw this.browserRouteError(`当前有 ${items.length} 个浏览器窗口，请通过 change_browser 选择唯一的控制窗口`);
   }
 
-  async callTool(name, rawArgs = {}, signal = undefined) {
+  browserRouteError(message) {
+    return Object.assign(new Error(message), { code: 'BROWSER_ROUTE_NOT_FOUND', phase: 'tool_route', retryable: false });
+  }
+
+  async callTool(name, rawArgs = {}, signal = undefined, managedChatActor = undefined) {
     this.assertAccess();
     signal?.throwIfAborted();
     const toolName = String(name || '').trim();
     const args = rawArgs && typeof rawArgs === 'object' && !Array.isArray(rawArgs) ? { ...rawArgs } : {};
-    if (isBrowserOverview(toolName, args)) {
-      return this.options.getBrowserOverview(sanitizeDispatchArgs(args));
-    }
+    const shortcut = await dispatchAutomationMcpShortcut({
+      toolName, args, signal,
+      sanitizeArgs: sanitizeDispatchArgs,
+      getBrowserOverview: (input) => this.options.getBrowserOverview(input),
+      manageCard: (input, activeSignal) => this.options.manageAutomationCard(input, activeSignal),
+    });
+    if (shortcut.handled) return shortcut.result;
     const windowTools = this.getWindowTools?.();
-    if (windowTools?.has?.(toolName)) return this.callSoftwareTool(windowTools, toolName, args, signal);
+    if (windowTools?.has?.(toolName)) return this.callSoftwareTool(windowTools, toolName, args, signal, managedChatActor);
     return this.callBrowserTool(toolName, args, signal);
   }
 
-  async callSoftwareTool(windowTools, toolName, args, signal) {
-    const result = await windowTools.execute(toolName, args, signal ? { signal } : undefined);
+  async callSoftwareTool(windowTools, toolName, args, signal, managedChatActor) {
+    const result = await windowTools.execute(toolName, args, signal || managedChatActor ? { signal, managedChatActor } : undefined);
     if (result?.control_browser_requested === true) this.pendingControlBrowserName = String(result.name || '').trim();
     return result;
   }

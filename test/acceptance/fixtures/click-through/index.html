@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+  <title>点击穿透测试</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: system-ui, "Microsoft YaHei UI", sans-serif;
+      background: #0b1320;
+      color: #edf4ff;
+      --surface: #121e30;
+      --border: #2a4059;
+      --muted: #adbed5;
+      --accent: #70e0ca;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { max-width: 870px; margin: auto; padding: clamp(1rem, 5vw, 3rem); }
+    h1 { margin: 0 0 .5rem; font-size: clamp(1.8rem, 5vw, 2.75rem); }
+    p { margin: 0; color: var(--muted); line-height: 1.7; }
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+    :focus-visible { outline: 3px solid #f6c779; outline-offset: 4px; }
+    .toolbar { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 1rem; margin: 1.5rem 0 1rem; }
+    fieldset { display: flex; flex-wrap: wrap; gap: .55rem; border: 0; padding: 0; margin: 0; min-inline-size: 0; }
+    legend { margin-bottom: .5rem; color: var(--muted); font-size: .875rem; }
+    .mode, .reset {
+      display: inline-flex; align-items: center; gap: .5rem;
+      background: var(--surface); color: inherit; border: 1px solid var(--border);
+      border-radius: .65rem; padding: .6rem .85rem; cursor: pointer;
+    }
+    .mode:has(input:checked) { border-color: var(--accent); }
+    input { accent-color: var(--accent); margin: 0; }
+    .stage {
+      display: grid; place-items: center; position: relative; isolation: isolate;
+      min-height: 240px; padding: 3.5rem 1.5rem; border: 1px solid var(--border); border-radius: 1rem;
+      background-color: var(--surface);
+      background-image: radial-gradient(#354b65 1px, transparent 1px);
+      background-size: 22px 22px;
+    }
+    #target-button {
+      width: min(100%, 270px); min-height: 90px; padding: .75rem;
+      border: 0; border-radius: .85rem; color: #062523; background: var(--accent);
+      font-size: 1.25rem; font-weight: 750;
+    }
+    #target-button:active { background: #b4f2e5; }
+    #overlay {
+      position: absolute; z-index: 1; inset: .8rem; border: 2px dashed #a2b4cb;
+      border-radius: .7rem; background: rgb(143 185 232 / 10%); pointer-events: none;
+    }
+    .stage[data-mode="block"] #overlay { border-color: #f6c779; cursor: crosshair; pointer-events: auto; }
+    .overlay-label {
+      position: absolute; top: .5rem; left: .6rem; padding: .2rem .5rem;
+      border-radius: .35rem; background: #152238; color: #dfebfb; font-size: .8rem;
+    }
+    .result {
+      margin-top: 1rem; padding: clamp(.9rem, 3vw, 1.3rem); background: var(--surface);
+      border: 1px solid var(--border); border-radius: 1rem;
+    }
+    dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: .9rem; margin: 0; }
+    dt { color: var(--muted); font-size: .8rem; }
+    dd { margin: .25rem 0 0; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+    #expected { margin-top: .7rem; font-size: .925rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>点击穿透测试</h1>
+    <p>切换装饰层模式，然后分别点同一个绿色按钮。下方记录显示网页实际收到点击的位置和对象。</p>
+    <div class="toolbar">
+      <fieldset id="mode">
+        <legend>装饰层行为</legend>
+        <label class="mode"><input type="radio" name="mode" value="pass" checked> 允许穿透</label>
+        <label class="mode"><input type="radio" name="mode" value="block"> 拦截点击</label>
+      </fieldset>
+      <button type="button" class="reset" id="reset">清零统计</button>
+    </div>
+    <section class="stage" id="stage" data-mode="pass" aria-label="测试区域">
+      <button type="button" id="target-button">点击这里</button>
+      <div id="overlay" aria-hidden="true"><span class="overlay-label">装饰层</span></div>
+    </section>
+    <p id="expected">这一模式下，按钮次数加 1，装饰层次数保持不变。</p>
+    <section class="result" aria-label="页面事件统计" aria-live="polite">
+      <dl>
+        <div><dt>按钮次数</dt><dd id="button-count">0</dd></div>
+        <div><dt>装饰层次数</dt><dd id="overlay-count">0</dd></div>
+        <div><dt>最近接收方</dt><dd id="last-target">—</dd></div>
+        <div><dt>视口坐标</dt><dd id="last-point">—</dd></div>
+        <div><dt>事件 isTrusted</dt><dd id="last-trusted">—</dd></div>
+      </dl>
+    </section>
+  </main>
+  <script>
+    'use strict';
+
+    const stage = document.getElementById('stage');
+    const expected = document.getElementById('expected');
+    const buttonCount = document.getElementById('button-count');
+    const overlayCount = document.getElementById('overlay-count');
+    const lastTarget = document.getElementById('last-target');
+    const lastPoint = document.getElementById('last-point');
+    const lastTrusted = document.getElementById('last-trusted');
+
+    function recordClick(event, receiver, counter) {
+      counter.textContent = String(Number(counter.textContent) + 1);
+      lastTarget.textContent = receiver;
+      lastPoint.textContent = event.detail ? `${event.clientX}, ${event.clientY}` : '无指针坐标';
+      lastTrusted.textContent = String(event.isTrusted);
+    }
+
+    document.getElementById('mode').addEventListener('change', (event) => {
+      const mode = event.target.value;
+      stage.dataset.mode = mode;
+      expected.textContent = mode === 'pass'
+        ? '这一模式下，按钮次数加 1，装饰层次数保持不变。'
+        : '这一模式下，装饰层次数加 1，按钮次数保持不变。';
+    });
+    document.getElementById('target-button').addEventListener('click', (event) => recordClick(event, '按钮', buttonCount));
+    document.getElementById('overlay').addEventListener('click', (event) => recordClick(event, '装饰层', overlayCount));
+    document.getElementById('reset').addEventListener('click', () => {
+      buttonCount.textContent = '0';
+      overlayCount.textContent = '0';
+      for (const item of [lastTarget, lastPoint, lastTrusted]) item.textContent = '—';
+    });
+  </script>
+</body>
+</html>

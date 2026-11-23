@@ -25,6 +25,12 @@ async function runSidebarPhases(t, phases) {
 test('Electron sidebar binds, previews, restores history and uploads JSON and PNG directly', { timeout: 70000 },
   (t) => runSidebarPhases(t, ['initial', 'reopen']));
 
+test('Electron sidebar folds current tools, preserves manual expansion, and switches between continue and send', { timeout: 30000 },
+  (t) => runSidebarPhases(t, ['continuation']));
+
+test('Electron sidebar opens a live child, inserts and resumes, then restores the parent draft and the child on reload',
+  { timeout: 30000 }, (t) => runSidebarPhases(t, ['managed']));
+
 test('Real Chromium reload invalidates an in-progress operation and the next turn downloads and previews without manual binding', {
   timeout: 45000,
   skip: process.env.AI_FREE_ACCEPT_NATIVE_SIDEBAR !== '1',

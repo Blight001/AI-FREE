@@ -23,18 +23,21 @@ class Element {
   addEventListener(name, action) { this.handlers[name] = action; }
   click() { this.handlers.click?.({ currentTarget: this }); }
   focus() {}
-  setSelectionRange(start) { this.selectionStart = start; }
   querySelector(selector) { return this.children.find((child) => child.className === selector.slice(1)) || null; }
 }
 
 function fixture(workspaceRead = () => ({ ok: true, file: {} })) {
-  const input = Object.assign(new Element(), { value: '', selectionStart: 0 });
+  const input = Object.assign(new Element(), { value: '' });
   const chips = new Element();
   const menu = new Element();
   const elements = { 'ai-chat-input': input, 'ai-chat-attachment-chips': chips, 'ai-chat-mention-menu': menu };
   const status = [];
   const context = vm.createContext({
     document: { createElement: () => new Element() }, window: { aiFree: { ai: { workspaceRead } } },
+    chatDraftMention: () => ({ query: 'same', range: { start: 0, end: input.value.length } }),
+    replaceChatDraftSelection: ({ start, end }, text) => {
+      input.value = input.value.slice(0, start) + text + input.value.slice(end);
+    },
     el: (id) => elements[id] || null, resizeInput() {}, setStatus: (message) => status.push(message),
     state: {
       currentSession: { id: 'current' }, attachmentPaths: [], chatMentions: [], mcpTools: [],
@@ -53,14 +56,12 @@ function fixture(workspaceRead = () => ({ ok: true, file: {} })) {
 test('same-name @ choices show their paths and removal drops the selected file from the request', () => {
   const { input, chips, menu, run } = fixture();
   input.value = '@same';
-  input.selectionStart = input.value.length;
   run('renderMentionMenu()');
   assert.deepEqual(menu.children.map((choice) => choice.textContent), ['A/same.png · 附加文件', 'B/same.png · 附加文件']);
   menu.children[0].click();
   assert.equal(input.value, '');
   chips.children[0].children[1].click();
   input.value = '@same';
-  input.selectionStart = input.value.length;
   run('renderMentionMenu()');
   run("handleChatMentionKey({ key: 'ArrowDown', preventDefault() {} })");
   run("handleChatMentionKey({ key: 'Enter', preventDefault() {} })");

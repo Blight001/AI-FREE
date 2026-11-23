@@ -7,8 +7,6 @@ function triggerNetworkMagicAfterLogin(sessionToken, deviceId, label) {
   try {
     if (typeof autoStartNetworkMagicIfEligible !== 'function') return;
     void autoStartNetworkMagicIfEligible({
-      startBtn: safeGetEl('start-clash-mini-btn'),
-      vpnBtn: safeGetEl('VPN-switch'),
       key: sessionToken,
       deviceId,
     });

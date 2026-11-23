@@ -90,6 +90,7 @@ function buildGeolocationSettings(settings, profile) {
 
 function buildBrowserEnvironmentSettings(settings = {}, profile = {}) {
   return {
+    nativeIdentity: profile.nativeIdentity === true,
     os: settings.os || '',
     browserVersion: settings.browserVersion || '',
     acceptLanguage: profile.acceptLanguage || '',

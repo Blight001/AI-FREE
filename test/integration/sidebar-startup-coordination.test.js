@@ -43,12 +43,11 @@ function createDomElement() {
   return element;
 }
 
-test('自动开启网络魔法在配置获取完成前禁用主开关', async () => {
+test('网络魔法自动启动向弹窗报告忙碌状态并合并并发请求', async () => {
   let finishStart;
   let startOptions = null;
   const startPending = new Promise((resolve) => { finishStart = resolve; });
-  const vpnBtn = createButton('开启魔法代理');
-  const startBtn = createButton('启动 Clash Mini');
+  const busyStates = [];
   const context = vm.createContext({
     console,
     setTimeout,
@@ -68,73 +67,29 @@ test('自动开启网络魔法在配置获取完成前禁用主开关', async ()
       },
     },
     autoStartClashMiniInFlight: false,
+    vpnControlOperation: '',
     hasValidatedInSession: false,
     isVpnEnabled: false,
     isLicenseValidated: () => false,
-    applyVpnActionAvailability: () => {},
-    updateClashVpnButton: (button, state) => {
-      button.textContent = state.enabled ? '关闭魔法代理' : '开启魔法代理';
-    },
+    applyVpnActionAvailability: () => busyStates.push(context.autoStartClashMiniInFlight),
   });
-  vm.runInContext(
-    readSource('src/app/frontend/renderer/controllers/shared/controller-utils.js'),
-    context,
-  );
-  context.withBusyButton = context.window.RendererControllerUtils.withBusyButton;
-  vm.runInContext(
-    readSource('src/app/frontend/sidebar/client/app/side/controllers/pages/side-panel/modules/vpn-selector.js'),
-    context,
-  );
   vm.runInContext(
     readSource('src/app/frontend/sidebar/client/app/side/controllers/pages/side-panel/modules/vpn-lifecycle.js'),
     context,
   );
   context.startClashMiniFlow = (options) => { startOptions = options; return startPending; };
 
-  const task = context.autoStartNetworkMagicIfEligible({ startBtn, vpnBtn });
+  const task = context.autoStartNetworkMagicIfEligible();
+  await context.autoStartNetworkMagicIfEligible();
   await new Promise((resolve) => setImmediate(resolve));
 
-  assert.equal(vpnBtn.disabled, true);
-  assert.equal(vpnBtn.dataset.busy, '1');
-  assert.equal(vpnBtn.textContent, '正在开启魔法请稍等');
+  assert.deepEqual(busyStates, [true]);
   assert.equal(startOptions.key, 'saved-key');
   assert.equal(startOptions.deviceId, 'saved-device');
 
-  context.updateClashVpnButton(vpnBtn, { enabled: false, isBusy: true });
-  assert.equal(vpnBtn.disabled, true);
-  assert.equal(vpnBtn.textContent, '正在开启魔法请稍等');
-
   finishStart();
   await task;
-  assert.equal(vpnBtn.disabled, false);
-  assert.equal(vpnBtn.dataset.busy, '0');
-  assert.equal(vpnBtn.textContent, '开启魔法代理');
-});
-
-test('点击开启网络魔法成功后主开关恢复为关闭按钮', async () => {
-  const vpnBtn = createButton('开启魔法代理');
-  const context = vm.createContext({
-    console,
-    window: {},
-    isVpnEnabled: false,
-    updateClashVpnButton: (button, state) => {
-      button.textContent = state.enabled ? '关闭魔法代理' : '开启魔法代理';
-    },
-  });
-  vm.runInContext(readSource('src/app/frontend/renderer/controllers/shared/controller-utils.js'), context);
-  context.withBusyButton = context.window.RendererControllerUtils.withBusyButton;
-  vm.runInContext(
-    readSource('src/app/frontend/sidebar/client/app/side/controllers/pages/side-panel/modules/vpn-lifecycle.js'),
-    context,
-  );
-
-  await context.withBusyButton(vpnBtn, [], async () => {
-    context.isVpnEnabled = true;
-  }, context.createVpnBusyButtonOptions());
-
-  assert.equal(vpnBtn.disabled, false);
-  assert.equal(vpnBtn.dataset.busy, '0');
-  assert.equal(vpnBtn.textContent, '关闭魔法代理');
+  assert.deepEqual(busyStates, [true, false]);
 });
 
 test('侧边栏启动时主动读取并渲染浏览器记录', async () => {

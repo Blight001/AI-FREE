@@ -172,5 +172,5 @@ test('opening a browser during a sidebar turn adds both orchestration tools', ()
   syncWindowToolControl(context, 'windows_tab', { action: 'open' }, ready);
   assert.deepEqual(context.toolDefinitions.map(({ name }) => name), connection.tools.map(({ name }) => name));
   const external = buildChatToolContext({ connections: [connection], initialMessages: [] });
-  assert.deepEqual(external.tools.map(({ name }) => name), connection.tools.map(({ name }) => name));
+  assert.deepEqual(external.tools.map(({ name }) => name), [...connection.tools.map(({ name }) => name), 'manage_card']);
 });

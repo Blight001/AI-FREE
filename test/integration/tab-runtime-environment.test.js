@@ -21,7 +21,6 @@ test('tab payload reports the applied Chromium snapshot instead of pending setti
     runtimeStatus: 'ready',
     firstWebsiteUrl: 'https://workspace.example/path',
     firstWebsiteIconUrl: 'https://assets.workspace.example/brand/icon.svg',
-    networkMagicApplied: false,
     browserProfile: {
       locale: 'ja-JP',
       timezoneId: 'Asia/Tokyo',
@@ -75,7 +74,6 @@ test('tab payload reports the applied Chromium snapshot instead of pending setti
   assert.equal(payload.browserSettings.os, 'win10');
   assert.equal(payload.browserSettings.cookieCount, 2);
   assert.equal(payload.browserSettings.language.value, 'zh-CN');
-  assert.equal(payload.networkMagicEnabled, false);
   assert.equal(payload.iconUrl, 'https://assets.workspace.example/brand/icon.svg');
   assert.equal(payload.iconFallbackUrl, 'https://workspace.example/favicon.ico');
   assert.deepEqual(payload.runtimeEnvironment, {
@@ -84,37 +82,6 @@ test('tab payload reports the applied Chromium snapshot instead of pending setti
     hardwareAcceleration: false,
     extensionCount: 3,
   });
-});
-
-test('tab payload exposes network magic only when it is applied to that browser', () => {
-  const tab = {
-    id: 'browser-2',
-    title: '代理浏览器',
-    runtimeType: 'chromium',
-    runtimeStatus: 'ready',
-    networkMagicApplied: true,
-    browserProfile: { locale: 'ja-JP', timezoneId: 'Asia/Tokyo' },
-  };
-  const helpers = createTabHelpers({
-    getTabs: () => new Map([[tab.id, tab]]),
-    getActiveTabId: () => tab.id,
-    browserRuntimeManager: {
-      chromium: {
-        instances: new Map([[tab.id, {
-          appliedProfile: {
-            locale: 'ja-JP',
-            timezoneId: 'Asia/Tokyo',
-            proxyServer: 'http://127.0.0.1:7890',
-            browserEnvironment: tab.browserProfile,
-          },
-        }]]),
-      },
-    },
-  });
-
-  assert.equal(helpers.buildTabsPayload()[0].networkMagicEnabled, true);
-  tab.networkMagicApplied = false;
-  assert.equal(helpers.buildTabsPayload()[0].networkMagicEnabled, false);
 });
 
 test('update-tabs sends the same applied environment to the shell', () => {

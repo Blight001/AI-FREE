@@ -175,10 +175,12 @@ html.browser-settings-page .settings-container {
 .settings-apply-options label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
 .settings-apply-options input { accent-color: #4d9cff; }
 .settings-actions { display: flex; justify-content: flex-end; gap: 9px; margin: 14px 4px 0; }
+.browser-record-actions { display: flex; gap: 9px; margin-right: auto; }
+.browser-record-actions[hidden] { display: none !important; }
 .settings-primary-btn, .settings-secondary-btn, .settings-danger-btn { appearance: none; min-height: 36px; padding: 0 15px; border-radius: var(--r-md); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
 .settings-primary-btn { border: 0; color: #fff; background: var(--brand-grad); box-shadow: var(--brand-shadow); }
 .settings-secondary-btn { border: 1px solid rgba(91, 116, 153, .52); color: #bcc8da; background: rgba(29, 38, 53, .8); }
-.settings-danger-btn { margin-right: auto; border: 1px solid rgba(210, 83, 83, .56); color: #f0a2a2; background: rgba(111, 32, 32, .34); }
+.settings-danger-btn { border: 1px solid rgba(210, 83, 83, .56); color: #f0a2a2; background: rgba(111, 32, 32, .34); }
 .settings-danger-btn:hover { border-color: #dc6262; color: #fff; background: rgba(151, 45, 45, .72); }
 .settings-primary-btn:disabled, .settings-secondary-btn:disabled, .settings-danger-btn:disabled { opacity: .55; cursor: wait; }
 .settings-status { min-height: 18px; margin: 10px 6px 0; color: #82c5ff; font-size: 11px; text-align: right; }
@@ -291,7 +293,9 @@ html.theme-light .settings-danger-btn { border-color: rgba(190, 62, 62, .32); co
   /* 操作按钮铺满一行，避免三个按钮挤在右侧 */
   .settings-actions { flex-wrap: wrap; }
   .settings-actions button { flex: 1 1 auto; }
-  .settings-actions .settings-danger-btn { flex-basis: 100%; margin-right: 0; }
+  .settings-actions .settings-danger-btn { flex-basis: auto; }
+  .settings-actions .browser-record-actions { flex: 1 1 100%; margin-right: 0; }
+  .settings-actions .browser-record-actions .settings-danger-btn { flex: 1 1 auto; }
   .browser-record-name-field { align-items: stretch; flex-direction: column; gap: 6px; }
   .browser-record-name-field span { flex-basis: auto; }
   .browser-default-settings-btn { max-width: 170px; padding: 0 9px; font-size: 12px; }

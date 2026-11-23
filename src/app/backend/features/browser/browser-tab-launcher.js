@@ -15,11 +15,6 @@ const { resolveBrowserEnvironmentProfile } = require('./browser-environment-prof
 const { buildBrowserTabRuntimeProfile } = require('./browser-tab-runtime-profile');
 const { resolveLowSpecMode } = require('./low-spec-mode-policy');
 const {
-  getClashMiniStatus,
-  getClashMiniProxyEndpoint,
-  getClashMiniRuntimeRoot,
-} = require('../network/clash-mini-control-runtime');
-const {
   buildBrowserStatusPageUrl,
   resolveConfiguredBrowserProxy,
   resolveConfiguredHomepage,
@@ -29,6 +24,7 @@ class BrowserTabLauncher {
   constructor(deps = {}) {
     this.deps = deps;
     this.logger = deps.logger || console;
+    this.launchByTab = new WeakMap();
   }
 
   async addTab(url, options = {}) {
@@ -41,6 +37,7 @@ class BrowserTabLauncher {
       return existingTab.id;
     }
     const id = String(options.tabId || identity.accountId || Date.now().toString());
+    this.deps.assertCanOpenProfile?.(id);
     const pendingStop = this.deps.waitForProfileStop?.(id);
     if (pendingStop) return this.addTabAfterStop(pendingStop, id, url, options, identity, mainWindow);
     return this.launchNewTab(id, url, options, identity, mainWindow);
@@ -71,6 +68,7 @@ class BrowserTabLauncher {
     if (this.deps.browserLaunchGuard?.evaluate) {
       resourceDecision = await this.assertResourceAccess();
     }
+    this.deps.assertCanOpenProfile?.(id);
     const context = this.createLaunchContext(url, { ...options, tabId: id }, identity, mainWindow);
     context.resourceDecision = resourceDecision;
     context.lowSpec = resolveLowSpecMode({
@@ -78,9 +76,11 @@ class BrowserTabLauncher {
       system: resourceDecision?.snapshot,
     });
     context.coldStart = !this.deps.hasPersistedChromiumProfile(id);
+    const launch = Promise.resolve().then(() => this.completeTabLaunch(context));
+    this.launchByTab.set(context.tab, launch);
     this.publishStartingTab(context);
     try {
-      await this.completeTabLaunch(context);
+      await launch;
       return context.id;
     } catch (error) {
       this.finalizeFailedTab(context, error);
@@ -170,7 +170,7 @@ class BrowserTabLauncher {
     const restoreLastSession = options.restoreLastSession === true
       && this.deps.hasPersistedChromiumProfile(id);
     const browserSettings = this.resolveBrowserSettings(options);
-    const proxy = this.resolveEffectiveProxy(browserSettings);
+    const proxy = resolveConfiguredBrowserProxy(browserSettings) || { enabled: false };
     const urls = this.resolveLaunchUrls(url, options, identity.fixedTitle, browserSettings, restoreLastSession);
     return {
       id,
@@ -182,7 +182,7 @@ class BrowserTabLauncher {
       proxy,
       urls,
       bounds: this.resolveBounds(mainWindow),
-      tab: this.createStartingTab(id, url, options, identity, browserSettings, proxy, urls),
+      tab: this.createStartingTab(id, url, options, identity, browserSettings, urls),
       previouslyActiveTabId: String(this.deps.resolveActiveTabId() || ''),
       restoreSideFocus: options.focusBrowser !== true && (
         options.restoreSideFocus === true || this.deps.isSideViewFocused?.() === true
@@ -202,29 +202,6 @@ class BrowserTabLauncher {
       : {};
     const raw = { ...serverSettings, ...this.deps.readPersistedBrowserSettings(), ...optionSettings };
     return { ...raw, ...normalizeAiFreeBrowserSettings(raw) };
-  }
-
-  resolveEffectiveProxy(browserSettings) {
-    const status = getClashMiniStatus();
-    const useMagic = status?.running === true && status?.enabled === true;
-    const magicProxy = useMagic ? this.resolveMagicProxy(status) : null;
-    const configured = resolveConfiguredBrowserProxy(browserSettings);
-    return {
-      useMagic,
-      value: useMagic ? (magicProxy || { enabled: false }) : (configured || { enabled: false }),
-    };
-  }
-
-  resolveMagicProxy(status) {
-    const coreDir = status.coreDir || getClashMiniRuntimeRoot();
-    const endpoint = getClashMiniProxyEndpoint(coreDir);
-    if (!endpoint || !Number.isFinite(Number(endpoint.port))) return null;
-    const host = String(endpoint.host || '127.0.0.1').trim() || '127.0.0.1';
-    return {
-      enabled: true,
-      server: `http://${host}:${Number(endpoint.port)}`,
-      bypassRules: '<local>;127.0.0.1;localhost;::1',
-    };
   }
 
   resolveLaunchUrls(url, options, fixedTitle, browserSettings, restoreLastSession) {
@@ -257,7 +234,7 @@ class BrowserTabLauncher {
     return { x: 0, y, width: width - sidebarWidth, height };
   }
 
-  createStartingTab(id, url, options, identity, browserSettings, proxy, urls) {
+  createStartingTab(id, url, options, identity, browserSettings, urls) {
     return {
       id,
       zoomFactor: 1,
@@ -272,7 +249,6 @@ class BrowserTabLauncher {
       runtimeType: 'chromium',
       runtimeStatus: 'starting',
       hideBrowserToolbar: options.hideBrowserToolbar === true,
-      networkMagicApplied: proxy.useMagic && proxy.value?.enabled === true,
       browserProfile: null,
       browserSettings,
     };
@@ -372,7 +348,7 @@ class BrowserTabLauncher {
   async resolveBrowserProfile(context) {
     return resolveBrowserEnvironmentProfile({
       settings: context.browserSettings,
-      effectiveProxy: context.proxy.value,
+      effectiveProxy: context.proxy,
       resolveTabBrowserProfile: this.deps.resolveTabBrowserProfile,
       lookupByIp: this.deps.lookupByIp,
       logger: this.logger,
@@ -381,7 +357,9 @@ class BrowserTabLauncher {
 
   async stopCancelledRuntime(context) {
     if (this.deps.resolveTabs().get(context.id) === context.tab) return;
-    try { await this.deps.browserRuntimeManager.stop(context.id, 'chromium', { timeoutMs: 4000 }); } catch (_) {}
+    if (!this.deps.waitForProfileStop?.(context.id)) {
+      try { await this.deps.browserRuntimeManager.stop(context.id, 'chromium', { timeoutMs: 4000 }); } catch (_) {}
+    }
     this.assertCreationActive(context);
   }
 
@@ -443,7 +421,10 @@ class BrowserTabLauncher {
 
 function createBrowserTabLauncher(deps = {}) {
   const launcher = new BrowserTabLauncher(deps);
-  return { addTab: (...args) => launcher.addTab(...args) };
+  return {
+    addTab: (...args) => launcher.addTab(...args),
+    waitForTabLaunch: (tab) => launcher.launchByTab.get(tab)?.catch(() => {}),
+  };
 }
 
 module.exports = { createBrowserTabLauncher };

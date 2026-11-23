@@ -106,6 +106,9 @@ function sanitizeMessage(item) {
 }
 
 function appendAssistantHistory(message, item) {
+  if (Number.isSafeInteger(item.turn_duration_ms) && item.turn_duration_ms >= 0) {
+    message.turn_duration_ms = item.turn_duration_ms;
+  }
   if (Array.isArray(item.tool_calls) && item.tool_calls.length) message.tool_calls = item.tool_calls;
   if (typeof item.reasoning === 'string') message.reasoning = item.reasoning;
   if (Array.isArray(item.tool_events)) {

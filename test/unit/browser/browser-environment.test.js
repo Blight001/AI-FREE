@@ -13,6 +13,43 @@ test('explicit direct routing differs from inheriting the system proxy', () => {
   assert.equal(buildChromiumProfileArgs({}, {}, {}).some((arg) => arg.startsWith('--proxy-server=')), false);
 });
 
+test('default settings leave the bundled Chromium in charge of UA and Client Hints', async () => {
+  const vm = require('node:vm');
+  const { resolveTabBrowserProfile } = require('../../../src/app/backend/utils/browser-profile');
+  const { buildBrowserRuntimeEnvironment } = require('../../../src/app/backend/features/browser/browser-tab-runtime-profile');
+  const { buildChromiumArgs } = require('../../../src/app/backend/browser-runtime/chromium-launcher');
+  const { buildBrowserEnvironmentScript } = require('../../../src/app/backend/browser-runtime/browser-environment-script');
+  const settings = { os: 'win11', kernelVersion: 'auto', ua: { mode: 'default' }, secChUa: { mode: 'default' }, cpu: 4 };
+  const profile = buildBrowserRuntimeEnvironment(settings, await resolveTabBrowserProfile({ browserSettings: settings }));
+  assert.equal(profile.browserEnvironment.browserVersion, '');
+  const args = buildChromiumArgs({ profile });
+  assert.equal(args.some((arg) => arg.startsWith('--user-agent=') || arg.startsWith('--hs-user-agent-metadata=')), false);
+
+  const nativeData = { brands: [{ brand: 'Chromium', version: '150' }] };
+  const navigator = { userAgent: 'Chrome/150.0.0.0', userAgentData: nativeData };
+  vm.runInNewContext(buildBrowserEnvironmentScript(profile.environmentSettings), { navigator });
+  assert.equal(navigator.userAgent, 'Chrome/150.0.0.0');
+  assert.equal(navigator.userAgentData, nativeData);
+  assert.equal(navigator.hardwareConcurrency, 4);
+});
+
+test('explicit and legacy UA settings still apply to Chromium launches', async () => {
+  const { resolveTabBrowserProfile } = require('../../../src/app/backend/utils/browser-profile');
+  const { buildBrowserRuntimeEnvironment } = require('../../../src/app/backend/features/browser/browser-tab-runtime-profile');
+  const { buildChromiumArgs } = require('../../../src/app/backend/browser-runtime/chromium-launcher');
+  for (const [settings, expected] of [
+    [{ ua: { mode: 'custom', value: 'Example/1.0' } }, /Example\/1\.0$/],
+    [{ kernelVersion: '142.0.0.0' }, /Chrome\/142\.0\.0\.0/],
+    [{ browserVersion: '143' }, /Chrome\/143\.0\.0\.0/],
+    [{ os: 'win7' }, /Windows NT 6\.1/],
+  ]) {
+    const profile = buildBrowserRuntimeEnvironment(settings, await resolveTabBrowserProfile({ browserSettings: settings }));
+    const args = buildChromiumArgs({ profile });
+    assert.match(args.find((arg) => arg.startsWith('--user-agent=')) || '', expected);
+    assert.ok(args.some((arg) => arg.startsWith('--hs-user-agent-metadata=')));
+  }
+});
+
 test('Chromium launch encodes normalized UA metadata for native request headers', () => {
   const { buildChromiumArgs } = require('../../../src/app/backend/browser-runtime/chromium-launcher');
   const args = buildChromiumArgs({

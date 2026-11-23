@@ -74,7 +74,7 @@ app.whenReady().then(async () => {
           userTag: messages.querySelector('[data-message-kind="user-bubble"]')?.tagName || '',
           assistantTag: messages.querySelector('[data-message-kind="assistant-turn"]')?.tagName || '',
           assistantCount: messages.querySelectorAll('[data-message-kind="assistant-turn"]').length,
-          activitySummary: messages.querySelector('.ai-chat-activity-label')?.textContent || '',
+          activitySummary: messages.querySelector('.ai-chat-activity .ai-chat-activity-label')?.textContent || '',
           hasActivityRail: !!messages.querySelector('.ai-chat-activity .ai-chat-trace'),
           toolSummary: tool?.querySelector('summary')?.textContent || '',
           toolName: tool?.querySelector('.ai-chat-tool-name')?.textContent || '',
@@ -82,6 +82,9 @@ app.whenReady().then(async () => {
           activityCount: messages.querySelectorAll('.ai-chat-activity:not([hidden])').length,
           answerTexts: Array.from(messages.querySelectorAll('.ai-chat-answer')).map((item) => item.textContent),
           turnOrder: Array.from(assistantStack?.children || [])
+            .flatMap((item) => item.classList.contains('ai-chat-process')
+              ? Array.from(item.querySelector('.ai-chat-process-body')?.children || [])
+              : [item])
             .filter((item) => !item.hidden)
             .map((item) => item.classList.contains('ai-chat-activity') ? 'activity' : 'answer'),
         };

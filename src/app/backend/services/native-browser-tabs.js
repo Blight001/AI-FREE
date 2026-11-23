@@ -5,6 +5,7 @@ const { clearObservations } = require('./native-browser-ref-store');
 const text = (value) => String(value ?? '').trim();
 const COMMANDS = Object.freeze({ close: 'close-tab', back: 'history-back', forward: 'history-forward' });
 const failed = (result) => result?.success === false || result?.ok === false;
+const throwIfAborted = (signal) => signal?.throwIfAborted();
 
 function tabTarget(args) {
   const raw = args.index ?? args.tab_index ?? args.id ?? args.tab_id ?? args.tabId;
@@ -22,9 +23,11 @@ function unsupportedRuntime(error) {
   return ['COMMAND_NOT_ALLOWED', 'COMMAND_UNKNOWN', 'UNKNOWN_COMMAND'].includes(text(error?.code || error?.errorCode));
 }
 
-async function tabCommand(service, connection, command, target) {
+async function tabCommand(service, connection, command, target, signal) {
   try {
+    throwIfAborted(signal);
     const result = await service.runtimeCommand(connection, command, target);
+    throwIfAborted(signal);
     if (!unsupportedRuntime(result)) return result;
   } catch (error) {
     if (!unsupportedRuntime(error)) throw error;
@@ -33,7 +36,8 @@ async function tabCommand(service, connection, command, target) {
     error: '当前 Chromium 内核未实现标签关闭/历史导航，请更新内核后重试。', retryable: false };
 }
 
-async function switchTab(service, connection, target) {
+async function switchTab(service, connection, target, signal) {
+  throwIfAborted(signal);
   let switched;
   if (target.url || target.index >= 0) switched = await service.runtimeCommand(connection, 'activate-tab', target);
   else {
@@ -44,30 +48,38 @@ async function switchTab(service, connection, target) {
   }
   if (failed(switched)) return switched;
   clearPageState(service, connection);
+  throwIfAborted(signal);
   const focused = runtimePayload(await service.runtime.focus(connection.profileId, 'chromium'));
+  throwIfAborted(signal);
   if (failed(focused)) return focused;
   return { success: true, action: 'switch', ...switched };
 }
 
 function runtimePayload(result) { return result?.result || result; }
 
-async function replaceTab(service, connection, url) {
+async function replaceTab(service, connection, url, signal) {
+  throwIfAborted(signal);
   const result = runtimePayload(await service.runtime.navigate(connection.profileId, 'chromium', url));
   if (failed(result)) return result;
   clearPageState(service, connection);
+  throwIfAborted(signal);
   return null;
 }
 
-async function openTab(service, connection, url) {
+async function openTab(service, connection, url, signal) {
+  throwIfAborted(signal);
   const opened = runtimePayload(await service.runtime.openTabs(connection.profileId, 'chromium', [url]));
   if (failed(opened)) return opened;
   clearPageState(service, connection);
+  throwIfAborted(signal);
   const focused = runtimePayload(await service.runtime.focus(connection.profileId, 'chromium'));
+  throwIfAborted(signal);
   if (failed(focused)) return focused;
   return null;
 }
 
-async function navigateTab(service, connection, args, action, target, normalizeUrl) {
+async function navigateTab(service, connection, args, action, target, normalizeUrl, signal) {
+  throwIfAborted(signal);
   // Validate the destination before activating a requested tab. A malformed URL
   // must not move focus or invalidate the current observation snapshot.
   const url = action === 'reload' ? '' : normalizeUrl(args.url);
@@ -75,23 +87,27 @@ async function navigateTab(service, connection, args, action, target, normalizeU
     const selected = await service.runtimeCommand(connection, 'activate-tab', { index: target.index, url: '' });
     if (failed(selected)) return selected;
     clearPageState(service, connection);
+    throwIfAborted(signal);
   }
   if (action === 'reload') {
+    throwIfAborted(signal);
     const result = await service.runtime.reload(connection.profileId, 'chromium');
     const payload = result?.result || result;
     if (failed(payload)) return payload;
     clearPageState(service, connection);
+    throwIfAborted(signal);
     return { success: true, action, id: connection.profileId, ...payload };
   }
   const result = action === 'replace'
-    ? await replaceTab(service, connection, url)
-    : await openTab(service, connection, url);
+    ? await replaceTab(service, connection, url, signal)
+    : await openTab(service, connection, url, signal);
   if (result) return result;
   return { success: true, action, id: connection.profileId, url,
     cardStep: { name: `打开 ${new URL(url).hostname}`, type: 'navigate', url } };
 }
 
-async function executeBrowserTab(service, connection, args, normalizeUrl) {
+async function executeBrowserTab(service, connection, args, normalizeUrl, signal) {
+  throwIfAborted(signal);
   let action = text(args.action).toLowerCase();
   if (action === 'navigate' && [args.replace_current, args.current_tab, args.same_tab].includes(true)) action = 'replace';
   if (!['list', 'switch', 'replace', 'navigate', 'reload', ...Object.keys(COMMANDS)].includes(action)) {
@@ -100,12 +116,12 @@ async function executeBrowserTab(service, connection, args, normalizeUrl) {
   if (action === 'list') return service.runtimeCommand(connection, 'list-tabs');
   const target = tabTarget(args);
   if (COMMANDS[action]) {
-    const result = await tabCommand(service, connection, COMMANDS[action], { index: target.index });
+    const result = await tabCommand(service, connection, COMMANDS[action], { index: target.index }, signal);
     if (!failed(result)) clearPageState(service, connection);
     return { action, ...result };
   }
-  if (action === 'switch') return switchTab(service, connection, target);
-  return navigateTab(service, connection, args, action, target, normalizeUrl);
+  if (action === 'switch') return switchTab(service, connection, target, signal);
+  return navigateTab(service, connection, args, action, target, normalizeUrl, signal);
 }
 
 module.exports = { executeBrowserTab, clearPageState };

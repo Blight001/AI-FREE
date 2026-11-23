@@ -369,7 +369,7 @@ async function checkHomeAccountIntegration(win, layout, setSession, enableAiPref
     await checkModelSettingsRouting(shell, ai);
     const draft = 'fixture unsent draft';
     await ai((text) => {
-      (/** @type {HTMLTextAreaElement} */ (document.querySelector('textarea#ai-chat-input'))).value = text;
+      document.querySelector('#ai-chat-input').textContent = text;
       (/** @type {HTMLFormElement} */ (document.querySelector('form#ai-chat-form'))).requestSubmit();
     }, draft);
     const opened = await poll(() => shell(readAccountState), (state) => state.personalVisible && state.loginVisible);
@@ -381,7 +381,7 @@ async function checkHomeAccountIntegration(win, layout, setSession, enableAiPref
       assert.equal(sidebar.getVisible(), visible);
     }
     assert.equal(sidebar.webContents.getURL(), initialAiUrl);
-    assert.equal(await ai(() => (/** @type {HTMLTextAreaElement} */ (document.querySelector('textarea#ai-chat-input'))).value), draft);
+    assert.equal(await ai(() => document.querySelector('#ai-chat-input').textContent), draft);
     await checkSharedAvatar(shell);
     await checkVipAndAnnouncements(win, layout, shell, setSession);
     enableAiPreferences();

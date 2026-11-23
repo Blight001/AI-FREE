@@ -42,6 +42,9 @@ composition/create-core-services.js
 新配置接口返回 `{ok:true,data:{found,changed,restarted,state}}`。命令和重启失败保留原有异常与错误码；既有 `refreshEnvironmentProfile()` 仍返回状态以兼容调用方。
 
 身份数据由 `browser-environment-identity.js` 解析，页面脚本与原生 UA Client Hints 参数使用同一组字段。品牌列表规范化规则位于纯模块 `shared/browser-identity.js`。
+默认浏览器身份由随应用提供的 Chromium 内核原生生成。显式配置或旧版身份字段仍走配置覆盖路径。
+
+主窗口主题通过既有 `app-theme-changed` IPC 同步至每个受管 Chromium Profile：浅色映射为浏览器浅色，深色与金色映射为浏览器深色。Runtime Bridge 的 `set-color-scheme` 调用 Chromium `ThemeService`，使正在显示的网页 `prefers-color-scheme` 和浏览器内建界面即时更新；新启动及重启的 Profile 会在窗口嵌入前应用最近一次主题。旧内核拒绝该命令时保留可诊断警告，不阻止浏览器启动。
 
 ## 状态与持久化
 
@@ -61,6 +64,8 @@ composition/create-core-services.js
 | 心跳计时器、父窗口焦点监听 | 运行实例 | 关闭或进程退出时停止、解绑 |
 
 启动成功后，实例持有原来的资源对象；不复制清理状态。启动失败、进程退出和正常关闭使用同一个释放入口。关闭超时必须保留进程与文件锁的关联，迟到退出后再回收剩余资源。
+
+删除某条浏览器历史时，标签可立即从主窗口移除。删除流程等待该 Profile 的启动事务完成或取消，再确认 Chromium 退出和文件锁释放。删除期间拒绝重新打开同一 Profile，磁盘目录异步清理，最后从最新历史中移除记录。关闭或清理失败时保留记录，以便重试。
 
 ## 页面环境脚本
 

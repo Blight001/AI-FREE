@@ -23,6 +23,7 @@
   <link rel="stylesheet" href="./client/styles/control-panel.css" />
   <link rel="stylesheet" href="./client/app/side/styles/side.css" />
   <link rel="stylesheet" href="./client/app/side/styles/modules/ai-control-files.css" />
+  <link rel="stylesheet" href="./client/app/side/styles/modules/ai-control-managed-chat.css" />
   <link rel="stylesheet" href="./client/app/side/styles/modules/website-console-theme.css" />
 </head>
 <body>
@@ -44,7 +45,9 @@
               <span aria-hidden="true">+</span>
             </button>
           </div>
+          <button type="button" class="ai-managed-trigger" id="ai-managed-tasks" title="任务运行">任务</button>
         </header>
+        <div id="ai-managed-parent-cards" class="ai-managed-cards" aria-label="子任务" hidden></div>
         <div class="ai-chat-body">
           <div id="ai-chat-messages" class="ai-chat-messages" tabindex="0" aria-label="对话消息">
             <div id="ai-chat-message-list" class="ai-chat-message-list" role="log" aria-live="polite">
@@ -78,7 +81,8 @@
             <div id="ai-chat-workspace-files" class="ai-chat-workspace-files"></div>
           </div>
           <div id="ai-chat-mention-menu" class="ai-chat-mention-menu" role="listbox" hidden></div>
-          <textarea id="ai-chat-input" rows="1" maxlength="12000" placeholder="输入消息，@ 引用工具或文件，Enter 发送"></textarea>
+          <div id="ai-chat-input" contenteditable="true" role="textbox" aria-multiline="true"
+               aria-label="输入消息" aria-placeholder="输入消息，@ 引用工具或文件，Enter 发送" data-empty></div>
           <div class="ai-chat-footer-bar">
             <div class="ai-chat-footer-left">
               <button id="ai-chat-attach" class="ai-chat-attach" type="button" aria-label="添加文件" title="上传或选择 AI-Workspace 文件">+</button>
@@ -106,6 +110,24 @@
             </div>
           </div>
         </form>
+        <section id="ai-managed-chat" class="ai-managed-chat" aria-label="子对话" hidden>
+          <header>
+            <button id="ai-managed-back" type="button" aria-label="返回">← 返回</button>
+            <strong id="ai-managed-title">任务运行</strong>
+            <span id="ai-managed-status" aria-live="polite"></span>
+          </header>
+          <div id="ai-managed-directory" class="ai-managed-cards" aria-label="任务运行" hidden></div>
+          <div id="ai-managed-messages" class="ai-managed-messages" tabindex="0" aria-label="子对话消息" hidden></div>
+          <form id="ai-managed-composer" class="ai-managed-composer" hidden>
+            <textarea id="ai-managed-input" rows="2" maxlength="16384" aria-label="给子对话发送消息"></textarea>
+            <div class="ai-managed-actions">
+              <select id="ai-managed-model" aria-label="子对话模型"></select>
+              <button type="submit" id="ai-managed-send">发送</button>
+              <button type="button" id="ai-managed-stop">停止</button>
+              <button type="button" id="ai-managed-resume">继续</button>
+            </div>
+          </form>
+        </section>
         <section id="ai-chat-workspace-preview" class="ai-chat-workspace-preview" role="dialog" aria-modal="true" aria-labelledby="ai-chat-workspace-preview-title" hidden>
           <button class="ai-chat-workspace-preview-backdrop" type="button" data-workspace-preview-close aria-label="关闭文件预览"></button>
           <div class="ai-chat-workspace-preview-dialog">
@@ -143,8 +165,11 @@
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-tool-display.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-messages.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-data-loaders.js"></script>
+  <script src="./client/app/side/controllers/pages/ai-control/ai-control-draft.js"></script>
+  <script src="./client/app/side/controllers/pages/ai-control/ai-control-inline-files.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-files.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-composer.js"></script>
+  <script src="./client/app/side/controllers/pages/ai-control/ai-control-managed-chat.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-bootstrap.js"></script>
 
   <!-- 共享控制器工具 -->

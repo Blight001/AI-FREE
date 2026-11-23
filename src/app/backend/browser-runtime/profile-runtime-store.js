@@ -41,12 +41,27 @@ function openProfileLockFile(paths) {
   return fs.openSync(paths.lock, 'wx');
 }
 
+function assertProfileLockInactive(target) {
+  const lockPath = path.join(target, '.runtime.lock');
+  if (!fs.existsSync(lockPath)) return;
+  const pid = Number(JSON.parse(fs.readFileSync(lockPath, 'utf8')).pid);
+  if (!Number.isSafeInteger(pid) || pid <= 0) throw new Error('Profile 锁无效，无法安全删除');
+  try {
+    process.kill(pid, 0);
+  } catch (error) {
+    if (error?.code === 'ESRCH') return;
+    throw error;
+  }
+  throw new Error(`Profile ${path.basename(target)} 仍被进程 ${pid} 使用，不能删除`);
+}
+
 class ProfileRuntimeStore {
   constructor(options = {}) {
     this.rootDir = path.resolve(String(options.rootDir || 'chromium-profiles'));
     this.downloadsDir = options.downloadsDir ? path.resolve(String(options.downloadsDir)) : '';
     this.logger = options.logger || console;
     this.locks = new Map();
+    this.deletingRoots = new Set();
   }
 
   getPathsForStorageId(storageId) {
@@ -76,7 +91,14 @@ class ProfileRuntimeStore {
     return this.getPathsForStorageId(legacySafeProfileId(profileId));
   }
 
+  assertNotDeleting(profileId) {
+    if (this.resolveDeletionRoots(profileId).some((root) => this.deletingRoots.has(root))) {
+      throw new Error('Chromium Profile 正在删除，请稍后重试');
+    }
+  }
+
   migrateLegacyProfile(profileId) {
+    this.assertNotDeleting(profileId);
     const paths = this.getProfilePaths(profileId);
     const legacyPaths = this.getLegacyProfilePaths(profileId);
     if (paths.root === legacyPaths.root || fs.existsSync(paths.root) || !fs.existsSync(legacyPaths.root)) {
@@ -138,6 +160,7 @@ class ProfileRuntimeStore {
   }
 
   acquireLock(profileId, metadata = {}) {
+    this.assertNotDeleting(profileId);
     const existing = metadata.offlineTransfer ? this.getProfilePaths(profileId) : this.migrateLegacyProfile(profileId);
     const lease = this.locks.get(existing.id);
     if (lease) {
@@ -212,6 +235,7 @@ class ProfileRuntimeStore {
   }
 
   clearBrowserData(profileId) {
+    this.assertNotDeleting(profileId);
     const id = safeProfileId(profileId);
     if (this.locks.has(id)) throw new Error(`Profile ${id} 仍在运行，不能清空数据`);
     const paths = this.getProfilePaths(profileId);
@@ -231,62 +255,40 @@ class ProfileRuntimeStore {
     return true;
   }
 
-  deleteProfile(profileId) {
-    const id = safeProfileId(profileId);
-    if (this.locks.has(id)) throw new Error(`Profile ${id} 仍在运行，不能删除`);
-    const paths = this.getProfilePaths(id);
-    const legacyPaths = this.getLegacyProfilePaths(profileId);
-    const targets = new Set([paths.root, legacyPaths.root]);
-    for (const target of targets) {
+  resolveDeletionRoots(profileId) {
+    return [...new Set([this.getProfilePaths(profileId).root, this.getLegacyProfilePaths(profileId).root])];
+  }
+
+  validateDeletionRoots(profileId) {
+    this.assertNotDeleting(profileId);
+    const roots = this.resolveDeletionRoots(profileId);
+    for (const target of roots) {
       const relative = path.relative(this.rootDir, target);
       if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('Profile 删除路径越界');
-      const lockPath = path.join(target, '.runtime.lock');
-      if (fs.existsSync(lockPath)) {
-        let lock = {};
-        try { lock = JSON.parse(fs.readFileSync(lockPath, 'utf8')); } catch (_) {}
-        const pid = Number(lock.pid || 0);
-        if (pid > 0) {
-          try {
-            process.kill(pid, 0);
-            throw new Error(`Profile ${path.basename(target)} 仍被进程 ${pid} 使用，不能删除`);
-          } catch (error) {
-            if (!error || error.code !== 'ESRCH') throw error;
-          }
-        }
-      }
+      if (this.locks.has(relative)) throw new Error(`Profile ${relative} 仍在运行，不能删除`);
+      assertProfileLockInactive(target);
+    }
+    return roots;
+  }
+
+  deleteProfile(profileId) {
+    for (const target of this.validateDeletionRoots(profileId)) {
       fs.rmSync(target, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
     }
     return true;
   }
 
   async deleteProfileAsync(profileId) {
-    const id = safeProfileId(profileId);
-    if (this.locks.has(id)) throw new Error(`Profile ${id} 仍在运行，不能删除`);
-    const paths = this.getProfilePaths(id);
-    const legacyPaths = this.getLegacyProfilePaths(profileId);
-    const targets = new Set([paths.root, legacyPaths.root]);
-    for (const target of targets) {
-      const relative = path.relative(this.rootDir, target);
-      if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('Profile 删除路径越界');
-      const lockPath = path.join(target, '.runtime.lock');
-      if (fs.existsSync(lockPath)) {
-        let lock = {};
-        try { lock = JSON.parse(fs.readFileSync(lockPath, 'utf8')); } catch (_) {}
-        const pid = Number(lock.pid || 0);
-        if (pid > 0) {
-          try {
-            process.kill(pid, 0);
-            throw new Error(`Profile ${path.basename(target)} 仍被进程 ${pid} 使用，不能删除`);
-          } catch (error) {
-            if (!error || error.code !== 'ESRCH') throw error;
-          }
-        }
+    const targets = this.validateDeletionRoots(profileId);
+    for (const target of targets) this.deletingRoots.add(target);
+    try {
+      for (const target of targets) {
+        await fs.promises.rm(target, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
       }
-      // Chromium Profile 通常包含大量缓存小文件。异步递归删除放到
-      // libuv 工作线程执行，避免长时间阻塞 Electron 主进程和界面事件。
-      await fs.promises.rm(target, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+      return true;
+    } finally {
+      for (const target of targets) this.deletingRoots.delete(target);
     }
-    return true;
   }
 }
 

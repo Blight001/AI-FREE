@@ -117,21 +117,6 @@ test('启动注册 IPC 时注入窗口关闭方式的持久化依赖', async () 
   assert.equal(calls.registerIPCContext.writeStoreConfigSafe, writeStoreConfigSafe);
 });
 
-test('启动 IPC 保留晚绑定的全局网络魔法浏览器同步动作', async () => {
-  const { calls, deps } = bootstrapDeps();
-  const proxyChanges = [];
-  deps.applyClashMiniBrowserProxy = async (enabled) => {
-    proxyChanges.push(enabled);
-    return { ok: true, updated: 2 };
-  };
-
-  await createAppShellBootstrap(deps)();
-  const result = await calls.registerIPCContext.ui.applyClashMiniBrowserProxy(true);
-
-  assert.deepEqual(result, { ok: true, updated: 2 });
-  assert.deepEqual(proxyChanges, [true]);
-});
-
 test('启动 IPC 注入侧边栏宽度调整动作', async () => {
   const { calls, deps } = bootstrapDeps();
 

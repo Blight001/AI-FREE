@@ -70,6 +70,16 @@ function positiveNumber(value, fallback, minimum) {
   return Number.isFinite(parsed) ? Math.max(minimum, parsed) : fallback;
 }
 
+function usesNativeBrowserIdentity(settings, os) {
+  return os === 'win11'
+    && text(settings.kernelVersion, 'auto').toLowerCase() === 'auto'
+    && !text(settings.browserVersion, settings.user_agent, settings.userAgent)
+    && !text(settings.navigator_platform, settings.navigatorPlatform, settings.navigator_vendor, settings.navigatorVendor)
+    && settings.ua?.mode !== 'custom'
+    && settings.secChUa?.mode !== 'custom'
+    && settings.deviceName?.mode !== 'custom';
+}
+
 function resolveBrowserMajorVersion(settings) {
   const kernelVersion = text(settings.kernelVersion);
   const usableKernel = kernelVersion
@@ -116,11 +126,16 @@ function resolveBrowserIdentity(settings, preset) {
     Intl.DateTimeFormat().resolvedOptions().timeZone,
     'UTC',
   ) || 'UTC';
-  const major = resolveBrowserMajorVersion(settings);
   const os = text(settings.os, 'win11').toLowerCase();
-  const userAgent = resolveBrowserUserAgent(settings, os, major);
-  const brands = resolveBrowserUaBrands(settings, major);
-  return { acceptLanguage: text(settings.accept_language, settings.acceptLanguage, getAcceptLanguage(locale)), brands, locale, major, os, timezoneId, userAgent };
+  // Electron's Chromium version belongs to the host, not the bundled browser.
+  const nativeIdentity = usesNativeBrowserIdentity(settings, os);
+  const major = nativeIdentity ? '' : resolveBrowserMajorVersion(settings);
+  const userAgent = nativeIdentity ? '' : resolveBrowserUserAgent(settings, os, major);
+  const brands = nativeIdentity ? [] : resolveBrowserUaBrands(settings, major);
+  return {
+    acceptLanguage: text(settings.accept_language, settings.acceptLanguage, getAcceptLanguage(locale)),
+    brands, locale, major, nativeIdentity, os, timezoneId, userAgent,
+  };
 }
 
 function resolvePlatformVersion(settings, os) {
@@ -148,9 +163,10 @@ function buildBrowserProfileFromRegion(regionKey, settings = {}) {
   return {
     browserType: 'chrome',
     browserBrand: 'AI-FREE',
-    browserVersion: `${identity.major}.0.0.0`,
+    browserVersion: identity.major ? `${identity.major}.0.0.0` : '',
     majorVersion: identity.major,
-    uaFullVersion: `${identity.major}.0.0.0`,
+    nativeIdentity: identity.nativeIdentity,
+    uaFullVersion: identity.major ? `${identity.major}.0.0.0` : '',
     region: regionKey || '',
     regionLabel: preset && preset.label || '',
     sourceIp: '',

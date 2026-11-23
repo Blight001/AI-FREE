@@ -2,6 +2,10 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { createBrowserAutomationBridge } = require('../../../src/app/backend/services/browser-automation-bridge');
 const {
   DEFAULT_HEYSURE_SERVER,
   createAiServerDeviceService,
@@ -484,4 +488,36 @@ test('首次登录安全记忆凭据，重启后仅会员自动连接，主动�
   assert.equal(local.logout().ok, true);
   assert.equal(saved, null);
   assert.equal(clearCount, 1);
+});
+
+test('无浏览器时 HeySure 从实际外部目录注册一次 manage_card 并接受两个名称', async (t) => {
+  const cardCacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-device-catalog-'));
+  t.after(() => fs.rmSync(cardCacheDir, { recursive: true, force: true }));
+  const bridge = createBrowserAutomationBridge({ cardCacheDir, getExternalMcpAccess: () => true });
+  const source = bridge.listExternalMcpTools();
+  assert.deepEqual(source.connections, []);
+  const card = source.tools.find(({ name }) => name === 'manage_card');
+  assert.ok(card);
+  const socket = new FakeSocket();
+  const device = createAiServerDeviceService({
+    hasVipAccess: () => true, fetch: async () => loginResponse(), createSocket: () => socket,
+    computeDeviceId: async () => 'offline-catalog', getTools: bridge.listExternalMcpTools, callTool: bridge.callExternalMcpTool,
+  });
+  t.after(() => device.stop());
+  assert.equal((await device.login({ account: 'fixture', password: 'fixture' })).ok, true);
+  await tick();
+  const registration = socket.sent.find(({ event }) => event === 'device:register').payload;
+  const canonical = 'aifree.manage+card';
+  const legacy = 'aifree.manage_card';
+  assert.deepEqual(registration.toolDefs.filter(({ name }) => [canonical, legacy].includes(name)).map(({ name }) => name), [canonical]);
+  assert.ok(registration.capabilities.includes(canonical));
+  assert.deepEqual(registration.toolDefs.find(({ name }) => name === canonical).input_schema, card.inputSchema);
+  socket.serverEmit('device:registered', { aiConfigId: 7 });
+  for (const name of [canonical, legacy]) {
+    socket.serverEmit('task:dispatch', { taskId: name, tool: name, args: { action: 'list' } });
+    await tick();
+    const reply = socket.sent.find(({ event, payload }) => event === 'task:result' && payload.taskId === name)?.payload;
+    assert.equal(reply?.result.success, true);
+    assert.deepEqual(reply.result.items, []);
+  }
 });

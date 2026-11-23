@@ -22,7 +22,6 @@ const {
 const { RuntimeStateStore } = require('../../../src/app/backend/browser-runtime/runtime-state-store');
 const { RUNTIME_STATUS } = require('../../../src/app/backend/browser-runtime/runtime-types');
 const { prepareSessionImport } = require('../../../src/app/backend/browser-runtime/session-import');
-const { createConfigurationManager } = require('../../fixtures/browser-configuration-runtime');
 const { ChromiumRuntime } = require('../../../src/app/backend/browser-runtime/chromium-runtime');
 const { createTabManager, resolveChromiumExtensionPaths } = require('../../../src/app/backend/services/tab-manager');
 const { createBrowserPartitionCleaner } = require('../../../src/app/backend/services/browser-partitions');
@@ -801,51 +800,6 @@ try {
   });
   assert.equal(browserClickHandlers.has('browser-clicked'), false, '浏览器点击不得注册侧栏回收链路');
 
-  // 网络魔法是应用级覆盖层：开启时接管全部浏览器，关闭时恢复各自代理设置。
-  const magicTabs = new Map([
-    ['magic-selected', {
-      id: 'magic-selected',
-      browserSettings: { proxy: { mode: 'default' } },
-    }],
-    ['magic-custom', {
-      id: 'magic-custom',
-      browserSettings: { proxy: { mode: 'custom', protocol: 'http', host: '10.0.0.2', port: 8888 } },
-    }],
-  ]);
-  const magicInstances = new Map(Array.from(magicTabs.keys()).map((id) => [id, { profile: {} }]));
-  let magicProfileLookups = 0;
-  const magicRestarts = [];
-  const magicManager = createTabManager({
-    browserRuntimeManager: {
-      chromium: { instances: magicInstances, on() {} },
-      ...createConfigurationManager(magicInstances, async (id) => {
-        magicRestarts.push({ id, proxyServer: magicInstances.get(id).profile.proxyServer });
-        return { status: 'ready' };
-      }),
-    },
-    getTabs: () => magicTabs,
-    updateTabs() {},
-    resolveTabBrowserProfile: async () => { magicProfileLookups += 1; },
-    logger: { warn() {}, error() {} },
-  });
-  const magicEnabled = await magicManager.applyClashMiniBrowserProxy(true);
-  assert.equal(magicEnabled.updated, 2, '开启魔法应更新所有浏览器');
-  const magicSelectedProxy = magicInstances.get('magic-selected').profile.proxyServer;
-  assert.ok(/^http:\/\/127\.0\.0\.1:\d+$/.test(magicSelectedProxy));
-  assert.equal(magicInstances.get('magic-custom').profile.proxyServer, magicSelectedProxy, '自定义代理浏览器也应被全局魔法临时接管');
-  assert.equal(magicProfileLookups, 0, '代理切换不得触发出口 IP Profile 探测');
-  const magicDisabled = await magicManager.applyClashMiniBrowserProxy(false);
-  assert.equal(magicDisabled.updated, 2);
-  assert.equal(magicInstances.get('magic-selected').profile.proxyServer, '');
-  assert.equal(magicInstances.get('magic-custom').profile.proxyServer, 'http://10.0.0.2:8888');
-  assert.deepEqual(
-    magicRestarts.map((item) => item.id),
-    ['magic-selected', 'magic-custom', 'magic-selected', 'magic-custom'],
-  );
-  assert.deepEqual(
-    magicRestarts.map((item) => item.proxyServer),
-    [magicSelectedProxy, magicSelectedProxy, '', 'http://10.0.0.2:8888'],
-  );
   console.log('browser runtime checks passed');
 } finally {
   fs.rmSync(root, { recursive: true, force: true });

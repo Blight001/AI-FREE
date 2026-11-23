@@ -4,21 +4,23 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { setTimeout: delay } = require('node:timers/promises');
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, safeStorage } = require('electron');
 
 const fixture = JSON.parse(process.env.AI_FREE_INTERACTION_FIXTURE || 'null');
 const phase = process.argv[2];
-assert.ok(fixture && ['initial', 'reopen', 'native'].includes(phase), 'Start via electron-sidebar.test.js');
+assert.ok(fixture && ['initial', 'reopen', 'continuation', 'native', 'managed'].includes(phase), 'Start via electron-sidebar.test.js');
 app.setPath('userData', fixture.userData);
 app.setPath('sessionData', fixture.userData);
 app.setPath('desktop', fixture.desktop);
 
-const appRoot = path.resolve(__dirname, '../../../../.generated/app/src/app');
+const appRoot = process.env.AI_FREE_INTERACTION_APP_ROOT || path.resolve(__dirname, '../../../../.generated/app/src/app');
 const backend = path.join(appRoot, 'backend');
 const ai = (file) => require(path.join(backend, 'features/ai-chat', file));
 const { createIpcRegistry } = require(path.join(backend, 'ipc/registry'));
 const { createAiChatHistoryRepository } = require(path.join(backend, 'lib/ai-chat-history'));
 const { registerAiChatIpc } = ai('register-chat-ipc');
+const { registerManagedChatIpc } = ai('register-managed-chat-ipc');
+const { createManagedChatRepository } = require(path.join(backend, 'platform/managed-chat-repository'));
 const { registerAiHistoryIpc } = ai('register-history-ipc');
 const { registerAiSupportIpc } = ai('register-support-ipc');
 const { createAiWorkspaceService } = ai('ai-workspace-service');
@@ -29,6 +31,7 @@ const PROFILE_PATH = 'settings-profile.json';
 const ARTIFACT = '.ai-chat-message-artifact';
 const DOWNLOAD_PROMPT = 'Fetch red fixture';
 const DOWNLOAD_ANSWER = 'The red fixture is ready.';
+const DOWNLOAD_STEP = 'I will fetch the red fixture.';
 
 function createDoubles() {
   const tab = { title: 'A - Source', url: fixture.urls.a, pageToken: '' };
@@ -84,33 +87,39 @@ function createDoubles() {
     modelRequests: () => modelRequests,
     targetLookups: () => targetLookups,
     dropResult: () => { loseUploadResult = true; },
-    nextAction(action, args, answer) {
-      queue.push({ role: 'assistant', content: '', tool_calls: [{ id: `fixture-tool-${++callId}`, type: 'function',
+    nextAction(action, args, answer, stage = '') {
+      queue.push({ role: 'assistant', content: stage, tool_calls: [{ id: `fixture-tool-${++callId}`, type: 'function',
         function: { name: 'browser_file', arguments: JSON.stringify({ action, ...args }) } }] });
       if (answer) queue.push({ role: 'assistant', content: answer });
     },
   };
 }
 
-function wireSidebar({ bridge, model, connection }) {
+function wireSidebar({ bridge, model, connection }, window) {
   const ipc = createIpcRegistry(ipcMain, { source: 'ai-control-interaction' });
   const workspace = createAiWorkspaceService({ workspaceDir: fixture.workspace });
   const historyRepository = createAiChatHistoryRepository();
   const getCredentials = () => ({ username: 'fixture-account' });
   ipc.handle('account-get-session', () => ({ authenticated: true }));
   ipc.handle('set-sidebar-width', () => ({ ok: true, width: 430 }));
-  registerAiChatIpc({ ipc, aiSandboxDir: fixture.workspace, browserAutomationBridge: bridge,
-    readStoreConfigSafe: () => ({ userCredentials: { sessionToken: 'fixture-placeholder', deviceId: 'fixture-device' } }),
+  const deps = { aiSandboxDir: fixture.workspace, browserAutomationBridge: bridge,
+    readStoreConfigSafe: () => ({ userCredentials: { authType: 'account', username: 'fixture-account',
+      sessionToken: ['afs', 'fixture-placeholder'].join('_'), deviceId: 'fixture-device', serverBase: fixture.origin } }),
     getGlobalHttpClient: () => model,
-  });
+    getSideView: () => window,
+    managedChatRepository: createManagedChatRepository({ directory: path.join(fixture.userData, 'test-managed-chat'), safeStorage }),
+  };
+  const getModels = () => ({ ok: true, models: [{ id: 'fixture-model', name: 'Fixture model' }], quota: { unlimited: true } });
+  const managed = registerManagedChatIpc({ ipc, deps, getModels });
+  registerAiChatIpc({ ...deps, ipc, getParentChatTools: managed?.getParentTools });
   registerAiHistoryIpc({ ipc, historyRepository, getCredentials });
   registerAiSupportIpc({ ipc, service: {
-    getModels: () => ({ ok: true, models: [{ id: 'fixture-model', name: 'Fixture model' }], quota: { unlimited: true } }),
+    getModels,
     getBrowserConnections: () => ({ ok: true, connections: [connection] }),
     getAutomationCards: () => ({ ok: true, cards: [] }),
     workspaceList: workspace.list, workspaceRead: workspace.read, broadcastBrowserSelection() {},
   } });
-  return { ipc, sessions: () => historyRepository.listSessions(getCredentials()).sessions,
+  return { ipc, managed, sessions: () => historyRepository.listSessions(getCredentials()).sessions,
     readSession: (id) => historyRepository.getSession(getCredentials(), id).session };
 }
 
@@ -134,18 +143,66 @@ function driver(contents) {
   const has = (selector, text = '') => evaluate((css, value) => Array.from(document.querySelectorAll(css))
     .some((node) => node.getClientRects().length && node.textContent.includes(value)), selector, text);
   const visible = (selector, text) => until(() => has(selector, text), `${selector} ${text || ''}`);
-  return { evaluate, click, until, has, visible,
+  const setDraft = (text) => evaluate((value) => {
+    const input = document.querySelector('#ai-chat-input');
+    input.textContent = value;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }, text);
+  return { evaluate, click, until, has, visible, setDraft,
     async send(text) {
       await until(() => evaluate(() => document.querySelector('#ai-chat-send').ariaLabel === '发送消息'),
         'send button ready for a new turn');
-      await evaluate((value) => {
-        const input = document.querySelector('#ai-chat-input');
-        input.value = value;
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-      }, text);
+      await setDraft(text);
       await click('#ai-chat-send');
     },
   };
+}
+
+async function checkDisclosureRotation(ui, selector, open) {
+  await ui.until(() => ui.evaluate((css, expanded) => {
+    const icon = document.querySelector(css + ' > .ai-chat-disclosure');
+    if (!icon) return false;
+    const transform = getComputedStyle(icon).transform;
+    const matrix = new DOMMatrixReadOnly(transform === 'none' ? undefined : transform);
+    return Math.abs(matrix.a - (expanded ? 0 : 1)) < 0.01 && Math.abs(matrix.b - (expanded ? 1 : 0)) < 0.01;
+  }, selector, open), 'fold icon rotation ' + selector);
+}
+
+async function checkFoldedDownloadProcess(ui) {
+  const process = '.ai-chat-process';
+  await ui.visible(`${process}:not([open]) > summary`, '用时');
+  assert.equal(await ui.has('.ai-chat-step-answer', DOWNLOAD_STEP), false);
+  assert.equal(await ui.has('.ai-chat-answer', DOWNLOAD_ANSWER), true);
+  await checkDisclosureRotation(ui, '.ai-chat-process > summary', false);
+  await ui.click('.ai-chat-process > summary');
+  await checkDisclosureRotation(ui, '.ai-chat-process > summary', true);
+  await ui.visible(`${process}[open] .ai-chat-step-answer`, DOWNLOAD_STEP);
+  const group = '.ai-chat-process .ai-chat-activity:not([hidden]) > summary';
+  const tool = '.ai-chat-process .ai-chat-tool > summary';
+  await ui.visible(group, '1次工具调用');
+  await ui.click(group);
+  await checkDisclosureRotation(ui, group, true);
+  await ui.click(tool);
+  await checkDisclosureRotation(ui, tool, true);
+  await ui.click(tool);
+  await checkDisclosureRotation(ui, tool, false);
+}
+
+async function checkRawToolRotation(ui) {
+  const row = '.ai-chat-message:has([data-tool-id="raw-fixture"])';
+  await ui.evaluate(() => createAssistantView({
+    content: 'Command fixture', durationMs: 1300, toolEvents: [{ id: 'raw-fixture', name: 'run_command', status: 'success' }],
+  }).row.dataset.messageKind);
+  for (const selector of ['.ai-chat-process', '.ai-chat-activity', '.ai-chat-tool']) {
+    await ui.click(row + ' ' + selector + ' > summary');
+  }
+  const raw = row + ' .ai-chat-tool-raw > summary';
+  await checkDisclosureRotation(ui, raw, false);
+  await ui.click(raw);
+  await checkDisclosureRotation(ui, raw, true);
+  await ui.click(raw);
+  await checkDisclosureRotation(ui, raw, false);
+  await ui.evaluate((selector) => document.querySelector(selector).remove(), row);
 }
 
 async function initial(ui, doubles, history) {
@@ -153,9 +210,9 @@ async function initial(ui, doubles, history) {
   assert.equal(await ui.evaluate(() => Boolean(document.querySelector('#ai-chat-target-bind'))), false);
   assert.equal(doubles.targetLookups(), 0);
   doubles.tab.pageToken = 'a-document';
-  doubles.nextAction('download', { url: fixture.origin + fixture.files.red.route }, DOWNLOAD_ANSWER);
+  doubles.nextAction('download', { url: fixture.origin + fixture.files.red.route }, DOWNLOAD_ANSWER, DOWNLOAD_STEP);
   await ui.send(DOWNLOAD_PROMPT);
-  await ui.visible('.ai-chat-answer', DOWNLOAD_ANSWER);
+  await checkFoldedDownloadProcess(ui);
   assert.equal(doubles.modelRequests(), 2);
   assert.equal(doubles.targetLookups(), 1);
   await ui.visible(ARTIFACT, RED_PATH);
@@ -167,6 +224,77 @@ async function initial(ui, doubles, history) {
     return session?.titleGenerated && session.messages.some((message) =>
       message.artifacts?.some((artifact) => artifact.sha256 === fixture.files.red.sha256));
   }), 'persisted title and artifact digest');
+  await checkRawToolRotation(ui);
+}
+
+async function continuation(ui, doubles) {
+  const stop = '#ai-chat-send[aria-label="停止 AI 输出"]';
+  const play = '#ai-chat-send[aria-label="继续 AI 输出"]';
+  const send = '#ai-chat-send[aria-label="发送消息"]';
+  const firstGroup = '.ai-chat-activity:has([data-tool-id="fixture-tool-1"])';
+  const secondGroup = '.ai-chat-activity:has([data-tool-id="fixture-tool-2"])';
+  const setClock = (time) => ui.evaluate((value) => { performance.now = () => value; }, time);
+  await setClock(0);
+  let hold = false;
+  doubles.model.streamAIControlMessage = (key, device, model, messages, options, onEvent) => {
+    if (!hold) return doubles.model.sendAIControlMessage(key, device, model, messages, options);
+    hold = false;
+    onEvent({ type: 'content_delta', delta: 'Partial fixture response' });
+    return new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true }));
+  };
+
+  doubles.tab.pageToken = 'a-document';
+  doubles.nextAction('download', { url: fixture.origin + fixture.files.red.route }, DOWNLOAD_ANSWER);
+  await ui.send(DOWNLOAD_PROMPT);
+  await ui.visible('.ai-chat-answer', DOWNLOAD_ANSWER);
+  await ui.click('.ai-chat-process > summary', '用时');
+  await ui.visible(`${firstGroup}:not([open]) > summary`);
+  await ui.click(`${firstGroup} > summary`);
+  await ui.visible(`${firstGroup}[open] .ai-chat-tool > summary`);
+
+  doubles.nextAction('download', { url: fixture.origin + fixture.files.red.route }, null, DOWNLOAD_STEP);
+  const dispatch = doubles.bridge.dispatch;
+  doubles.bridge.dispatch = async (...args) => {
+    const result = await dispatch(...args);
+    if (args[2].action === 'download') hold = true;
+    return result;
+  };
+  await ui.send('Download again');
+  await ui.visible('.ai-chat-answer', 'Partial fixture response');
+  await ui.visible(`${secondGroup}:not([open]) > summary`);
+  await ui.click(`${secondGroup} > summary`);
+  await setClock(237000);
+  await ui.click(stop);
+  await ui.visible(play);
+  assert.equal(await ui.has('.ai-chat-step-answer', DOWNLOAD_STEP), true);
+  await ui.visible('.ai-chat-process > summary', '用时 3 分钟 57 秒');
+  await setClock(297000);
+  doubles.queue.push({ content: 'Continued from the tool result' });
+  const sendModel = doubles.model.sendAIControlMessage;
+  doubles.model.sendAIControlMessage = async (...args) => {
+    await setClock(301000);
+    return sendModel(...args);
+  };
+  await ui.click(play);
+  await ui.visible('.ai-chat-answer', 'Continued from the tool result');
+  await ui.visible('.ai-chat-process > summary', '用时 4 分钟 1 秒');
+  assert.equal(await ui.has(`${firstGroup}[open] > summary`), true);
+  assert.equal(await ui.has('.ai-chat-process[open] .ai-chat-step-answer', DOWNLOAD_STEP), true);
+  assert.equal(await ui.has(`${secondGroup}[open] > summary`), true);
+  assert.equal(await ui.has('.ai-chat-answer', 'Partial fixture response'), false);
+  assert.equal(doubles.outcomes.length, 2);
+
+  hold = true;
+  await ui.send('Pause before editing the prompt');
+  await ui.visible('.ai-chat-answer', 'Partial fixture response');
+  await ui.click(stop);
+  await ui.visible(play);
+  await ui.setDraft('Follow-up message');
+  await ui.visible(send);
+  doubles.queue.push({ content: 'Answered the follow-up' });
+  await ui.click(send);
+  await ui.visible('.ai-chat-answer', 'Answered the follow-up');
+  assert.equal(await ui.has('[data-message-kind="user-bubble"]', 'Follow-up message'), true);
 }
 
 async function reopen(ui, doubles) {
@@ -175,7 +303,7 @@ async function reopen(ui, doubles) {
   await ui.visible('#ai-chat-history-menu button', DOWNLOAD_PROMPT);
   await checkHistoryLayout(ui);
   await ui.click('#ai-chat-history-menu button', DOWNLOAD_PROMPT);
-  await ui.visible('.ai-chat-answer', DOWNLOAD_ANSWER);
+  await checkFoldedDownloadProcess(ui);
   await ui.visible(ARTIFACT, RED_PATH);
   assert.equal(await ui.evaluate((css) => document.querySelectorAll(css).length, ARTIFACT), 1);
   await ui.click(`${ARTIFACT} button`, '再次引用');
@@ -299,26 +427,105 @@ async function native() {
   }
 }
 
+function delegatedModel(messages, options) {
+  if (!options.tools.length) return { ok: true, message: { content: 'Task review' } };
+  if (!options.tools.some(({ name }) => name === 'chat_session')) {
+    assert.deepEqual(options.tools.map(({ name }) => name), ['chat_previous_result']);
+    return { ok: true, message: { content: 'Child report' } };
+  }
+  const outcomes = messages.filter(({ role }) => role === 'tool').map(({ content }) => JSON.parse(content));
+  if (outcomes.length === 3) {
+    assert.equal(outcomes[2].data.runs[0].result, 'Child report');
+    return { ok: true, message: { content: 'Parent received the child report' } };
+  }
+  const actions = [
+    { action: 'create', request_key: 'delegated-create', model_id: 'fixture-model', title: 'Model delegated' },
+    { action: 'send', request_key: 'delegated-send', session_id: outcomes[0]?.data.sessionId, content: 'Review', wait_ms: 0 },
+    { action: 'wait', run_ids: [outcomes[1]?.data.runId] },
+  ];
+  return { ok: true, message: { tool_calls: [{ id: `child-call-${outcomes.length}`, type: 'function',
+    function: { name: 'chat_session', arguments: JSON.stringify(actions[outcomes.length]) } }] } };
+}
+
+async function managed(ui, doubles, history, window) {
+  let resumed = false;
+  doubles.model.streamAIControlMessage = (_key, _device, _model, messages, options, onEvent) => {
+    if (resumed) {
+      assert.ok(messages.some(({ content }) => content === 'Add a brief conclusion'));
+      return { ok: true, message: { content: 'Final child result' } };
+    }
+    onEvent({ type: 'content_delta', delta: 'Live child output' });
+    return new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true }));
+  };
+  await ui.setDraft('Keep this parent draft');
+  const parentId = await ui.evaluate(() => state.currentSession.id);
+  const contents = window.webContents;
+  const parent = history.managed.getParentTools({ sender: contents, senderFrame: contents.mainFrame }, { localInteraction: true, parentSessionId: parentId });
+  const execute = (args) => parent.execute('chat_session', args);
+  const created = await execute({ action: 'create', model_id: 'fixture-model', request_key: 'create', title: 'Review child' });
+  assert.equal(created.ok, true, JSON.stringify(created));
+  const sessionId = created.data.sessionId;
+  const sent = await execute({ action: 'send', request_key: 'send', session_id: sessionId, content: 'Review draft', wait_ms: 0 });
+  assert.equal(sent.ok, true, JSON.stringify(sent));
+  await ui.visible('#ai-managed-parent-cards button', 'Review child');
+  assert.equal(await ui.has('#ai-managed-chat'), false);
+  await ui.click('#ai-managed-parent-cards button');
+  await ui.visible('#ai-managed-messages', 'Live child output');
+  await ui.evaluate(() => { document.querySelector('#ai-managed-input').value = 'Add a brief conclusion'; });
+  await ui.click('#ai-managed-send');
+  await ui.visible('#ai-managed-messages', 'Add a brief conclusion');
+  await ui.click('#ai-managed-stop');
+  await ui.visible('#ai-managed-resume');
+  resumed = true;
+  await ui.click('#ai-managed-resume');
+  await ui.visible('#ai-managed-messages', 'Final child result');
+  const result = await execute({ action: 'wait', run_id: sent.data.runId });
+  assert.equal(result.data.result, 'Final child result');
+  await ui.click('#ai-managed-back');
+  assert.equal(await ui.evaluate(() => document.querySelector('#ai-chat-input').textContent), 'Keep this parent draft');
+  assert.ok(history.sessions().every((session) => session.id !== sessionId));
+  await window.loadFile(path.join(appRoot, 'frontend/sidebar/ai-control.html'));
+  await ui.click('#ai-managed-tasks');
+  await ui.visible('#ai-managed-directory button', 'Review child');
+  await ui.click('#ai-managed-directory button', 'Review child');
+  await ui.visible('#ai-managed-messages', 'Final child result');
+  await ui.click('#ai-managed-back');
+  doubles.model.streamAIControlMessage = (_key, _device, _model, messages, options) => delegatedModel(messages, options);
+  await ui.send('Ask a child to review');
+  await ui.visible('.ai-chat-answer', 'Parent received the child report');
+  await ui.visible('#ai-managed-parent-cards button', 'Model delegated');
+  await ui.click('.ai-chat-process > summary');
+  await ui.click('.ai-chat-process .ai-chat-activity > summary');
+  const childTool = '[data-tool-id="child-call-0"] > summary';
+  await checkDisclosureRotation(ui, childTool, false);
+  await ui.click(childTool);
+  await checkDisclosureRotation(ui, childTool, true);
+  await ui.click(childTool);
+  await checkDisclosureRotation(ui, childTool, false);
+}
+
 async function main() {
   if (phase === 'native') return native();
   const doubles = createDoubles();
-  await runSidebar(doubles, async (ui, history) => {
+  await runSidebar(doubles, async (ui, history, window) => {
     if (phase === 'initial') await initial(ui, doubles, history);
+    else if (phase === 'continuation') await continuation(ui, doubles);
+    else if (phase === 'managed') await managed(ui, doubles, history, window);
     else await reopen(ui, doubles);
     assert.deepEqual(doubles.queue, []);
   });
 }
 
 async function runSidebar(wiring, exercise) {
-  const history = wireSidebar(wiring);
   const window = new BrowserWindow({ width: 430, height: 860, show: false, webPreferences: {
     preload: path.join(backend, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true,
   } });
+  const history = wireSidebar(wiring, window);
   try {
     await window.loadFile(path.join(appRoot, 'frontend/sidebar/ai-control.html'));
     const ui = driver(window.webContents);
     await ui.until(() => ui.evaluate(() => document.querySelector('#ai-chat-model').value === 'fixture-model'), 'sidebar model');
-    await exercise(ui, history);
+    await exercise(ui, history, window);
     console.log(`SIDEBAR_INTERACTION_PASSED ${phase}`);
   } finally {
     window.destroy();

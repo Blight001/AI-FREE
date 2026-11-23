@@ -14,11 +14,6 @@ function isChatStopped(activeRun, error) {
 
 function waitForChatAbort(activeRun, promise) {
   if (!activeRun) return promise;
-  if (activeRun.controller.signal.aborted) {
-    const error = new Error('AI 输出已停止');
-    error.name = 'AbortError';
-    return Promise.reject(error);
-  }
   return new Promise((resolve, reject) => {
     const signal = activeRun.controller.signal;
     const onAbort = () => {
@@ -31,6 +26,10 @@ function waitForChatAbort(activeRun, promise) {
       (value) => { signal.removeEventListener('abort', onAbort); resolve(value); },
       (error) => { signal.removeEventListener('abort', onAbort); reject(error); },
     );
+    if (signal.aborted) {
+      signal.removeEventListener('abort', onAbort);
+      onAbort();
+    }
   });
 }
 
@@ -63,12 +62,7 @@ function buildStoppedResult(context) {
   const stoppedTraceEvents = partialReasoning
     ? [...context.traceEvents, { type: 'reasoning', round: context.traceEvents.length, content: partialReasoning }]
     : [...context.traceEvents];
-  const cleanMessages = context.modelMessages
-    .filter((message) => sessionMessage(message) && message?.role !== 'tool')
-    .map((message) => message?.role === 'assistant'
-      ? { role: 'assistant', content: String(message.content || '') }
-      : message)
-    .filter((message) => message?.role !== 'assistant' || String(message.content || '').trim());
+  const cleanMessages = persistedMessages(context.modelMessages);
   const stoppedMessage = {
     role: 'assistant',
     content: partialContent,
@@ -85,7 +79,7 @@ function buildStoppedResult(context) {
     ok: true,
     stopped: true,
     quota: context.latestQuota,
-    messages: limitAiControlMessages(cleanMessages),
+    messages: cleanMessages,
     message: stoppedMessage,
   };
   context.emit({ type: 'stopped', message: stoppedMessage, quota: context.latestQuota });

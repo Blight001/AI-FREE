@@ -6,8 +6,9 @@ const { createProviderAccountTools } = require('../account/provider-account-tool
 const { createProviderAccountUi } = require('../account/provider-account-ui');
 const { combineToolSets } = require('../../services/combine-tool-sets');
 const { createChatRunRegistry } = require('./chat-run-registry');
-const { prepareChatRequest } = require('./chat-request-context');
+const { prepareChatContinuation, prepareChatRequest } = require('./chat-request-context');
 const { runChatConversation } = require('./chat-conversation-runner');
+const { isChatStopped } = require('./chat-execution-state');
 const { enrichBrowserConnectionNames } = require('./connection-names');
 
 function namedBrowserConnections(deps) {
@@ -96,16 +97,23 @@ function createAiChatService(deps = {}) {
     }
 
     async function chat(_event, input = {}) {
+      const getWindowTools = () => combineToolSets(getAiBrowserWindowTools(), deps.getParentChatTools?.(_event, input));
       let activeRun = null;
       let activeRunKey = '';
       try {
-        const request = prepareChatRequest(deps, _event, input, chatRuns, getAiBrowserWindowTools);
-        activeRunKey = request.key || '';
+        const request = input.resumeRequestId
+          ? prepareChatContinuation(deps, _event, input, chatRuns)
+          : prepareChatRequest(deps, _event, input, chatRuns, getWindowTools);
+        activeRunKey = request.runKey || '';
         activeRun = request.run || null;
         if (request.error) return request.error;
-        return await runChatConversation(request);
+        const result = await runChatConversation(request);
+        if (result.stopped && chatRuns.saveContinuation(_event, activeRunKey, activeRun)) {
+          return { ...result, resumable: true };
+        }
+        return result;
       } catch (error) {
-        if (activeRun?.stopped || error?.name === 'AbortError' || error?.code === 'ERR_CANCELED') {
+        if (isChatStopped(activeRun, error)) {
           return { ok: true, stopped: true, messages: [], message: { role: 'assistant', content: '' } };
         }
         return { ok: false, message: error?.message || String(error) };

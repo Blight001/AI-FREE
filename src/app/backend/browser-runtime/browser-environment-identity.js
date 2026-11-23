@@ -60,6 +60,9 @@ function normalizeUserAgent(settings, ua, secChUa, platform, brands) {
 function resolveBrowserIdentity(settings) {
   const secChUa = record(settings.secChUa);
   const brands = secChUa.mode === 'custom' ? normalizeUserAgentBrands(secChUa.brands) : [];
+  if (settings.nativeIdentity === true) {
+    return normalizeUserAgent({}, {}, {}, { navigator: '', uaData: '' }, []);
+  }
   const platform = platformValues(settings.navigatorPlatform || settings.os);
   return normalizeUserAgent(settings, record(settings.ua), secChUa, platform, brands);
 }

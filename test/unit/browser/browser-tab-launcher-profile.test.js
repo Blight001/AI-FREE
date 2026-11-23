@@ -3,24 +3,22 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const clashRuntimePath = require.resolve(
-  '../../../src/app/backend/features/network/clash-mini-control-runtime',
-);
+const clashProcessPath = require.resolve('../../../src/app/backend/features/network/clash-mini-process');
+const clashControlPath = require.resolve('../../../src/app/backend/features/network/clash-mini-control');
 const launcherPath = require.resolve(
   '../../../src/app/backend/features/browser/browser-tab-launcher',
 );
 
-require.cache[clashRuntimePath] = {
+require.cache[clashProcessPath] = {
   exports: {
     getClashMiniStatus: () => ({
       running: true,
       enabled: true,
       coreDir: 'fixture-core',
     }),
-    getClashMiniProxyEndpoint: () => ({ host: '127.0.0.1', port: 17890 }),
-    getClashMiniRuntimeRoot: () => 'fallback-core',
   },
 };
+require.cache[clashControlPath] = { exports: { getClashMiniProxyEndpoint: () => ({ host: '127.0.0.1', port: 17890 }) } };
 delete require.cache[launcherPath];
 const { createBrowserTabLauncher } = require(launcherPath);
 
@@ -95,7 +93,7 @@ test('an explicit GPU launch failure retries once with the safe GPU argument', a
   assert.equal(tabs.get('gpu-retry').runtimeStatus, 'ready');
 });
 
-test('global proxy launch keeps proxy routing but passes no exit IP probe inputs', async () => {
+test('active magic does not override the proxy configured for a new browser', async () => {
   const tabs = new Map();
   const lookups = [];
   let launchedProfile = null;
@@ -106,7 +104,6 @@ test('global proxy launch keeps proxy routing but passes no exit IP probe inputs
         return { status: 'ready' };
       },
     },
-    getBrowserProxyEndpoint: () => ({ enabled: true, server: 'http://127.0.0.1:17890' }),
     hasPersistedChromiumProfile: () => false,
     licenseCache: { isVip: () => true },
     logger: { warn() {} },
@@ -129,15 +126,17 @@ test('global proxy launch keeps proxy routing but passes no exit IP probe inputs
     updateTabs() {},
   });
 
-  const tabId = await launcher.addTab('chrome://newtab/', { tabId: 'magic-profile' });
+  const tabId = await launcher.addTab('chrome://newtab/', {
+    tabId: 'magic-profile', browserSettings: { proxy: { mode: 'custom', protocol: 'http', host: '127.0.0.1', port: 18888 } },
+  });
 
   assert.equal(tabId, 'magic-profile');
   assert.equal(lookups.length, 1);
   assert.equal(lookups[0].geoProxyServer, undefined);
   assert.equal(lookups[0].httpGetUniversal, undefined);
   assert.equal(lookups[0].forceGeoLookup, undefined);
-  assert.equal(launchedProfile.proxyServer, 'http://127.0.0.1:17890');
-  assert.equal(tabs.get(tabId).networkMagicApplied, true);
+  assert.equal(launchedProfile.proxyServer, 'http://127.0.0.1:18888');
+  assert.equal(tabs.get(tabId).browserSettings.proxy.port, 18888);
 });
 
 test('loading-page navigation failures remain visible without profile probing', async () => {
@@ -212,7 +211,11 @@ test('launch resolves allowed IP geolocation through the effective route and pas
   });
 
   await launcher.addTab('https://example.test/', {
-    tabId: 'geo-ip', browserSettings: { geolocation: { permission: 'allow', mode: 'ip' } },
+    tabId: 'geo-ip',
+    browserSettings: {
+      geolocation: { permission: 'allow', mode: 'ip' },
+      proxy: { mode: 'custom', protocol: 'http', host: '127.0.0.1', port: 17890 },
+    },
   });
 
   assert.equal(requestedProxy.server, 'http://127.0.0.1:17890');

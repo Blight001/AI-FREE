@@ -175,6 +175,21 @@ function verifyPackagedLogoResolution(extractDir, resourcesDir) {
   }
 }
 
+function verifyMouseDebugAssets(appRoot, appShell) {
+  assertFile(path.join(appRoot, 'backend/mcp-debug-panel-preload.js'));
+  assertFile(path.join(appRoot, 'backend/features/browser/register-mcp-debug-panel-ipc.js'));
+  const panelPath = path.join(appRoot, 'frontend/views/mcp-debug-panel.html');
+  assertFile(panelPath);
+  const html = fs.readFileSync(panelPath, 'utf8');
+  if (!appShell.includes('id="home-mcp-debug"') || !html.includes('Content-Security-Policy')) {
+    throw new Error('MCP 调试面板入口或 CSP 缺失');
+  }
+  for (const match of html.matchAll(/(?:src|href)="(\.\.\/renderer\/[^"]+)"/g)) assertFile(path.resolve(path.dirname(panelPath), match[1]));
+  for (const file of ['index.html', 'frame.html', 'fixture.css', 'fixture.js']) {
+    assertFile(path.join(appRoot, 'frontend/views/mcp-debug-fixture', file));
+  }
+}
+
 function verifyHomeDiagnosticsAssets(extractDir, appShell, sidebar) {
   const appRoot = path.join(extractDir, 'src/app');
   for (const file of ['styles/app-shell-console.css', 'controllers/pages/app-shell/shell-home-console.js',
@@ -185,6 +200,7 @@ function verifyHomeDiagnosticsAssets(extractDir, appShell, sidebar) {
     if (!appShell.includes(`"../renderer/${file}"`)) throw new Error(`首页未加载调试资源: ${file}`);
   }
   assertFile(path.join(appRoot, 'backend/features/browser/register-mcp-catalog-ipc.js'));
+  verifyMouseDebugAssets(appRoot, appShell);
   assertFile(path.join(appRoot, 'backend/features/browser/mcp-catalog-examples.js'));
   if (!appShell.includes('id="home-mcp"') || /id="(?:home-mcp|ai-chat-browser(?:-trigger)?|ai-chat-target|ai-prompt-diagnostics-dialog)/.test(sidebar)) {
     throw new Error('MCP 管理应只存在于主窗口首页，侧栏不应包含旧设置入口');

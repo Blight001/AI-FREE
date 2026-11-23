@@ -177,8 +177,8 @@ function ensureModalInitialized() {
  * 监听服务器消息
  * 这个函数需要在 window.aiFree 可用时调用
  */
-function initServerMessageListener() {
-  bindBrowserDataClearConfirmListener();
+function initServerMessageListener(options = {}) {
+  if (options.bindBrowserDataClearConfirm !== false) bindBrowserDataClearConfirmListener();
   if (window.__messageModalServerListenerBound) {
     return;
   }

@@ -1,0 +1,175 @@
+diff --git a/chrome/browser/ui/views/frame/ai_free_page_automation.cc b/chrome/browser/ui/views/frame/ai_free_page_automation.cc
+index f4e4140..a8c0771 100644
+--- a/chrome/browser/ui/views/frame/ai_free_page_automation.cc
++++ b/chrome/browser/ui/views/frame/ai_free_page_automation.cc
+@@ -199,11 +199,77 @@ constexpr char kFileInputActivationScript[] = R"JS(
+     }
+ )JS";
+ 
++// Observation and action validation must agree on where frame coordinates start.
++constexpr char kPageTargetGeometryScript[] = R"JS(
++  const childDocument = element => element.tagName === 'IFRAME' ? element.contentDocument : null;
++  const parentElement = element => element.parentElement || element.getRootNode().host || null;
++
++  function frameContentOrigin(frame) {
++    const {left, top} = frame.getBoundingClientRect();
++    const style = frame.ownerDocument.defaultView.getComputedStyle(frame);
++    return {x: left + frame.clientLeft + parseFloat(style.paddingLeft),
++      y: top + frame.clientTop + parseFloat(style.paddingTop)};
++  }
++
++  function enqueueTargetRoots(roots, context, element, includeFrames = true) {
++    if (element.shadowRoot) roots.push({...context, root: element.shadowRoot});
++    const child = includeFrames ? childDocument(element) : null;
++    if (!child) return;
++    const origin = frameContentOrigin(element);
++    roots.push({root: child, offsetX: context.offsetX + origin.x,
++      offsetY: context.offsetY + origin.y});
++  }
++
++  function targetViewportRect(element, context) {
++    const rect = element.getBoundingClientRect();
++    return {left: rect.left + context.offsetX, top: rect.top + context.offsetY,
++      right: rect.right + context.offsetX, bottom: rect.bottom + context.offsetY,
++      width: rect.width, height: rect.height};
++  }
++
++  function deepElementFromPoint(x, y, targetDocument) {
++    let doc = document;
++    for (let depth = 0; depth < 16; depth++) {
++      let hit = doc.elementFromPoint(x, y);
++      if (!hit) return null;
++      for (let shadowDepth = 0; shadowDepth < 16 && hit.shadowRoot; shadowDepth++) {
++        const inner = hit.shadowRoot.elementFromPoint(x, y);
++        if (!inner || inner === hit) break;
++        hit = inner;
++      }
++      const child = doc === targetDocument ? null : childDocument(hit);
++      if (!child) return hit;
++      const origin = frameContentOrigin(hit);
++      x -= origin.x;
++      y -= origin.y;
++      doc = child;
++    }
++    return null;
++  }
++
++  // An offset can map a frame's coordinates only when its axes and scale agree
++  // with its parent. Refuse to dispatch speculative coordinates otherwise.
++  function hasFrameTransform(element) {
++    let frame = element.ownerDocument.defaultView.frameElement;
++    while (frame) {
++      const view = frame.ownerDocument.defaultView;
++      for (let ancestor = frame; ancestor; ancestor = parentElement(ancestor)) {
++        const style = view.getComputedStyle(ancestor);
++        if (style.transform !== 'none' || style.scale !== 'none' ||
++            style.rotate !== 'none' || style.perspective !== 'none' ||
++            style.zoom !== '1') return true;
++      }
++      frame = view.frameElement;
++    }
++    return false;
++  }
++)JS";
++
+ std::string ObserveScript(const base::DictValue& command) {
+   return base::StrCat({R"JS((() => { try {
+     const a=)JS",
+                        CommandJson(command), R"JS(;)JS",
+-                       kFileInputActivationScript, R"JS(
++                       kFileInputActivationScript, kPageTargetGeometryScript, R"JS(
+     const limit=Math.max(1,Math.min(1000,Number(a.limit)||200));
+     const textLimit=Math.max(20,Math.min(500,Number(a.textLimit)||120));
+     const observeMode=String(a.mode||'elements');
+@@ -250,10 +316,9 @@ std::string ObserveScript(const base::DictValue& command) {
+     const rectangleRegion=()=>Number.isFinite(Number(requestedRegion.x))?{left:Number(requestedRegion.x),top:Number(requestedRegion.y),right:Number(requestedRegion.x)+Number(requestedRegion.width),bottom:Number(requestedRegion.y)+Number(requestedRegion.height),width:Number(requestedRegion.width),height:Number(requestedRegion.height)}:null;
+     const intersection=(r,area)=>{const left=Math.max(r.left,area.left-regionPadding),top=Math.max(r.top,area.top-regionPadding),right=Math.min(r.right,area.right+regionPadding),bottom=Math.min(r.bottom,area.bottom+regionPadding),overlap=Math.max(0,right-left)*Math.max(0,bottom-top);return {ratio:Math.round(overlap/Math.max(1,r.width*r.height)*1000)/1000,centerInside:r.left+r.width/2>=area.left-regionPadding&&r.left+r.width/2<=area.right+regionPadding&&r.top+r.height/2>=area.top-regionPadding&&r.top+r.height/2<=area.bottom+regionPadding,fullyInside:r.left>=area.left-regionPadding&&r.right<=area.right+regionPadding&&r.top>=area.top-regionPadding&&r.bottom<=area.bottom+regionPadding};};
+     const ancestorContext=(el,stop)=>{const out=[];for(let current=el.parentElement;current&&current!==stop&&out.length<includeAncestorContext;current=current.parentElement){const role=roleOf(current);const label=regionLabel(current);if(role||label)out.push({role:role||'group',label:label.slice(0,120)});}if(stop&&out.length<includeAncestorContext)out.push({role:regionRole(stop),label:regionLabel(stop).slice(0,120)});return out;};
+-    const composedParent=(el)=>{if(el.parentElement)return el.parentElement;const root=el.getRootNode?.();return root&&root.host||null;};
++    const composedParent=parentElement;
+     const rendered=(el)=>{for(let current=el;isElement(current);current=composedParent(current)){const c=style(current);if(c.display==='none'||c.visibility==='hidden'||c.visibility==='collapse'||Number(c.opacity)===0||current.inert)return false;}return true;};
+     const visible=(el,r)=>rendered(el)&&r.width>=1&&r.height>=1&&r.bottom>0&&r.right>0&&r.top<innerHeight&&r.left<innerWidth;
+-    const deepElementFromPoint=(x,y)=>{let doc=document,localX=x,localY=y,hit=null;for(let depth=0;depth<16;depth++){hit=doc.elementFromPoint(localX,localY);if(!hit)return null;for(let shadowDepth=0;shadowDepth<16&&hit.shadowRoot;shadowDepth++){const inner=hit.shadowRoot.elementFromPoint(localX,localY);if(!inner||inner===hit)break;hit=inner;}if(hit.tagName!=='IFRAME')return hit;let child=null;try{child=hit.contentDocument;}catch(_){}if(!child)return hit;const frameRect=hit.getBoundingClientRect();localX-=frameRect.left+hit.clientLeft;localY-=frameRect.top+hit.clientTop;doc=child;}return hit;};
+     const elementPath=(hit)=>{const path=[];for(let current=hit;isElement(current);current=composedParent(current))path.push(current);return path;};
+     const clickOwner=(hit)=>{const path=elementPath(hit);for(const current of path){if(current.matches(interactive))return current;}let owner=null;for(const current of path){const tag=current.tagName.toLowerCase();if(tag==='html'||tag==='body'||style(current).cursor!=='pointer')break;owner=current;}return owner;};
+     const composedContains=(owner,hit)=>{for(let current=hit;isElement(current);current=composedParent(current)){if(current===owner)return true;}return false;};
+@@ -273,10 +338,8 @@ std::string ObserveScript(const base::DictValue& command) {
+     for(let ri=0;ri<roots.length;ri++){
+       const context=roots[ri],root=context.root;if(seen.has(root))continue;seen.add(root);
+       for(const el of root.querySelectorAll('*')){
+-        const localRect=el.getBoundingClientRect();
+-        const r={left:localRect.left+context.offsetX,top:localRect.top+context.offsetY,right:localRect.right+context.offsetX,bottom:localRect.bottom+context.offsetY,width:localRect.width,height:localRect.height};
+-        if(el.shadowRoot)roots.push({root:el.shadowRoot,offsetX:context.offsetX,offsetY:context.offsetY});
+-        if(el.tagName==='IFRAME'){try{if(el.contentDocument)roots.push({root:el.contentDocument,offsetX:r.left+el.clientLeft,offsetY:r.top+el.clientTop});}catch(_){}}
++        const r=targetViewportRect(el,context);
++        enqueueTargetRoots(roots,context,el);
+         const uploadPoint=kindFilter==='file-input'?fileInputPoint(el):null;
+         if(!visible(el,r)&&!uploadPoint)continue;
+         const regionIntersection=regionMatch(r),relatedPortal=inRelatedPortal(el);if(!regionIntersection.included&&!relatedPortal)continue;
+@@ -1054,15 +1117,28 @@ void CaptureScreenshot(content::WebContents* web_contents,
+ 
+ std::string InspectPageStateScript(const base::DictValue& command) {
+   return base::StrCat({R"JS((() => { try {
+-  const a=)JS", CommandJson(command), R"JS(;
++  const a=)JS", CommandJson(command), R"JS(;)JS", kPageTargetGeometryScript, R"JS(
+   const clip=v=>String(v??'').slice(0,512).trim();
+   const normalizedLabel=v=>clip(v).replace(/\s+/g,' ');
+-  const roots=[document],elements=[];
+-  for(let i=0;i<roots.length&&elements.length<20000;i++)for(const e of roots[i].querySelectorAll('*')){elements.push(e);if(e.shadowRoot)roots.push(e.shadowRoot);if(elements.length>=20000)break;}
+-  const query=s=>{try{return elements.filter(e=>e.matches(s));}catch(_){return null;}};
++  const t=a.target||{};
++  const hasTarget=Object.keys(t).length>0;
++  const roots=[{root:document,offsetX:0,offsetY:0}], elements=[], contexts=new Map();
++  for (let i=0; i<roots.length && elements.length<20000; i++) {
++    const context=roots[i];
++    for (const element of context.root.querySelectorAll('*')) {
++      elements.push(element);
++      if (hasTarget) contexts.set(element,context);
++      enqueueTargetRoots(roots,context,element,hasTarget);
++      if (elements.length>=20000) break;
++    }
++  }
++  const query=(selector, topOnly=false)=>{
++    try {
++      return elements.filter(element=>(!topOnly || element.ownerDocument===document) && element.matches(selector));
++    } catch (_) { return null; }
++  };
+   const role=e=>e.getAttribute('role')||({BUTTON:'button',TEXTAREA:'textbox',SELECT:'combobox',A:e.hasAttribute('href')?'link':'generic',INPUT:({checkbox:'checkbox',radio:'radio',range:'slider',number:'spinbutton',button:'button',submit:'button'}[e.type]||'textbox')}[e.tagName]||e.tagName.toLowerCase());
+   const label=e=>normalizedLabel(e.getAttribute('aria-label')||String(e.getAttribute('aria-labelledby')||'').split(/\s+/).map(id=>e.getRootNode().getElementById?.(id)?.textContent||'').join(' ').trim()||e.labels?.[0]?.innerText||e.innerText||e.textContent||e.getAttribute('title'));
+-  const t=a.target||{};
+   const choices=[t.test_id&&(()=>elements.filter(e=>e.getAttribute('data-testid')===t.test_id)),t.id&&(()=>elements.filter(e=>e.id===t.id)),t.role&&t.name&&(()=>elements.filter(e=>role(e)===t.role&&label(e)===(t.exact===false?label(e).includes(normalizedLabel(t.name)):normalizedLabel(t.name)))),t.text&&(()=>elements.filter(e=>(t.exact===false?label(e).includes(normalizedLabel(t.text)):label(e)===normalizedLabel(t.text))&&!Array.from(e.children).some(c=>label(c)===normalizedLabel(t.text)))),t.selector&&(()=>query(t.selector)||[])];
+   let matches=[];for(const choose of choices){if(!choose)continue;matches=choose();if(matches.length)break;}
+   if(t.scope){const scoped=query(String(t.scope));if(!scoped||scoped.length!==1)matches=[];else matches=matches.filter(e=>scoped[0]===e||scoped[0].contains(e));}
+@@ -1075,18 +1151,25 @@ std::string InspectPageStateScript(const base::DictValue& command) {
+   };
+   const inspect=()=>{
+     if(matches.length!==1)return {found:false,count:matches.length,reason:matches.length?'ambiguous':'not_found',...(matches.length?{candidates:matches.slice(0,20).map(e=>({role:role(e),name:label(e),selector:selectorFor(e)}))}:{})};
+-    const e=matches[0],r=e.getBoundingClientRect(),s=getComputedStyle(e);
++    const e=matches[0], doc=e.ownerDocument;
++    if (hasFrameTransform(e)) return {found:false,count:1,reason:'frame_transform_unsupported'};
++    const r=targetViewportRect(e,contexts.get(e));
++    const s=doc.defaultView.getComputedStyle(e);
+     const hidden=!r.width||!r.height||s.display==='none'||s.visibility==='hidden'||s.visibility==='collapse';
+     const offscreen=r.right<=0||r.bottom<=0||r.left>=innerWidth||r.top>=innerHeight;
+-    const x=Math.max(0,r.left)+Math.max(0,Math.min(innerWidth,r.right)-Math.max(0,r.left))/2;
+-    const y=Math.max(0,r.top)+Math.max(0,Math.min(innerHeight,r.bottom)-Math.max(0,r.top))/2;
+-    let hit=document.elementFromPoint(x,y);while(hit?.shadowRoot){const deeper=hit.shadowRoot.elementFromPoint?.(x,y);if(!deeper||deeper===hit)break;hit=deeper;}
+-    const occluded=!hidden&&!offscreen&&hit!==e&&!e.contains(hit);
++    const x=(Math.max(0,r.left)+Math.min(innerWidth,r.right))/2;
++    const y=(Math.max(0,r.top)+Math.min(innerHeight,r.bottom))/2;
++    let occluded=false;
++    if (!hidden && !offscreen) {
++      let hit=deepElementFromPoint(x,y,doc);
++      while (hit && hit!==e) hit=parentElement(hit);
++      occluded=hit!==e;
++    }
+     const reason=hidden?'hidden':offscreen?'offscreen':occluded?'occluded':undefined;
+-    return {found:true,count:1,reason,selector:selectorFor(e),selectorUnique:true,x:r.x,y:r.y,width:r.width,height:r.height,clickX:x,clickY:y,visible:!hidden&&!offscreen,occluded,disabled:!!e.disabled||e.getAttribute('aria-disabled')==='true',tag:e.tagName.toLowerCase(),role:role(e),label:label(e),testId:e.getAttribute('data-testid')||'',elementId:e.id||'',inputType:e.type||''};
++    return {found:true,count:1,reason,selector:selectorFor(e),selectorUnique:true,x:r.left,y:r.top,width:r.width,height:r.height,clickX:x,clickY:y,visible:!hidden&&!offscreen,occluded,disabled:!!e.disabled||e.getAttribute('aria-disabled')==='true',tag:e.tagName.toLowerCase(),role:role(e),label:label(e),testId:e.getAttribute('data-testid')||'',elementId:e.id||'',inputType:e.type||''};
+   };
+   const read=p=>{
+-    const es=query(String(p.selector||''));if(!es)return {available:false,reason:'invalid_selector'};
++    const es=query(String(p.selector||''),true);if(!es)return {available:false,reason:'invalid_selector'};
+     const mode=p.read||'text';if(mode==='count')return {available:true,value:es.length};
+     if(es.length!==1)return {available:false,reason:es.length?'ambiguous':'not_found'};
+     const e=es[0];if(mode==='visible'){const r=e.getBoundingClientRect(),s=getComputedStyle(e);return {available:true,value:!!r.width&&!!r.height&&s.visibility!=='hidden'&&s.display!=='none'&&s.visibility!=='collapse'&&Number(s.opacity)!==0};}if(e.type==='password')return {available:false,reason:'redacted'};

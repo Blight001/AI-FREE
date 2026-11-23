@@ -1,14 +1,25 @@
 const http = require('http');
+const { randomUUID } = require('node:crypto');
+const { AsyncLocalStorage } = require('node:async_hooks');
+const { sameBrowserInstance } = require('./automation-card-contract');
+const { normalizeAutomationInputs, validateAutomationCardInputs, versionInputSchema } = require('./automation-card-inputs');
+const { collectSensitiveInputPaths } = require('./automation-run-sanitizer');
 const { CARD_CACHE_FILE_NAME, createCardCacheStore, normalizeCardCacheState } = require('./automation-card-store');
 const { createBrowserAutomationExternalGateway } = require('./browser-automation-external-gateway');
 const { createAutomationCardMcpRouter } = require('./automation-card-mcp-router');
 const { createNativeAutomationCardService } = require('./native-automation-card-service');
 const { createAutomationRunManager } = require('./automation-run-manager');
 const { createNativeBrowserAutomation } = require('./native-browser-automation');
-const { browserControlDefinition } = require('./native-browser-tool-definitions');
+const { MANAGE_CARD_TOOL_DEFINITION, browserControlDefinition } = require('./native-browser-tool-definitions');
 const { dispatchExternalBrowserTool } = require('./external-browser-page-routing');
 
 const DEFAULT_PORT = 18765;
+
+function runTargetMismatch() {
+  return Object.assign(new Error('运行绑定的浏览器与当前接管目标不一致，请重新选择原浏览器'), {
+    code: 'RUN_TARGET_MISMATCH', retryable: false,
+  });
+}
 
 class BrowserAutomationBridgeRuntime {
   constructor(options = {}) {
@@ -27,22 +38,26 @@ class BrowserAutomationBridgeRuntime {
     });
     this.nativeAutomation = createNativeBrowserAutomation({
       browserRuntimeManager: options.browserRuntimeManager, browserDownloadService: options.browserDownloadService,
-      cardService: this.nativeCardService, getTabs: options.getTabs, appPointer: options.appPointer,
+      getTabs: options.getTabs, appPointer: options.appPointer,
       nativePointer: options.nativePointer,
       workspaceDir: options.workspaceDir, getBrowserRecords: options.getBrowserRecords,
-      executeCardTool: (...args) => this.cardMcpRouter.execute(...args),
+      executeManageCard: (connectionId, args, dispatchOptions) => this.manageCard(
+        connectionId, args, { ...dispatchOptions, backgroundLeaseHeld: true },
+      ),
     });
+    // A background run inherits its own live authority, outside JSON requests and history.
+    this.scheduledScope = new AsyncLocalStorage();
+    this.runScopes = new Map();
     this.runManager = createAutomationRunManager({
       dataDir: this.cardCacheStore.dataDir,
       execute: (request, context) => this.withBackgroundLease(
-        () => this.nativeCardService.execute({ ...request, action: 'run' }, {
-          ...context,
-          dispatch: (tool, toolArgs) => this.cardMcpRouter.execute(
-            request.connectionId, tool, toolArgs, { timeoutMs: request.timeoutMs, signal: context.signal },
-          ),
-        }),
+        () => this.executeCard(request.connectionId, { ...request, action: 'run' },
+          { ...context, timeoutMs: request.timeoutMs }, this.scheduledScope.getStore()),
         { timeoutMs: request.timeoutMs },
       ),
+    });
+    this.runManager.subscribe(({ run }) => {
+      if (run.finishedAt && !run.retryAvailable) this.runScopes.delete(run.id);
     });
     this.server = null;
     this.externalMcpGateway = createBrowserAutomationExternalGateway({
@@ -56,6 +71,8 @@ class BrowserAutomationBridgeRuntime {
       },
       getAccess: options.getExternalMcpAccess,
       logger: this.logger,
+      getAutomationTool: () => MANAGE_CARD_TOOL_DEFINITION,
+      manageAutomationCard: (args, signal) => this.manageCard('', args, { signal }),
       getOverviewTool: browserControlDefinition,
       getBrowserOverview: (args) => this.nativeAutomation.browserOverview(args),
     });
@@ -127,42 +144,91 @@ class BrowserAutomationBridgeRuntime {
     if (!input.id && input.card_id) input.id = input.card_id;
     const action = String(input.action || '').trim().toLowerCase();
     if (action === 'start_run') return this.startRun(connectionId, input, options);
-    const runHandler = this.runAction(action, input);
+    const runHandler = this.runAction(action, input, connectionId, options.takeoverGrant);
     if (runHandler) return runHandler();
     if (action === 'run') {
-      return this.withBackgroundLease(() => this.nativeCardService.execute(input, {
-        timeoutMs: options.timeoutMs,
-        dispatch: (tool, toolArgs) => this.cardMcpRouter.execute(connectionId, tool, toolArgs, options),
-      }), options);
+      const execute = () => this.executeCard(connectionId, input, options, { grant: options.takeoverGrant });
+      return options.backgroundLeaseHeld ? execute() : this.withBackgroundLease(execute, options);
     }
     return this.nativeCardService.execute(input, { timeoutMs: options.timeoutMs });
   }
 
-  runAction(action, input) {
+  executeCard(connectionId, args, context, scope) {
+    const managedChatActor = `card:${context.automationRunId || randomUUID()}`;
+    return this.nativeCardService.execute(args, {
+      ...context,
+      dispatch: (tool, toolArgs) => {
+        context.signal?.throwIfAborted();
+        if (scope?.grant) this.requireActiveGrant(connectionId, scope.grant);
+        return this.cardMcpRouter.execute(connectionId, tool, toolArgs, {
+          signal: context.signal, timeoutMs: context.timeoutMs, managedChatActor,
+        });
+      },
+    });
+  }
+
+  requireActiveGrant(connectionId, grant) {
+    const connection = this.nativeAutomation.requireConnection(connectionId);
+    if (!sameBrowserInstance(grant, connection)) throw runTargetMismatch();
+    if (this.nativeAutomation.takeoverConnections.get(connectionId) !== grant) {
+      throw Object.assign(new Error('原浏览器接管已释放，请重新接管后再执行'), { code: 'BROWSER_TAKEOVER_REQUIRED', retryable: false });
+    }
+  }
+
+  runAction(action, input, connectionId, grant) {
     const runId = input.run_id || input.id;
     return ({
       list_runs: () => this.runManager.list(input),
       get_run: () => this.runManager.get(runId),
       list_run_steps: () => this.runManager.steps(runId),
       cancel_run: () => this.runManager.cancel(runId, input.reason),
-      retry_run: () => this.runManager.retry(runId),
+      retry_run: () => this.continueRun('retry', runId, connectionId, grant),
       pause_run: () => this.runManager.pause(runId),
-      resume_run: () => this.runManager.resume(runId),
-      step_run: () => this.runManager.step(runId),
+      resume_run: () => this.continueRun('resume', runId, connectionId, grant),
+      step_run: () => this.continueRun('step', runId, connectionId, grant),
     })[action];
+  }
+
+  scheduleRun(scope, operation) {
+    const run = this.scheduledScope.run(scope, operation);
+    if (!run.finishedAt && !this.runScopes.has(run.id)) this.runScopes.set(run.id, scope);
+    return { success: true, run };
+  }
+
+  continueRun(action, runId, connectionId, grant) {
+    const run = this.runManager.get(runId).run;
+    const scope = this.runScopes.get(runId);
+    if (!connectionId || !('connectionId' in run) || run.connectionId !== connectionId) throw runTargetMismatch();
+    if (grant) {
+      if (scope && !sameBrowserInstance(scope.instance, grant)) throw runTargetMismatch();
+      this.requireActiveGrant(connectionId, grant);
+    }
+    if (action === 'retry') {
+      return this.scheduleRun({ ...scope, grant: grant || scope?.grant }, () => this.runManager.retry(runId).run);
+    }
+    const result = this.runManager[action](runId);
+    if (scope && grant) scope.grant = grant;
+    return result;
   }
 
   async startRun(connectionId, args, options) {
     const item = (await this.nativeCardService.execute({ action: 'get', id: args.id, card_name: args.card_name })).item;
+    const { version } = await this.nativeCardService.execute({ action: 'get_version', id: item.id, version_id: args.version_id || item.latestVersionId });
+    const inputs = normalizeAutomationInputs(args, version.cardData);
+    const schema = versionInputSchema(item, version);
+    validateAutomationCardInputs(schema, inputs);
     const request = {
-      ...args, id: item.id, version_id: args.version_id || item.latestVersionId,
-      connectionId: connectionId || args.connectionId || '',
-      timeoutMs: Math.min(
-        Number(options.timeoutMs || 30 * 60 * 1000),
-        Math.max(1, Number(item.limits?.timeoutSeconds || 900)) * 1000,
-      ),
+      id: item.id, version_id: version.id, inputs, connectionId: connectionId || '',
+      ...(args.start_step !== undefined && { start_step: args.start_step }),
+      ...(args.idempotency_key !== undefined && { idempotency_key: args.idempotency_key }),
+      sensitiveInputPaths: collectSensitiveInputPaths(schema), redactAllInputs: !schema,
+      timeoutMs: Math.min(Number(options.timeoutMs || 30 * 60 * 1000), Math.max(1, Number(item.limits?.timeoutSeconds || 900)) * 1000),
     };
-    return { success: true, run: this.runManager.start(request) };
+    const grant = options.takeoverGrant;
+    const instance = grant || (connectionId && this.getConnection(connectionId));
+    options.signal?.throwIfAborted();
+    if (grant) this.requireActiveGrant(connectionId, grant);
+    return this.scheduleRun({ instance, grant }, () => this.runManager.start(request));
   }
 
   saveBrowserSession(connectionId, args = {}, options = {}) {
@@ -214,8 +280,8 @@ class BrowserAutomationBridgeRuntime {
     return this.cardMcpRouter.listTools();
   }
 
-  callExternalMcpTool(name, args = {}, signal = undefined) {
-    return this.externalMcpGateway.callTool(name, args, signal);
+  callExternalMcpTool(name, args = {}, signal = undefined, managedChatActor = undefined) {
+    return this.externalMcpGateway.callTool(name, args, signal, managedChatActor);
   }
 }
 
@@ -231,6 +297,7 @@ function createBrowserAutomationBridge(options = {}) {
     getExternalMcpConnectionInfo: () => runtime.getExternalMcpConnectionInfo(),
     getExternalMcpStatus: () => runtime.getExternalMcpStatus(),
     listConnections: () => runtime.listConnections(),
+    listBrowserRecords: () => options?.getBrowserRecords?.() || [],
     listAutomationMcpTools: () => runtime.listAutomationMcpTools(),
     listExternalMcpTools: () => runtime.listExternalMcpTools(),
     manageCard: (...args) => runtime.manageCard(...args),

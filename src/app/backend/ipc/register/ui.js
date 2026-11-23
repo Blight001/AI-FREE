@@ -1,5 +1,6 @@
 const { BrowserWindow, clipboard, nativeTheme, shell } = require('electron');
 const { resolveTabTitle } = require('../../services/tab-common');
+const { createBrowserDataClearController } = require('../../features/browser/browser-data-clear-controller');
 const { createTabContextMenuController } = require('../../features/browser/tab-context-menu-controller');
 const { createNetworkMagicPopupController } = require('../../features/network/network-magic-popup-controller');
 const { createSidebarFocusHandler } = require('../../features/browser/sidebar-focus-controller');
@@ -31,6 +32,19 @@ function sendThemeToContents(webContents, theme) {
   } catch (_) {}
 }
 
+function syncBrowserColorScheme(ui, theme) {
+  const manager = ui?.browserRuntimeManager;
+  if (typeof manager?.setPreferredColorScheme !== 'function') return;
+  try {
+    const syncTheme = manager.setPreferredColorScheme(theme);
+    void syncTheme?.catch?.((error) => {
+      console.warn('[ChromiumRuntime] 同步软件主题失败:', uiIpcError(error));
+    });
+  } catch (error) {
+    console.warn('[ChromiumRuntime] 同步软件主题失败:', uiIpcError(error));
+  }
+}
+
 function createThemeController(ui) {
   let currentTheme = 'light';
   return {
@@ -38,6 +52,7 @@ function createThemeController(ui) {
     broadcast(theme) {
       currentTheme = normalizeAppTheme(theme);
       try { if (nativeTheme) nativeTheme.themeSource = currentTheme === 'light' ? 'light' : 'dark'; } catch (_) {}
+      syncBrowserColorScheme(ui, currentTheme);
       try {
         const mainWindow = ui?.getMainWindow?.();
         if (mainWindow && !mainWindow.isDestroyed()) {
@@ -50,73 +65,6 @@ function createThemeController(ui) {
       try { ui?.sendToSide?.('app-theme-changed', currentTheme); } catch (_) {}
     },
   };
-}
-
-function browserDataClearCapability(ui, profileId) {
-  const manager = ui?.browserRuntimeManager;
-  return Boolean(profileId && manager && typeof manager.clearData === 'function');
-}
-
-function validateBrowserDataClearRequest(ui, payload) {
-  const profileId = String(payload?.profileId || '').trim();
-  if (!browserDataClearCapability(ui, profileId)) return { error: { ok: false, message: '当前浏览器不支持清空数据' } };
-  const tab = ui?.getTabs?.().get?.(profileId);
-  if (!tab) return { error: { ok: false, message: '浏览器窗口不存在' } };
-  const contents = ui?.getSideView?.()?.webContents;
-  if (!contents || contents.isDestroyed?.()) {
-    return { error: { ok: false, message: '侧边栏尚未就绪，无法显示确认弹窗' } };
-  }
-  return { profileId, tab, contents };
-}
-
-function validateBrowserDataClearResolution(ui, event, payload, pendingRequests) {
-  const requestId = String(payload?.requestId || '').trim();
-  const pending = pendingRequests.get(requestId);
-  if (!pending) return { error: { ok: false, message: '清空请求已失效，请重新操作' } };
-  const contents = ui?.getSideView?.()?.webContents;
-  if (!contents || contents.id !== event.sender?.id) {
-    return { error: { ok: false, message: '只能从侧边栏确认清空操作' } };
-  }
-  return { requestId, pending };
-}
-
-function createBrowserDataClearController(ui, closeContextMenu) {
-  const pendingRequests = new Map();
-
-  async function request(payload = {}) {
-    try {
-      const validated = validateBrowserDataClearRequest(ui, payload);
-      if (validated.error) return validated.error;
-      const { profileId, tab, contents } = validated;
-      closeContextMenu();
-      ui?.ensureSidebarVisible?.();
-      const requestId = `browser-data-clear-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      const timeout = setTimeout(() => pendingRequests.delete(requestId), 120000);
-      pendingRequests.set(requestId, { profileId, timeout });
-      contents.send('browser-data-clear-confirm-request', { requestId, profileId, title: resolveTabTitle(tab) });
-      return { ok: true, pending: true };
-    } catch (error) {
-      return { ok: false, message: uiIpcError(error) };
-    }
-  }
-
-  async function resolve(event, payload = {}) {
-    const validated = validateBrowserDataClearResolution(ui, event, payload, pendingRequests);
-    if (validated.error) return validated.error;
-    const { requestId, pending } = validated;
-    clearTimeout(pending.timeout);
-    pendingRequests.delete(requestId);
-    if (payload?.confirmed !== true) return { ok: true, cancelled: true };
-    try {
-      if (!ui?.getTabs?.().get?.(pending.profileId)) return { ok: false, message: '浏览器窗口不存在' };
-      const state = await ui.browserRuntimeManager.clearData(pending.profileId);
-      return { ok: true, state };
-    } catch (error) {
-      return { ok: false, message: uiIpcError(error) };
-    }
-  }
-
-  return { request, resolve };
 }
 
 function getManagedTabs(ui) {
@@ -254,7 +202,7 @@ function registerBrowserRuntimeIPC(ipc, ui, clearController) {
       return message ? { ok: false, message } : { ok: true };
     } catch (error) { return { ok: false, message: uiIpcError(error) }; }
   });
-  ipc.handle('clear-browser-runtime-data', (_event, payload) => clearController.request(payload));
+  ipc.handle('clear-browser-runtime-data', (event, payload) => clearController.request(event, payload));
   ipc.handle('resolve-browser-data-clear-confirm', (event, payload) => clearController.resolve(event, payload));
 }
 
@@ -268,6 +216,7 @@ function registerTabIPC(ipc, ui, contextMenu) {
       if (!tabId) return { ok: false, message: '缺少标签 ID' };
       const opened = contextMenu.openTabContextMenuWindow({
         tabId,
+        historyId: String(payload?.historyId || '').trim(),
         x: Number(payload?.x ?? 0),
         y: Number(payload?.y ?? 0),
         parentWindow: BrowserWindow.fromWebContents(event.sender),
@@ -390,8 +339,13 @@ function registerUiUtilityIPC(ipc, ctx) {
   registerWindowPreferencesIPC(ipc, ctx);
   ipc.on('toggle-sidebar', () => ui.toggleSidebar());
   const networkMagicPopup = createNetworkMagicPopupController({ ui });
-  ipc.on('toggle-network-magic-panel', (_event, payload = {}) => {
-    networkMagicPopup.toggle(payload);
+  ipc.on('toggle-network-magic-panel', (event, payload = {}) => {
+    if (event.sender === ui.getMainWindow?.()?.webContents) {
+      networkMagicPopup.toggle(payload);
+    } else if (event.sender === networkMagicPopup.getWindow()?.webContents) {
+      if (payload?.open === true) networkMagicPopup.resize(payload);
+      else networkMagicPopup.close();
+    }
   });
   ipc.on('ensure-sidebar-visible', () => ui.ensureSidebarVisible?.());
   ipc.on('request-account-center', (event) => {

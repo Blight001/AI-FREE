@@ -16,6 +16,26 @@ const { waitForBrowserWindow } = require('./chromium-handshake-waiter');
 const { startChromiumPreflightWarmup } = require('./chromium-preflight-warmup');
 const { refreshChromiumEnvironmentProfile } = require('./chromium-runtime-environment');
 
+function normalizeBrowserColorScheme(theme) {
+  return String(theme || '').trim() === 'light' ? 'light' : 'dark';
+}
+
+function browserColorSchemeError(error) {
+  if (error?.code !== 'COMMAND_NOT_ALLOWED') return error;
+  return Object.assign(new Error('当前 AI-FREE Chromium 内核不支持主题同步，请更新浏览器内核'), {
+    code: 'BROWSER_RUNTIME_UPDATE_REQUIRED',
+    cause: error,
+  });
+}
+
+async function applyBrowserColorScheme(commandClient, colorScheme) {
+  try {
+    return await commandClient.send('set-color-scheme', { colorScheme });
+  } catch (error) {
+    throw browserColorSchemeError(error);
+  }
+}
+
 class ChromiumRuntime extends EventEmitter {
   constructor(options = {}) {
     super();
@@ -24,6 +44,7 @@ class ChromiumRuntime extends EventEmitter {
     this.stateStore = options.stateStore || new RuntimeStateStore((state) => { this.emit('state-changed', state); });
     this.windowBridge = options.windowBridge;
     this.getParentWindow = options.getParentWindow;
+    this.preferredColorScheme = 'light';
     this.launchOptions = { resourcesPath: options.resourcesPath, chromiumLogPath: options.chromiumLogPath, chromiumDiagnosticDir: options.chromiumDiagnosticDir, chromiumUserDataDir: options.chromiumUserDataDir, appVersion: options.appVersion };
     this.instances = new Map();
     this.sessionImporter = new ChromiumSessionImporter({
@@ -79,6 +100,11 @@ class ChromiumRuntime extends EventEmitter {
     instance.performanceSpan?.mark('pipeHandshake');
     assertActiveChromiumLaunch(this.instances.get(String(profileId)) === instance, this.stateStore.getState(profileId)?.status);
     this.assertCompleteHandshake(profileId, browserHwnd);
+    try {
+      await applyBrowserColorScheme(instance.commandClient, this.preferredColorScheme);
+    } catch (error) {
+      this.logger?.warn?.(`[ChromiumRuntime] 启动时同步浏览器主题失败 (${profileId}): ${error.message || error}`);
+    }
     await this.attachProfileWindow(profileId, instance, browserHwnd, bounds);
     instance.performanceSpan?.mark('windowAttach');
     instance.monitor = new ChromiumHealthMonitor({
@@ -245,6 +271,28 @@ class ChromiumRuntime extends EventEmitter {
       throw error;
     }
     return instance;
+  }
+
+  async setPreferredColorScheme(theme) {
+    const colorScheme = normalizeBrowserColorScheme(theme);
+    this.preferredColorScheme = colorScheme;
+    const profileIds = [...this.instances.keys()].filter((profileId) => {
+      const status = this.stateStore.getState(profileId)?.status;
+      return [RUNTIME_STATUS.READY, RUNTIME_STATUS.HIDDEN].includes(status);
+    });
+    const results = await Promise.all(profileIds.map(async (profileId) => {
+      try {
+        await this.enqueueProfileOperation(profileId, async () => {
+          const instance = this.getReadyInstance(profileId);
+          await applyBrowserColorScheme(instance.commandClient, colorScheme);
+        });
+        return { profileId, ok: true };
+      } catch (error) {
+        this.logger?.warn?.(`[ChromiumRuntime] 同步浏览器主题失败 (${profileId}): ${error.message || error}`);
+        return { profileId, ok: false, code: error?.code || 'BROWSER_THEME_SYNC_FAILED' };
+      }
+    }));
+    return { ok: results.every((result) => result.ok), colorScheme, results };
   }
 
   async reload(profileId) {

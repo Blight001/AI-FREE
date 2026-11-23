@@ -93,6 +93,7 @@ function resetStreamedRound(state) {
 }
 
 function receiveStreamEvent(state, round, event, forward = true) {
+  if (isChatStopped(state.run)) return;
   let visibleEvent = event;
   if (event?.type === 'content_delta') visibleEvent = receiveContentDelta(state, event);
   if (event?.type === 'reasoning_delta') state.streamedRoundReasoning += String(event.delta || '');
@@ -131,17 +132,27 @@ function sendModelRound(state, round, messages, transport) {
   );
 }
 
+function historyForModel(messages) {
+  return messages.flatMap((message) => {
+    if (message?.turn_duration_ms === undefined) return [message];
+    const { turn_duration_ms: _duration, ...modelMessage } = message;
+    if (modelMessage.role === 'assistant' && !modelMessage.content && !modelMessage.tool_calls?.length) return [];
+    return [modelMessage];
+  });
+}
+
 async function requestModelRound(state, round) {
   const contextStart = performance.now();
   const messages = fitAiControlContext(
-    state.modelMessages, state.toolContext.tools, { contextWindow: state.customApi?.contextWindow },
+    historyForModel(state.modelMessages), state.toolContext.tools, { contextWindow: state.customApi?.contextWindow },
   );
   state.sentToolImages = messages.some((message) => message.ai_free_transient_image === true);
   const transport = state.useCustomApi ? 'custom-api'
     : (state.useStream && typeof state.httpClient.streamAIControlMessage === 'function' ? 'builtin-stream' : 'builtin-json');
   const requestStart = performance.now();
   try {
-    return await sendModelRound(state, round, messages, transport);
+    state.run?.controller.signal.throwIfAborted();
+    return await waitForChatAbort(state.run, sendModelRound(state, round, messages, transport));
   } finally {
     writeDebugConsoleOnly('info', '[AIControlTiming]', { round, transport,
       contextMs: Math.round(requestStart - contextStart), modelRequestMs: Math.round(performance.now() - requestStart) });
@@ -242,19 +253,18 @@ function validateToolRound(state, toolCalls) {
     const name = String(unknownTool?.function?.name || '').trim() || '未提供工具名';
     return toolFailureResult(state, `暂无该 MCP 调用：${name}`);
   }
-  const needsPlugin = toolCalls.some(
-    (call) => !state.windowTools?.has(String(call?.function?.name || '').trim()),
-  );
-  if (needsPlugin && (!state.connections.length || !state.bridge?.dispatch)) {
-    return toolFailureResult(state, '模型请求了浏览器工具，但当前没有选择可用的 Chromium 原生控制连接');
-  }
   if (toolCalls.length >= MAX_AI_CONTROL_TOOL_CALLS_PER_ROUND) {
     return toolFailureResult(state, `模型单轮请求了 ${toolCalls.length} 个浏览器工具，超过可安全处理的数量`);
   }
   return null;
 }
 
-async function executeToolRound(state, result, toolCalls, round) {
+async function executeToolRound(state, result, toolCalls, round, restoring = false) {
+  if (!restoring) recordToolRound(state, result, toolCalls, round);
+  return dispatchToolRound(state, toolCalls, round);
+}
+
+function recordToolRound(state, result, toolCalls, round) {
   state.modelMessages.push({
     role: 'assistant',
     content: String(result.message?.content || ''),
@@ -263,7 +273,12 @@ async function executeToolRound(state, result, toolCalls, round) {
   resetStreamedRound(state);
   const content = String(result.message?.content || '').trim();
   if (content) state.traceEvents.push({ type: 'step', round, content });
+}
+
+async function dispatchToolRound(state, toolCalls, round) {
+  if (state.saveManagedCheckpoint) saveManagedProgress(state, round, toolCalls);
   const execution = await executeToolCalls({
+    saveToolProgress: state.saveManagedCheckpoint ? (remaining) => saveManagedProgress(state, round, remaining) : null,
     artifacts: state.artifacts,
     artifactReferences: state.artifactReferences,
     browserTargets: state.browserTargets,
@@ -319,6 +334,17 @@ function handleFailedModelResult(state, result) {
   return { result };
 }
 
+function normalizeRoundMessage(message, round, emit) {
+  const normalized = normalizeToolCallMessage(message);
+  const parsed = normalized.toolCalls.length ? null : parseTextMcpCalls(normalized.content, round);
+  const { content, toolCalls } = parsed?.detected ? parsed : normalized;
+  message.content = content;
+  if (parsed?.detected || (toolCalls.length && content.trim())) {
+    emit({ type: 'content_replace', content, round });
+  }
+  return { toolCalls, parsedFromText: Boolean(parsed?.detected) };
+}
+
 async function runChatRound(state, round) {
   if (isChatStopped(state.run)) return { done: true, result: stoppedResult(state) };
   drainInserted(state);
@@ -331,22 +357,7 @@ async function runChatRound(state, round) {
   const failed = handleFailedModelResult(state, requested.result);
   if (failed) return { done: true, result: failed.result };
   applyResultMetadata(state, requested.result, round);
-  const normalizedMessage = normalizeToolCallMessage(requested.result.message);
-  requested.result.message.content = normalizedMessage.content;
-  let toolCalls = normalizedMessage.toolCalls;
-  let parsedFromText = false;
-  if (!toolCalls.length) {
-    const parsed = parseTextMcpCalls(requested.result.message?.content, round);
-    if (parsed.detected) {
-      requested.result.message.content = parsed.content;
-      toolCalls = parsed.toolCalls;
-      parsedFromText = toolCalls.length > 0;
-      state.emit({ type: 'content_replace', content: parsed.content, round });
-      if (parsed.error) {
-        return { done: true, result: finishWithoutTools(state, requested.result) };
-      }
-    }
-  }
+  const { toolCalls, parsedFromText } = normalizeRoundMessage(requested.result.message, round, state.emit);
   if (!toolCalls.length) {
     const finalResult = finishWithoutTools(state, requested.result);
     return finalResult ? { done: true, result: finalResult } : { done: false };
@@ -364,16 +375,40 @@ async function runChatRound(state, round) {
   if (state.uploadState.unverified) {
     return { done: true, result: toolFailureResult(state, state.uploadState.recoveryMessage) };
   }
-  if (execution.stopped) return { done: true, result: stoppedResult(state) };
+  if (execution.stopped) return { done: true, result: stoppedResult(state), resumeRound: round + 1 };
   drainInserted(state);
   return { done: false };
 }
 
+function saveManagedProgress(state, round, pending = []) {
+  const messages = structuredClone(state.modelMessages);
+  state.saveManagedCheckpoint({ round: pending.length ? round : round + 1, messages, pending });
+}
+
+async function restoreManagedRound(state, checkpoint) {
+  if (!checkpoint?.pending?.length) return false;
+  const invalid = validateToolRound(state, checkpoint.pending);
+  if (invalid) return invalid.result;
+  const outcome = await executeToolRound(state, null, checkpoint.pending, checkpoint.round, true);
+  return outcome.stopped ? stoppedResult(state) : false;
+}
+
 async function runChatConversation(request) {
-  const state = createConversationState(request);
-  for (let round = 0; ; round += 1) {
+  const firstRound = request.startRound ?? request.managedCheckpoint?.round ?? 0;
+  const state = request.startRound === undefined ? createConversationState(request) : request;
+  const restored = await restoreManagedRound(state, request.managedCheckpoint);
+  if (restored) return restored;
+  for (let round = firstRound + Number(Boolean(request.managedCheckpoint?.pending?.length)); ; round += 1) {
+    if (state.saveManagedCheckpoint) {
+      drainInserted(state);
+      state.saveManagedCheckpoint({ round, messages: structuredClone(state.modelMessages), pending: [] });
+    }
     const outcome = await runChatRound(state, round);
-    if (outcome.done) return outcome.result;
+    if (!outcome.done) continue;
+    if (outcome.result.stopped && state.run?.stoppedByUser) {
+      state.run.continuation = { state, round: outcome.resumeRound ?? round };
+    }
+    return outcome.result;
   }
 }
 

@@ -44,10 +44,14 @@ function runtimeFixture(workspace, { afterAction, sessionFailure }) {
   };
   return {
     selections, actions, commands,
+    replaceDocument: (token) => { page.pageToken = token; },
     runtime: {
       listStates: () => [{ profileId: 'fixture', pid: 42, bridgeConnected: true, status: 'ready' }],
       async dispatchAutomationByProcessId(_pid, command, args, options) {
         commands.push({ command, args, token: options?.expectedPageToken });
+        if (options?.expectedPageToken && options.expectedPageToken !== page.pageToken) {
+          throw Object.assign(new Error('Page changed'), { code: 'BROWSER_TARGET_CHANGED' });
+        }
         if (command === 'perform-action') {
           actions.push({ args, token: options?.expectedPageToken });
           afterAction?.(args);
@@ -160,6 +164,39 @@ test('both MCP entries can read tabs, observe media, wait, capture PNG and opera
   assert.deepEqual(fixture.actions.filter(({ args }) => args.action === 'wait').map(({ token }) => token), [PAGE, PAGE]);
 });
 
+test('both entries bind a visual click to their latest observation and its document', async (t) => {
+  const fixture = createFixture(t);
+  const { external, sidebar } = toolEntries(fixture);
+  assert.equal((await external('browser_control', { action: 'acquire' })).success, true);
+  const outer = await external('browser_observe', { mode: 'overview' });
+  const inner = await sidebar('browser_observe', { mode: 'overview' });
+  const click = (call, observation) => call('browser_action', {
+    action: 'click', x: 20, y: 30, observation_id: observation.observationId, after: 'none',
+  });
+  for (const [call, own, other] of [[external, outer, inner], [sidebar, inner, outer]]) {
+    const foreign = await click(call, other);
+    assert.equal(foreign.errorCode, 'OBSERVATION_MISMATCH');
+    assert.equal(foreign.actionExecuted, false);
+    assert.equal((await click(call, own)).success, true);
+    const fresh = await call('browser_observe', { mode: 'overview' });
+    assert.equal((await click(call, own)).actionExecuted, false);
+    assert.equal((await click(call, fresh)).success, true);
+  }
+  const latest = await Promise.all([external('browser_observe', {}), sidebar('browser_observe', {})]);
+  fixture.replaceDocument('same-url-new-document');
+  const nextTurn = toolEntries(fixture);
+  for (const [call, observation] of [[nextTurn.external, latest[0]], [nextTurn.sidebar, latest[1]]]) {
+    const stale = await click(call, observation);
+    assert.equal(stale.errorCode, 'OBSERVATION_MISMATCH');
+    assert.equal(stale.actionExecuted, false);
+  }
+  assert.equal((await click(sidebar, latest[1])).errorCode, 'BROWSER_TARGET_CHANGED');
+  assert.deepEqual(fixture.actions.map(({ token }) => token), [PAGE, PAGE, PAGE, PAGE]);
+  const legacy = await external('browser_action', { action: 'click', x: 20, y: 30 });
+  assert.equal(legacy.success, true);
+  assert.equal(fixture.actions.at(-1).token, 'same-url-new-document');
+});
+
 test('both MCP entries send the same PNG to a supported control and sidebar keeps document and byte guards', async (t) => {
   const fixture = createFixture(t);
   const { external, sidebar } = toolEntries(fixture);
@@ -237,15 +274,23 @@ test('browser overview is advertised and returns equivalent inventory without an
 });
 
 
-test('both entries read the same card library and require takeover before a mutation', async (t) => {
+test('both entries manage the shared card library without browser takeover but guard execution', async (t) => {
   const fixture = createFixture(t);
   const { external, sidebar } = toolEntries(fixture);
   const expected = await external('manage_card', { action: 'list' });
   assert.equal(expected.success, true);
   assert.deepEqual(await sidebar('manage_card', { action: 'list' }), expected);
+  const created = await external('manage_card', {
+    action: 'write', cardData: { name: 'Shared without takeover', steps: [{ type: 'end' }] },
+  });
+  assert.equal(created.success, true);
+  assert.equal((await sidebar('manage_card', { action: 'get', id: created.item.id })).success, true);
   for (const call of [external, sidebar]) {
-    assert.equal((await call('manage_card', { action: 'delete', id: 'unknown' })).errorCode, 'BROWSER_TAKEOVER_REQUIRED');
+    assert.equal((await call('manage_card', { action: 'run', id: created.item.id })).errorCode, 'BROWSER_TAKEOVER_REQUIRED');
+    assert.equal((await call('manage_card', { action: 'start_run', id: created.item.id })).errorCode, 'BROWSER_TAKEOVER_REQUIRED');
   }
+  assert.equal((await external('manage_card', { action: 'delete', id: created.item.id })).success, true);
+  assert.equal((await sidebar('manage_card', { action: 'list' })).items.length, 0);
 });
 
 

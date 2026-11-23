@@ -39,6 +39,7 @@ function normalizeVersion(source, fallbackCard, index) {
   return {
     id: String(source?.id || `legacy-${digest.slice(0, 20)}`),
     versionNumber: Number(source?.versionNumber || index + 1), digest, cardData,
+    ...(source?.inputSchema ? { inputSchema: clone(source.inputSchema) } : {}),
     createdAt: Number(source?.createdAt || 0),
   };
 }

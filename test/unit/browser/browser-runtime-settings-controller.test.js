@@ -4,10 +4,9 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { createConfigurationManager } = require('../../fixtures/browser-configuration-runtime');
 
-let clashStatus = { running: true, enabled: true };
 const settingsPath = require.resolve('../../../src/app/backend/utils/ai-free-browser-settings');
 const environmentPath = require.resolve('../../../src/app/backend/features/browser/browser-environment');
-const runtimePath = require.resolve('../../../src/app/backend/features/network/clash-mini-control-runtime');
+const clashProcessPath = require.resolve('../../../src/app/backend/features/network/clash-mini-process');
 const targetPath = require.resolve('../../../src/app/backend/features/browser/browser-runtime-settings-controller');
 
 require.cache[settingsPath] = { exports: {
@@ -24,7 +23,7 @@ require.cache[environmentPath] = { exports: {
     : null,
   resolveProxyAuthentication: () => null,
 } };
-require.cache[runtimePath] = { exports: { getClashMiniStatus: () => clashStatus } };
+require.cache[clashProcessPath] = { exports: { getClashMiniStatus: () => ({ running: true, enabled: true }) } };
 delete require.cache[targetPath];
 const { createBrowserRuntimeSettingsController } = require(targetPath);
 
@@ -58,8 +57,6 @@ function createFixture(overrides = {}) {
   return { controller, cookies, instances, messages, restarts, tabs, updates: () => updates, warnings };
 }
 
-test.beforeEach(() => { clashStatus = { running: true, enabled: true }; });
-
 test('settings application updates Chromium profile, cookies and restart state', async () => {
   const fixture = createFixture();
   const tab = { id: 'one', browserSettings: {}, runtimeStatus: 'idle' };
@@ -70,9 +67,8 @@ test('settings application updates Chromium profile, cookies and restart state',
     doNotTrack: true,
   }, { restartChromium: true });
   assert.deepEqual(result, { ok: true, applied: true, restarted: true, runtimeType: 'chromium' });
-  assert.equal(tab.networkMagicApplied, true);
   assert.equal(tab.runtimeStatus, 'running');
-  assert.equal(fixture.instances.get(tab.id).profile.proxyServer, 'http://127.0.0.1:7890');
+  assert.equal(fixture.instances.get(tab.id).profile.proxyServer, '');
   assert.equal(fixture.instances.get(tab.id).profile.lowSpecMode, true);
   assert.equal(fixture.instances.get(tab.id).profile.doNotTrack, true);
   assert.deepEqual(fixture.cookies, [{ id: 'one', values: [{ name: 'sid', value: 'fixture' }] }]);
@@ -96,15 +92,17 @@ test('settings application handles configured proxy, missing tabs and cookie fai
   assert.match(fixture.warnings[0], /Cookie/);
 });
 
-test('saving settings without restarting preserves the current network status', async () => {
+test('saving settings preserves the explicitly configured proxy and does not restart the browser', async () => {
   const fixture = createFixture();
-  const tab = { id: 'one', networkMagicApplied: false };
+  const tab = { id: 'one' };
   fixture.tabs.set(tab.id, tab);
   fixture.instances.set(tab.id, { profile: { lowSpecMode: true } });
-  const result = await fixture.controller.setTabBrowserSettings(tab.id, { lowSpecMode: 'off' });
+  const result = await fixture.controller.setTabBrowserSettings(tab.id, {
+    lowSpecMode: 'off', proxy: { mode: 'custom', server: 'http://127.0.0.1:18888' },
+  });
   assert.equal(result.restartRequired, true);
   assert.equal(fixture.instances.get(tab.id).profile.lowSpecMode, false);
-  assert.equal(tab.networkMagicApplied, false);
+  assert.equal(fixture.instances.get(tab.id).profile.proxyServer, 'http://127.0.0.1:18888');
   assert.deepEqual(fixture.restarts, []);
 });
 
@@ -173,9 +171,10 @@ test('settings IP lookup uses the effective proxy and reports an unapplied coord
   fixture.instances.set('geo', { profile: {} });
   const result = await fixture.controller.setTabBrowserSettings('geo', {
     geolocation: { permission: 'allow', mode: 'ip' },
+    proxy: { mode: 'custom', server: 'http://127.0.0.1:18888' },
   }, { restartChromium: true });
 
-  assert.equal(requestedProxy.server, 'http://127.0.0.1:7890');
+  assert.equal(requestedProxy.server, 'http://127.0.0.1:18888');
   assert.equal(result.applied, false);
   assert.equal(result.geolocationWarning, 'BROWSER_GEOLOCATION_LOOKUP_FAILED');
   assert.equal(fixture.instances.get('geo').profile.environmentSettings.geolocation.enabled, false);

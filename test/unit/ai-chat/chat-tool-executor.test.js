@@ -28,8 +28,8 @@ test('大型浏览器环境 schema 仅在相关用户意图中注入', () => {
   const environment = buildChatToolContext({
     connections: [], windowTools, initialMessages: [{ role: 'user', content: '修改代理配置' }],
   });
-  assert.deepEqual(regular.tools.map((tool) => tool.name), ['windows_tab']);
-  assert.deepEqual(environment.tools.map((tool) => tool.name), ['windows_tab', 'browser_environment']);
+  assert.deepEqual(regular.tools.map((tool) => tool.name), ['windows_tab', 'manage_card']);
+  assert.deepEqual(environment.tools.map((tool) => tool.name), ['windows_tab', 'browser_environment', 'manage_card']);
 });
 
 test('浏览器工具 schema 暴露可选 change_browser 且保留原必填参数', () => {
@@ -103,6 +103,68 @@ test('自动化卡片目录注入全部卡片并要求 AI 自行筛选', () => {
   assert.match(prompt, /下单流程/);
   assert.doesNotMatch(prompt, /当前选中的自动化卡片/);
   assert.doesNotMatch(prompt, /不要擅自改用其他卡片/);
+});
+
+function sidebarCardPrompt(requests, automationCards = []) {
+  const context = buildChatToolContext({
+    localInteraction: true, connections: [{ id: 'fixture', tools: [{ name: 'browser_workflow' }] }],
+    initialMessages: requests.map((content) => ({ role: 'user', content })), automationCards,
+  });
+  return {
+    prompt: context.modelMessages.filter(({ role }) => role === 'system').map(({ content }) => content).join('\n'),
+    description: context.tools.find(({ name }) => name === 'manage_card').description,
+  };
+}
+
+function assertCardAcceptanceGuide(text) {
+  assert.match(text, /对话.{0,16}成功.{0,10}步骤/);
+  assert.match(text, /write[^。]*item\.id[^。]*get\b/);
+  assert.match(text, /账号菜单|用户菜单/);
+  assert.match(text, /fail_on_false\s*[:=]\s*true/);
+  assert.match(text, /start_run[^。]*run\.id[^。]*get_run/);
+  assert.match(text, /get_run[^。]*终态/);
+  assert.match(text, /succeeded/);
+  assert.match(text, /结果未知[^。]*(?:不|勿|禁止)[^。]*(?:重放|重试)/);
+}
+
+test('空库保存成功步骤并退出复测时，侧栏提示与共享工具都给出可追踪的卡片验收路径', () => {
+  const { prompt, description } = sidebarCardPrompt(['手动登录成功了', '把刚才的步骤制成自动化，主动退出再跑测试']);
+  assertCardAcceptanceGuide(prompt);
+  assertCardAcceptanceGuide(description);
+  assert.match(prompt, /没有自动化卡片[^。]*(?:无需|不用|跳过)[^。]*list/);
+  assert.match(prompt, /格式[^。]*一次 rules/);
+  assert.match(prompt, /browser_workflow run[^。]*临时[^。]*。[^。]*manage_card/);
+  assert.match(prompt, /退出[^。]*(?:确认|核对|可见)/);
+  assert.doesNotMatch(prompt, /重复操作默认使用[^。]*browser_workflow/);
+});
+
+test('已有卡片的后续复测指向保存的卡片，同步执行与后台记录有别', () => {
+  const { prompt } = sidebarCardPrompt(['把操作保存为流程', '请退出再跑测试'], [{ id: 'saved', name: '登录' }]);
+  assert.match(prompt, /saved/);
+  assert.match(prompt, /start_run[^。]*run\.id[^。]*get_run/);
+  assert.match(prompt, /同步 run[^。]*list_runs/);
+  assert.doesNotMatch(prompt, /重复操作默认使用[^。]*browser_workflow/);
+});
+
+test('卡片已打开弹窗而 wait 失败时，复测指引先核对已执行步骤和页面起点', () => {
+  const { prompt } = sidebarCardPrompt([
+    '运行已保存的登录卡片', '弹窗显示 Continue with email，第二步 wait 参数无效，修好后复测',
+  ], [{ id: 'saved', name: '登录' }]);
+  assert.match(prompt, /get_run[^。]*run\.steps[^。]*(?:最近|最后)成功步/);
+  assert.match(prompt, /已派发[^。]*(?:页面|状态)[^。]*(?:不要|禁止|不可)[^。]*从头/);
+  assert.match(prompt, /(?:修正|修复)[^。]*(?:参数|失败原因)/);
+  assert.match(prompt, /安全关闭[^。]*临时弹窗[^。]*(?:观察|核对)[^。]*(?:起点|起始状态)[^。]*(?:一次|单次)复测/);
+  assert.match(prompt, /副作用未知[^。]*(?:不|禁止)[^。]*重放/);
+  assert.doesNotMatch(prompt, /\blist_step_run\b/);
+});
+
+test('普通操作保持轻量，一次性页面测试仍使用浏览器工作流', () => {
+  const { prompt } = sidebarCardPrompt(['把步骤制成自动化并测试', '只读取当前页面标题']);
+  assert.doesNotMatch(prompt, /run\.steps|start_run|fail_on_false|browser_workflow automation/);
+  const oneOff = sidebarCardPrompt(['运行一次页面自动化测试']).prompt;
+  assert.match(oneOff, /browser_workflow automation/);
+  assert.match(oneOff, /probes\/expect/);
+  assert.doesNotMatch(oneOff, /run\.steps|fail_on_false/);
 });
 
 test('没有浏览器连接时 prompt 不会诱导 AI 虚构浏览器 MCP', () => {

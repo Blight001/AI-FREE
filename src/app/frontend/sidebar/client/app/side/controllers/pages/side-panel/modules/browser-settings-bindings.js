@@ -39,6 +39,11 @@
       const item = deps.getBrowserHistory().find((entry) => entry.id === deps.getSelectedHistoryId());
       if (item) void deps.deleteBrowserHistory(item, { closeDialogOnSuccess: true });
     });
+    bindElement(deps, 'clear-browser-record-data', 'click', () => {
+      const item = deps.getBrowserHistory().find((entry) => entry.id === deps.getSelectedHistoryId());
+      const profileId = String(item?.profileId || item?.tabId || '').trim();
+      if (profileId) void window.aiFree.shell.clearBrowserRuntimeData({ profileId });
+    });
   }
 
   function bindGlobalEvents(deps) {

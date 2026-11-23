@@ -4,8 +4,11 @@ const fs = require('fs');
 const path = require('path');
 const { BrowserWindow, screen } = require('electron');
 
-const COMPACT_SIZE = { width: 448, height: 248 };
-const EXPANDED_SIZE = { width: 448, height: 560 };
+const POPUP_SIZES = {
+  compact: { width: 212, height: 80 },
+  details: { width: 448, height: 188 },
+  expanded: { width: 448, height: 340 },
+};
 const TASKBAR_HEIGHT = 36;
 const ANCHOR_GAP = 8;
 
@@ -40,11 +43,26 @@ function contentZoom(mainWindow) {
   return Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
 }
 
-function resolvePopupBounds(mainWindow, ui, expanded, anchor) {
-  const size = expanded === true ? EXPANDED_SIZE : COMPACT_SIZE;
-  const content = typeof mainWindow.getContentBounds === 'function'
-    ? mainWindow.getContentBounds()
-    : mainWindow.getBounds();
+function getContentBounds(window) {
+  return window.getContentBounds?.() ?? window.getBounds();
+}
+
+function isCursorOnLauncher(parent, anchor) {
+  if (!anchor) return false;
+  const cursor = screen.getCursorScreenPoint();
+  const content = getContentBounds(parent);
+  const zoom = contentZoom(parent);
+  const x = (cursor.x - content.x) / zoom;
+  const y = (cursor.y - content.y) / zoom;
+  return x >= anchor.left && x < anchor.right && y >= anchor.top && y < anchor.bottom;
+}
+
+function resolvePopupSize(size, fallback = POPUP_SIZES.compact) {
+  return typeof size === 'string' && Object.hasOwn(POPUP_SIZES, size) ? POPUP_SIZES[size] : fallback;
+}
+
+function resolvePopupBounds(mainWindow, ui, size, anchor) {
+  const content = getContentBounds(mainWindow);
   const zoom = contentZoom(mainWindow);
   const resolved = readAnchor(anchor) || readAnchor(lastAnchor);
   let desiredX;
@@ -75,81 +93,127 @@ function notifyToggle(ui, open) {
   try { ui.sendToSide?.('network-magic-panel-toggle', { open: open === true }); } catch (_) {}
 }
 
+function createPopupWindow(mainWindow, bounds) {
+  return new BrowserWindow({
+    parent: mainWindow,
+    ...bounds,
+    show: false,
+    frame: false,
+    resizable: false,
+    movable: true,
+    maximizable: false,
+    minimizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    backgroundColor: '#232327',
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: false,
+      preload: path.join(__dirname, '../../preload.js'),
+    },
+  });
+}
+
+function dismissOnPopupBlur(popup, hide) {
+  if (currentPopup !== popup || !popup.isVisible()) return;
+  const parent = popup.getParentWindow();
+  const overLauncher = parent && isCursorOnLauncher(parent, lastAnchor);
+  // The parent receives focus before the launcher receives its click.
+  setImmediate(() => {
+    if (currentPopup !== popup || popup.isFocused()) return;
+    if (!(overLauncher && parent.isFocused())) hide();
+  });
+}
+
 /** @param {{ui?: {getMainWindow?: () => import("electron").BrowserWindow | null, getSideView?: () => import("electron").WebContentsView | null, sendToSide?: (channel: string, payload: {open: boolean}) => unknown}}} [options] */
 function createNetworkMagicPopupController({ ui } = {}) {
+  let ready = false;
+  let opening = false;
+
   const close = () => {
     const popup = currentPopup;
     currentPopup = null;
     lastAnchor = null;
+    opening = false;
     if (popup && !popup.isDestroyed()) {
       try { popup.close(); } catch (_) {}
     }
     notifyToggle(ui, false);
   };
 
-  /** @param {{expanded?: boolean, anchor?: unknown}} [options] */
-  const show = ({ expanded = false, anchor } = {}) => {
+  const hide = () => {
+    opening = false;
+    const popup = getNetworkMagicPopupWindow();
+    if (!popup?.isVisible()) return;
+    // 停止、重启和保存模式由弹窗串联，失焦时保留正在执行的流程。
+    popup.hide();
+    notifyToggle(ui, false);
+  };
+
+  /** @param {{size?: string}} [options] */
+  const resize = ({ size } = {}) => {
+    const popup = getNetworkMagicPopupWindow();
+    const parent = popup?.getParentWindow();
+    if (!parent) return;
+    popup.setBounds(resolvePopupBounds(parent, ui, resolvePopupSize(size, popup.getBounds()), lastAnchor));
+  };
+
+  const reveal = (popup) => {
+    opening = false;
+    popup.show();
+    popup.focus();
+    notifyToggle(ui, true);
+  };
+
+  /** @param {{anchor?: unknown}} [options] */
+  const show = (options = {}) => {
     const mainWindow = typeof ui.getMainWindow === 'function' ? ui.getMainWindow() : null;
     if (!mainWindow || mainWindow.isDestroyed?.()) return false;
-    const nextAnchor = readAnchor(anchor);
+    const nextAnchor = readAnchor(options.anchor);
     if (nextAnchor) lastAnchor = nextAnchor;
-    const bounds = resolvePopupBounds(mainWindow, ui, expanded === true, lastAnchor);
-    if (currentPopup && !currentPopup.isDestroyed()) {
-      currentPopup.setBounds(bounds);
-      currentPopup.show();
-      currentPopup.focus();
-      notifyToggle(ui, true);
+    const existing = getNetworkMagicPopupWindow();
+    const size = existing?.getBounds() ?? POPUP_SIZES.compact;
+    const bounds = resolvePopupBounds(mainWindow, ui, size, lastAnchor);
+    if (existing) {
+      existing.setBounds(bounds);
+      if (ready) reveal(existing);
+      else opening = true;
       return true;
     }
-    const popup = new BrowserWindow({
-      parent: mainWindow,
-      ...bounds,
-      show: false,
-      frame: false,
-      resizable: false,
-      movable: true,
-      maximizable: false,
-      minimizable: false,
-      fullscreenable: false,
-      skipTaskbar: true,
-      alwaysOnTop: true,
-      backgroundColor: '#151b25',
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-        sandbox: false,
-        preload: path.join(__dirname, '../../preload.js'),
-      },
-    });
+    const popup = createPopupWindow(mainWindow, bounds);
     currentPopup = popup;
+    ready = false;
+    opening = true;
     try { popup.setAlwaysOnTop(true, 'pop-up-menu'); } catch (_) {}
+    popup.on('blur', () => dismissOnPopupBlur(popup, hide));
     popup.on('closed', () => {
       if (currentPopup !== popup) return;
       currentPopup = null;
+      lastAnchor = null;
+      opening = false;
       notifyToggle(ui, false);
     });
     popup.loadFile(resolvePopupHtmlPath());
     popup.once('ready-to-show', () => {
       if (currentPopup !== popup || popup.isDestroyed()) return;
-      try {
-        popup.show();
-        popup.focus();
-        notifyToggle(ui, true);
-      } catch (_) {}
+      ready = true;
+      if (opening) reveal(popup);
     });
     return true;
   };
 
-  /** @param {{open?: boolean, expanded?: boolean, anchor?: unknown}} [payload] */
+  /** @param {{anchor?: unknown}} [payload] */
   const toggle = (payload = {}) => {
-    if (payload?.open !== true) {
-      close();
+    if (opening || getNetworkMagicPopupWindow()?.isVisible()) {
+      hide();
       return false;
     }
-    return show({ expanded: payload?.expanded === true, anchor: payload?.anchor });
+    return show(payload);
   };
 
-  return { toggle, close, getWindow: getNetworkMagicPopupWindow };
+  return { toggle, resize, close, getWindow: getNetworkMagicPopupWindow };
 }
 
 module.exports = {

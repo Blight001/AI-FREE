@@ -62,11 +62,26 @@
         <button id="shell-network-magic-toggle" class="shell-action-btn shell-network-magic-btn" type="button" aria-expanded="false" aria-controls="network-magic-sidebar-dialog" aria-haspopup="dialog" aria-label="内置代理" title="内置代理">
           <span class="shell-action-icon" aria-hidden="true">
             <svg class="network-magic-wand-icon" viewBox="0 0 24 24">
-              <path d="M4.2 19.8 13.8 10.2"></path>
-              <path d="m12.4 8.8 2.8 2.8"></path>
-              <path d="M16.1 3.6 15.2 6.4 12.4 7.3 15.2 8.2 16.1 11 17 8.2 19.8 7.3 17 6.4 16.1 3.6Z"></path>
-              <path d="M19.4 12.1v2.4M18.2 13.3h2.4"></path>
-              <path d="M20.1 4.8v1.6M19.3 5.6h1.6"></path>
+              <defs>
+                <linearGradient id="network-magic-wand-shine" x1="2" y1="22" x2="20" y2="4" gradientUnits="userSpaceOnUse">
+                  <stop offset="0" stop-color="#76f2e2"/>
+                  <stop offset=".52" stop-color="#a8b6ff"/>
+                  <stop offset="1" stop-color="#ffd0ee"/>
+                </linearGradient>
+              </defs>
+              <g class="network-magic-wand-idle">
+                <path d="M4.2 19.8 13.8 10.2"></path>
+                <path d="m12.4 8.8 2.8 2.8"></path>
+                <path d="M16.1 3.6 15.2 6.4 12.4 7.3 15.2 8.2 16.1 11 17 8.2 19.8 7.3 17 6.4 16.1 3.6Z"></path>
+                <path d="M19.4 12.1v2.4M18.2 13.3h2.4"></path>
+                <path d="M20.1 4.8v1.6M19.3 5.6h1.6"></path>
+              </g>
+              <g class="network-magic-wand-active">
+                <path d="M4.2 20.2 15.3 9.1" stroke="url(#network-magic-wand-shine)" stroke-width="3"/>
+                <path class="network-magic-star" d="M15.9 1.5c.2 3.4 1.8 5 5.2 5.2-3.4.2-5 1.8-5.2 5.2-.2-3.4-1.8-5-5.2-5.2 3.4-.2 5-1.8 5.2-5.2Z" fill="#ffefab"/>
+                <path class="network-magic-star" d="M20.6 10.8c.1 1.9 1 2.8 2.9 2.9-1.9.1-2.8 1-2.9 2.9-.1-1.9-1-2.8-2.9-2.9 1.9-.1 2.8-1 2.9-2.9Z" fill="#80f2e3"/>
+                <path class="network-magic-star" d="M6.7 1.8c.1 1.7.9 2.5 2.6 2.6-1.7.1-2.5.9-2.6 2.6-.1-1.7-.9-2.5-2.6-2.6 1.7-.1 2.5-.9 2.6-2.6Z" fill="#ffc0ed"/>
+              </g>
             </svg>
           </span>
           <span class="shell-action-label">内置代理</span>
@@ -506,6 +521,7 @@
           <section id="home-mcp" role="tabpanel" aria-labelledby="home-mcp-tab" tabindex="0" hidden>
             <header class="shell-home-heading">
               <h1>MCP 管理</h1>
+              <button id="home-mcp-debug" type="button">MCP 调试面板</button>
               <button id="home-mcp-refresh" type="button" title="刷新工具目录" aria-label="刷新工具目录">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M5 8a8 8 0 0 1 13-2l2 6M19 16a8 8 0 0 1-13 2l-2-6"/></svg>
               </button>
@@ -701,6 +717,7 @@
                 </div>
                 <aside class="automation-node-properties">
                   <h3>节点属性</h3>
+                  <div id="automation-mcp-editor" hidden style="max-height:40%;overflow-y:auto;flex:0 0 auto"></div>
                   <label for="automation-node-json">节点 JSON</label>
                   <textarea id="automation-node-json" spellcheck="false" aria-label="节点 JSON 配置"></textarea>
                   <div class="automation-property-actions">
@@ -817,7 +834,10 @@
             <label><input id="restart-chromium-settings" type="checkbox"> Chromium 环境保存后立即重启</label>
           </div>
           <div class="settings-actions">
-            <button id="delete-browser-record" class="settings-danger-btn" type="button" hidden>删除浏览器</button>
+            <div id="browser-record-actions" class="browser-record-actions" hidden>
+              <button id="delete-browser-record" class="settings-danger-btn" type="button">删除浏览器</button>
+              <button id="clear-browser-record-data" class="settings-danger-btn" type="button" title="清空 Cookie、缓存、浏览历史、本地存储和页面会话">清空浏览器数据</button>
+            </div>
             <button id="randomize-ai-free-settings" class="settings-secondary-btn" type="button">随机指纹</button>
             <button id="reset-ai-free-settings" class="settings-secondary-btn" type="button">恢复默认</button>
             <button id="save-ai-free-settings" class="settings-primary-btn" type="submit">保存参数</button>
@@ -886,9 +906,12 @@
   <script src="../renderer/controllers/pages/app-shell/shell-home-models.js"></script>
   <script src="../renderer/controllers/pages/app-shell/shell-home-model-integrations.js"></script>
   <script src="../renderer/controllers/pages/app-shell/automation-canvas.js"></script>
+  <script src="../../shared/automation-schema.js"></script>
+  <script src="../renderer/controllers/pages/app-shell/automation-mcp-node-editor.js"></script>
   <script src="../renderer/controllers/pages/app-shell/shell-home-automation.js"></script>
   <script src="../renderer/controllers/pages/app-shell/site-preference-transfer.js"></script>
   <script src="../renderer/controllers/pages/app-shell/site-data.js"></script>
+  <script src="../../shared/browser-history-gesture-layout.js"></script>
   <script src="../renderer/controllers/pages/app-shell/shell-home.js"></script>
   <script type="module" src="../renderer/controllers/pages/app-shell/provider-accounts.mjs"></script>
   <script src="../renderer/controllers/pages/app-shell/shell-home-bootstrap.js"></script>

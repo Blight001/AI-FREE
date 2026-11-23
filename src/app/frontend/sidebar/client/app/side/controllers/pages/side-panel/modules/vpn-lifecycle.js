@@ -20,65 +20,18 @@ async function persistNetworkMagicAutoStartEnabled(enabled) {
   return window.aiFree.network.setAutoStartEnabled( { enabled: !!enabled });
 }
 
-let networkMagicProxyModeReady = null;
-
 function normalizeNetworkMagicProxyMode(value) {
   const mode = String(value || '').trim();
   return ['port', 'system', 'global'].includes(mode) ? mode : 'port';
 }
 
-function proxyModeInputs() {
-  return Array.from(document.querySelectorAll('input[name="network-magic-proxy-mode"]'));
-}
-
-function selectedNetworkMagicProxyMode() {
-  return normalizeNetworkMagicProxyMode(proxyModeInputs().find((input) => input.checked)?.value);
-}
-
-async function loadNetworkMagicProxyMode() {
-  const result = await window.aiFree?.network?.getProxyMode?.().catch(() => null);
-  const mode = normalizeNetworkMagicProxyMode(result?.mode);
-  proxyModeInputs().forEach((input) => { input.checked = input.value === mode; });
-  return mode;
-}
-
-function setProxyModeInputsDisabled(disabled) {
-  proxyModeInputs().forEach((input) => { input.disabled = disabled; });
-}
-
-async function restartNetworkMagicForProxyMode(mode, controls) {
-  const status = await window.aiFree.network.getClashStatus?.().catch(() => null);
-  if (status?.running !== true) return;
-  const stopped = await window.aiFree.network.stopClash();
-  if (!stopped?.ok) throw new Error(stopped?.error || '切换代理模式前停止网络魔法失败');
-  await startClashMiniFlow({ ...controls, fetchConfig: false, proxyMode: mode });
-}
-
-function bindNetworkMagicProxyMode(controls) {
-  networkMagicProxyModeReady ||= loadNetworkMagicProxyMode();
-  proxyModeInputs().forEach((input) => {
-    if (input.dataset.bound === '1') return;
-    input.addEventListener('change', async () => {
-      if (!input.checked) return;
-      const mode = normalizeNetworkMagicProxyMode(input.value);
-      setProxyModeInputsDisabled(true);
-      try {
-        const saved = await window.aiFree.network.setProxyMode({ mode });
-        if (!saved?.ok) throw new Error(saved?.error || '保存代理模式失败');
-        await restartNetworkMagicForProxyMode(mode, controls);
-      } catch (error) {
-        networkMagicProxyModeReady = loadNetworkMagicProxyMode();
-        showNetworkMagicOperationError(error);
-      } finally {
-        setProxyModeInputsDisabled(false);
-      }
-    });
-    input.dataset.bound = '1';
-  });
+async function readSavedNetworkMagicProxyMode() {
+  const result = await window.aiFree?.network?.getProxyMode?.();
+  return normalizeNetworkMagicProxyMode(result?.mode);
 }
 
 // 停止/关闭/清理：stopClashMiniFlow的具体业务逻辑。
-async function stopClashMiniFlow({ startBtn, vpnBtn } = {}) {
+async function stopClashMiniFlow() {
   if (typeof window.aiFree.network.stopClash !== 'function') {
     throw new Error('当前环境不支持停止 Clash Mini');
   }
@@ -87,18 +40,16 @@ async function stopClashMiniFlow({ startBtn, vpnBtn } = {}) {
     throw new Error((result && (result.error || result.message)) || '关闭网络魔法失败');
   }
   await persistNetworkMagicAutoStartEnabled(false).catch(() => {});
-  applyClashMiniStatus(result, { startBtn, vpnBtn });
-  return '开启魔法代理';
+  applyClashMiniStatus(result);
 }
 
 // 完整启动流程（单次执行体，勿直接调用，统一走 startClashMiniFlow）：
 //  1. 需要刷新配置且核心已在运行时，先停掉旧进程；
 //  2. 拉取并导入服务器最新 Clash 配置（手动开启时强制刷新）；
-//  3. 启动核心、应用浏览器代理；
+//  3. 启动核心并应用代理模式；
 //  4. 记忆“自动启动”偏好；
 //  5. 获取节点；主进程复用已有测速记录，只补测没有记录的节点；
-//  6. 把最终状态应用到按钮 UI。
-async function startClashMiniFlowOnce({ startBtn, vpnBtn, fetchConfig = true, key = '', deviceId = '', proxyMode = '' } = {}) {
+async function startClashMiniFlowOnce({ fetchConfig = true, key = '', deviceId = '', proxyMode = '' } = {}) {
   if (typeof window.aiFree.network.startClash !== 'function') {
     throw new Error('当前环境不支持启动 Clash Mini');
   }
@@ -109,16 +60,13 @@ async function startClashMiniFlowOnce({ startBtn, vpnBtn, fetchConfig = true, ke
     console.log('[侧边栏][Clash] 开启网络魔法，获取最新 YAML 并覆盖旧配置...');
     await ensureClashMiniConfigPreheated({ force: true, key, deviceId });
   }
-  if (networkMagicProxyModeReady) await networkMagicProxyModeReady.catch(() => {});
-  const result = await window.aiFree.network.startClash({
-    proxyMode: normalizeNetworkMagicProxyMode(proxyMode || selectedNetworkMagicProxyMode()),
-  });
+  const mode = proxyMode || await readSavedNetworkMagicProxyMode();
+  const result = await window.aiFree.network.startClash({ proxyMode: mode });
   assertClashStarted(result);
 
   await persistNetworkMagicAutoStartEnabled(true).catch(() => {});
-  applyClashMiniStatus(result, { startBtn, vpnBtn, loadProxyOptions: false });
-  void loadVpnNodeSelectorOptions({ force: true, probeDelays: true });
-  return '关闭魔法代理';
+  applyClashMiniStatus(result, { loadProxyOptions: false });
+  await loadVpnNodeSelectorOptions({ force: true, probeDelays: true });
 }
 
 async function stopClashForFreshConfig(fetchConfig) {
@@ -166,33 +114,6 @@ function startClashMiniFlow(options = {}) {
   return sharedPromise;
 }
 
-// 开关按钮入口：根据当前状态决定启动还是停止。
-async function toggleClashMini({ startBtn, vpnBtn } = {}) {
-  if (!window.aiFree?.network) {
-    throw new Error('当前环境不支持网络魔法操作');
-  }
-
-  // 启动流程尚未结束时，把重复点击并入进行中的启动任务，
-  // 避免核心刚拉起（running 已为 true）时误触发“关闭”。
-  if (clashMiniStartFlowPromise) {
-    return clashMiniStartFlowPromise;
-  }
-
-  const status = window.aiFree.network.getClashStatus
-    ? await window.aiFree.network.getClashStatus()
-    : null;
-  const running = status && status.running === true;
-  const enabled = status && (
-    status.running === true
-    || status.enabled === true
-    || status.proxyAppliedByApp === true
-  );
-
-  return running && enabled
-    ? stopClashMiniFlow({ startBtn, vpnBtn })
-    : startClashMiniFlow({ startBtn, vpnBtn, fetchConfig: true });
-}
-
 function showNetworkMagicOperationError(error) {
   // 软件退出会主动取消尚未完成的 Clash Mini 启动，并关闭相关 socket。
   // 这是预期清理，不应再弹错误框打断退出流程。
@@ -212,53 +133,27 @@ function showNetworkMagicOperationError(error) {
   if (typeof window.alert === 'function') window.alert(message);
 }
 
-function observeNetworkMagicTask(task) {
-  if (task && typeof task.catch === 'function') {
-    task.catch(showNetworkMagicOperationError);
-  }
-  return task;
-}
-
-function createVpnBusyButtonOptions(options = {}) {
-  return {
-    ...options,
-    preserveTextAfterResolve: true,
-    onRestore: (button) => updateClashVpnButton(button, {
-      enabled: isVpnEnabled,
-      isBusy: false,
-    }),
-  };
-}
-
 // 自动开启网络魔法的统一入口（面板初始化恢复 / 登录成功 / 恢复登录态共用）。
 // 满足以下条件才会启动：账号已登录、用户开启了“自动启动”记忆、核心未在运行、
 // 且用户没有正在手动操作开关。key/deviceId 缺省时由预热流程自行解析。
-async function autoStartNetworkMagicIfEligible({ startBtn, vpnBtn, key = '', deviceId = '' } = {}) {
-  if (!canAttemptNetworkMagicAutoStart(vpnBtn)) return;
+async function autoStartNetworkMagicIfEligible({ key = '', deviceId = '' } = {}) {
+  if (!window.aiFree?.network || autoStartClashMiniInFlight || vpnControlOperation) return;
 
   // 从条件评估阶段就置位“进行中”：预热启动（warmup）等并行流程推送的
   // 状态事件即使在评估期间到达，选路按钮也不会被放开一瞬。
   autoStartClashMiniInFlight = true;
   try {
+    applyVpnActionAvailability();
     if (!await getNetworkMagicAutoStartEnabled()) return;
     const identity = await resolveNetworkMagicAutoStartIdentity(key, deviceId);
     if (!identity.eligible || await isNetworkMagicRunning()) return;
 
-    const runAutoStart = () => startClashMiniFlow({
-      startBtn,
-      vpnBtn,
+    console.log('[侧边栏][Clash] 检测到上次为开启状态，自动启用网络魔法');
+    await startClashMiniFlow({
       fetchConfig: true,
       key: identity.key,
       deviceId: identity.deviceId,
     });
-    console.log('[侧边栏][Clash] 检测到上次为开启状态，自动启用网络魔法');
-    if (vpnBtn) {
-      await withBusyButton(vpnBtn, [startBtn], runAutoStart, createVpnBusyButtonOptions({
-        loadingText: '正在开启魔法请稍等',
-      }));
-    } else {
-      await runAutoStart();
-    }
   } catch (error) {
     console.warn('[侧边栏] 自动开启网络魔法失败:', error?.message || error);
   } finally {
@@ -266,11 +161,6 @@ async function autoStartNetworkMagicIfEligible({ startBtn, vpnBtn, key = '', dev
     // 无论正常结束还是提前退出，都重新收敛一次按钮可用性。
     applyVpnActionAvailability();
   }
-}
-
-function canAttemptNetworkMagicAutoStart(vpnBtn) {
-  const buttonBusy = vpnBtn?.dataset?.busy === '1';
-  return Boolean(window.aiFree?.network) && !autoStartClashMiniInFlight && !buttonBusy;
 }
 
 async function resolveNetworkMagicAutoStartIdentity(key = '', deviceId = '') {
@@ -333,90 +223,37 @@ function bindNetworkMagicAccountSession() {
 }
 
 // 同步/连接：bindClashMiniControls的具体业务逻辑。
-function bindClashMiniControls() {
-  const controls = resolveClashMiniControls();
-  if (!controls.vpnBtn && !controls.startBtn && !vpnNodeSelectorPanel) return;
+function bindClashMiniControls(render, renderGroups) {
+  bindClashNodeControls();
+  onVpnControlsChanged = render;
+  renderVpnNodeGroups = renderGroups;
   bindNetworkMagicAccountSession();
-  bindNetworkMagicProxyMode(controls);
-  bindClashToggleButtons(controls);
-  bindVpnNodeSelectorToggle();
-  bindClashLatencyButton();
-  bindClashStatusHandlers(controls);
+  bindClashStatusHandlers();
   bindAppClosingGuard();
-  loadInitialClashStatus(controls);
-  if (window.aiFree?.network) autoStartNetworkMagicIfEligible(controls).catch(() => {});
+  if (window.aiFree?.network) autoStartNetworkMagicIfEligible().catch(() => {});
 }
 
-function bindVpnNodeSelectorToggle() {
-  if (!vpnNodeSelectorToggleBtn || vpnNodeSelectorToggleBtn.dataset.bound === '1') return;
-  vpnNodeSelectorToggleBtn.addEventListener('click', () => {
-    if (vpnNodeSelectorToggleBtn.disabled) return;
-    const open = vpnNodeSelectorToggleBtn.getAttribute('aria-expanded') !== 'true';
-    setVpnNodeSelectorOpen(open);
-  });
-  vpnNodeSelectorToggleBtn.dataset.bound = '1';
-}
-
-function resolveClashMiniControls() {
-  const controls = {
-    startBtn: safeGetEl('start-clash-mini-btn'),
-    vpnBtn: safeGetEl('VPN-switch'),
-    dreamBtn: safeGetEl('open-dream-page-btn'),
-  };
+function bindClashNodeControls() {
   testLatencyBtn = safeGetEl('vpn-node-retest-all-btn');
   vpnNodeSelectorToggleBtn = safeGetEl('vpn-node-selector-toggle-btn');
   vpnNodeSelectorPanel = safeGetEl('vpn-node-selector-panel');
   vpnNodeSelectorGrid = safeGetEl('vpn-node-selector-grid');
   vpnNodeSelectorGroup = safeGetEl('vpn-node-selector-group');
-  vpnSwitchBtn = controls.vpnBtn;
-  return controls;
 }
 
-function bindClashToggleButtons({ startBtn, vpnBtn, dreamBtn }) {
-  if (startBtn && startBtn.dataset.bound !== '1') {
-    startBtn.addEventListener('click', () => {
-      observeNetworkMagicTask(withBusyButton(startBtn, [vpnBtn, dreamBtn], () => toggleClashMini({ startBtn, vpnBtn }), {
-        preserveTextAfterResolve: true,
-      }));
-    });
-    startBtn.dataset.bound = '1';
-  }
-  if (vpnBtn && vpnBtn.dataset.bound !== '1') {
-    vpnBtn.addEventListener('click', async () => {
-      if (await redirectToAccountLogin()) return;
-      observeNetworkMagicTask(withBusyButton(
-        vpnBtn,
-        [startBtn, dreamBtn],
-        () => toggleClashMini({ startBtn, vpnBtn }),
-        createVpnBusyButtonOptions(),
-      ));
-    });
-    vpnBtn.dataset.bound = '1';
-  }
-}
-
-function bindClashLatencyButton() {
-  if (!testLatencyBtn || testLatencyBtn.dataset.bound === '1') return;
-  testLatencyBtn.addEventListener('click', () => {
-    if (testLatencyBtn.disabled || isNetworkMagicStartFlowActive()) return;
-    void retestVpnNodes();
-  });
-  testLatencyBtn.dataset.bound = '1';
-}
-
-function bindClashStatusHandlers({ startBtn, vpnBtn }) {
+function bindClashStatusHandlers() {
   if (window.__clashMiniConsoleBound || typeof window.aiFree?.network?.onClashStatus !== 'function') return;
   window.aiFree.network.onAppShuttingDown(() => { window.__aiFreeAppClosing = true; });
-  window.aiFree.network.onClashStatus((status) => applyClashMiniStatus(status, { startBtn, vpnBtn }));
-  window.aiFree.network.onProxyTrafficQuota(renderProxyTrafficQuota);
-  window.aiFree.network.onProxyTrafficExhausted((quota) => {
-    renderProxyTrafficQuota(quota);
+  window.aiFree.network.onClashStatus((status) => {
+    if (!vpnControlOperation) applyClashMiniStatus(status);
+  });
+  window.aiFree.network.onProxyTrafficExhausted(() => {
     window.MessageModal?.showErrorMessage?.('网络魔法流量已用完，代理已自动关闭。请到个人中心兑换流量。');
   });
   window.aiFree.network.onClashRuntimeFailed((payload = {}) => {
-    applyClashMiniStatus({ ok: true, running: false, enabled: false }, { startBtn, vpnBtn });
+    applyClashMiniStatus({ running: false, enabled: false });
     if (window.__aiFreeAppClosing !== true) {
-      window.MessageModal?.showErrorMessage?.(payload.message || '网络魔法运行异常，已恢复为直连模式。');
+      window.MessageModal?.showErrorMessage?.(payload.message || '网络魔法运行异常，代理已关闭。');
     }
   });
   window.aiFree.network.onClashLatencyProgress(applyClashMiniLatencyProgress);
@@ -429,14 +266,8 @@ function bindAppClosingGuard() {
   window.addEventListener('beforeunload', () => { window.__aiFreeAppClosing = true; });
 }
 
-function loadInitialClashStatus({ startBtn, vpnBtn }) {
-  if (typeof window.aiFree?.network?.getClashStatus === 'function') {
-    window.aiFree.network.getClashStatus()
-      .then((status) => applyClashMiniStatus(status, { startBtn, vpnBtn })).catch(() => {});
-  }
-  if (typeof window.aiFree?.network?.getProxyTrafficQuota === 'function') {
-    window.aiFree.network.getProxyTrafficQuota().then((result) => {
-      if (result?.ok && result.quota) renderProxyTrafficQuota(result.quota);
-    }).catch(() => {});
-  }
+async function refreshClashStatus() {
+  const status = await window.aiFree.network.getClashStatus();
+  applyClashMiniStatus(status);
+  return status;
 }

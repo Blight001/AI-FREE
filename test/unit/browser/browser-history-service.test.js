@@ -138,7 +138,6 @@ test('serialization adds account and live tab state then sorts recent records', 
       browserHistoryId: 'old',
       runtimeUrl: 'https://live.test',
       firstWebsiteIconUrl: 'https://live.test/icon.png',
-      networkMagicApplied: true,
     }]]),
   };
   const serialized = historyService.serializeBrowserHistory(history, ui);
@@ -151,7 +150,6 @@ test('serialization adds account and live tab state then sorts recent records', 
   assert.equal(old.isOpen, true);
   assert.equal(old.isActive, true);
   assert.equal('networkMagicSelected' in old, false);
-  assert.equal(old.networkMagicActive, true);
   assert.equal(old.iconUrl, 'https://live.test/icon.png');
   assert.equal(serialized[0].iconUrl, '');
   assert.equal(historyService.buildBrowserHistoryAccountMeta({}), null);

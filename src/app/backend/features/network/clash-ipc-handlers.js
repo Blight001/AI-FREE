@@ -183,25 +183,17 @@ function createTrafficMonitor(context, readCredentials) {
   });
 }
 
-async function restoreDirectProxy(ui) {
-  if (getClashMiniStatus()?.running === true || typeof ui?.applyClashMiniBrowserProxy !== 'function') return;
-  await Promise.resolve(ui.applyClashMiniBrowserProxy(false)).catch(() => {});
-}
-
 function createStartHandler(context, monitor) {
   return async (_event, options = {}) => {
     try {
       const authorization = await monitor.authorize();
       if (!authorization?.ok) {
-        await restoreDirectProxy(context.ui);
         return authorization || { ok: false, error: '流量额度校验失败' };
       }
       const result = await startClashMiniProcess(context.ui, options || {});
       if (result?.ok) monitor.start();
-      else await restoreDirectProxy(context.ui);
       return { ...result, quota: authorization.quota || null };
     } catch (error) {
-      await restoreDirectProxy(context.ui);
       return { ok: false, error: clashError(error) };
     }
   };

@@ -1,5 +1,7 @@
 'use strict';
 
+const { AUTOMATION_CARD_EXECUTION_ACTIONS } = require('./automation-card-contract');
+
 const BROWSER_ROUTE_DESCRIPTION = '可选。切换唯一的当前控制浏览器，填写连接 ID 或唯一名称；省略则继续控制当前浏览器。';
 
 function normalizeToolSchema(tool = {}) {
@@ -70,7 +72,7 @@ function resolveDispatchTimeout(toolName, args = {}) {
   const requestedSeconds = Number(args.timeout_seconds || 0);
   if (requestedSeconds > 0) return Math.min(1800, Math.max(1, requestedSeconds)) * 1000;
   const isCardRun = toolName === 'manage_card'
-    && String(args.action || '').trim().toLowerCase() === 'run';
+    && AUTOMATION_CARD_EXECUTION_ACTIONS.has(String(args.action || '').trim().toLowerCase());
   return isCardRun ? 900000 : 180000;
 }
 

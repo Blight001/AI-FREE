@@ -62,6 +62,7 @@ function buildLifecycleDeps({
     browserAutomationBridge,
     aiServerDeviceService,
     providerAccountVault: services.providerAccountVault,
+    managedChatRepository: services.managedChatRepository,
     aiModelConfig: services.aiModelConfig,
     getSideView: appRuntime.getSideView,
     getTabs: () => tabs,

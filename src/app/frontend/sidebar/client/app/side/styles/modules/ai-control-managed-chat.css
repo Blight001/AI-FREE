@@ -1,0 +1,68 @@
+.ai-control-panel { position: relative; }
+
+.ai-managed-chat:not([hidden]) {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  color: inherit;
+  background: #151d2b;
+}
+
+html.theme-light .ai-managed-chat { background: #f4f7fb; }
+
+.ai-managed-chat > header,
+.ai-managed-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.ai-managed-chat button,
+.ai-managed-trigger,
+.ai-managed-card,
+.ai-managed-chat select,
+.ai-managed-chat textarea {
+  font: inherit;
+  color: inherit;
+  border: 1px solid color-mix(in srgb, currentColor 24%, transparent);
+  border-radius: 7px;
+  background: transparent;
+  padding: 4px 8px;
+}
+
+.ai-managed-chat option { color: #233451; background: #f4f7fb; }
+
+.ai-managed-cards:not([hidden]) {
+  display: flex;
+  flex-wrap: wrap;
+  overflow: auto;
+  max-height: 112px;
+  gap: 6px;
+  padding: 4px 12px;
+}
+
+#ai-managed-directory { max-height: none; align-content: flex-start; }
+
+.ai-managed-messages {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+  overflow-wrap: anywhere;
+}
+
+.ai-managed-message {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-inline-start: 2px solid currentColor;
+}
+
+.ai-managed-message > strong { font-size: .82em; opacity: .8; }
+.ai-managed-composer { padding: 4px 12px 8px; }
+.ai-managed-composer textarea { box-sizing: border-box; width: 100%; resize: vertical; }
+.ai-managed-actions { padding: 4px 0 0; }
+.ai-managed-actions select { flex: 1; min-width: 80px; max-width: 100%; }

@@ -6,16 +6,18 @@ function runKey(event, requestId) {
 
 function createChatRunRegistry() {
   const runs = new Map();
+  const continuations = new WeakMap();
 
   function begin(event, requestId) {
     const key = runKey(event, requestId);
+    continuations.delete(event?.sender);
     const previous = runs.get(key);
     if (previous) {
       previous.stopped = true;
       previous.controller.abort();
     }
     const controller = new AbortController();
-    const run = { controller, insertedMessages: [], stopped: false };
+    const run = { controller, insertedMessages: [], stopped: false, stoppedByUser: false, continuation: null };
     runs.set(key, run);
     return { key, run };
   }
@@ -31,6 +33,7 @@ function createChatRunRegistry() {
     const run = runs.get(runKey(event, requestId));
     if (!run) return { ok: true, stopped: false };
     run.stopped = true;
+    run.stoppedByUser = true;
     run.controller.abort();
     return { ok: true, stopped: true };
   }
@@ -41,7 +44,19 @@ function createChatRunRegistry() {
     }
   }
 
-  return { begin, finish, get: (event, requestId) => runs.get(runKey(event, requestId)), insert, stop };
+  function saveContinuation(event, key, run) {
+    if (!event?.sender || runs.get(key) !== run || !run?.stoppedByUser || !run.continuation) return false;
+    continuations.set(event.sender, { key, value: run.continuation });
+    return true;
+  }
+
+  function getContinuation(event, requestId) {
+    const entry = continuations.get(event?.sender);
+    return entry?.key === runKey(event, requestId) ? entry.value : null;
+  }
+
+  return { begin, finish, get: (event, requestId) => runs.get(runKey(event, requestId)),
+    insert, stop, saveContinuation, getContinuation };
 }
 
 module.exports = { createChatRunRegistry, runKey };

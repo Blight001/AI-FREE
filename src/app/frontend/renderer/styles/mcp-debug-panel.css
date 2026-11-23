@@ -1,0 +1,32 @@
+:root { color-scheme: light dark; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+* { box-sizing: border-box; }
+body { margin: 0; height: 100dvh; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; background: #f3f5f8; color: #142034; }
+header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 18px; background: #fff; border-bottom: 1px solid #d5dfeb; }
+h1 { margin: 0; font-size: 20px; }
+h2 { margin: 0 0 12px; font-size: 15px; }
+p { margin: 6px 0 0; color: #42536b; font-size: 13px; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.actions label { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.actions select { font: inherit; padding: 7px; max-width: 100%; }
+button { white-space: nowrap; padding: 9px 12px; font: inherit; font-size: 13px; border-radius: 6px; border: 1px solid #bfcde0; color: #142034; background: #fff; cursor: pointer; }
+button:disabled { opacity: .65; cursor: wait; }
+#toggle { background: #234d91; color: #fff; border-color: #234d91; }
+main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(160px, 22%); gap: 12px; padding: 12px; }
+#preview { position: relative; overflow: hidden; display: grid; place-items: center; color: #d3def5; background: #151d2b; border-radius: 7px; user-select: none; touch-action: none; }
+#frame { width: 100%; height: 100%; min-width: 0; min-height: 0; position: absolute; inset: 0; object-fit: contain; pointer-events: none; }
+#cursor { position: absolute; width: 13px; height: 13px; border: 2px solid #7758f5; outline: 1px solid white; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; }
+aside { overflow: auto; background: #fff; border: 1px solid #d5dfeb; border-radius: 7px; padding: 12px; font-size: 13px; }
+dl { margin-block: 0 12px; }
+dl > div { display: grid; grid-template-columns: 1fr; gap: 4px; padding-block: 6px; border-bottom: 1px solid #e3e9f0; }
+dt { font-size: 12px; color: #42536b; }
+dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+summary { cursor: pointer; }
+ul { list-style: none; padding: 0; }
+li { padding-block: 3px; font-family: Consolas, monospace; overflow-wrap: anywhere; }
+footer { padding: 0 14px 11px; font-size: 12px; color: #42536b; }
+@media (prefers-color-scheme: dark) {
+  body { background: #111926; color: #ebf2fc; }
+  header, aside, button { background: #1e2a3e; border-color: #3c4e6a; color: #ebf2fc; }
+  dt, p, footer { color: #b6c8e3; }
+  dl > div { border-color: #3c4e6a; }
+}

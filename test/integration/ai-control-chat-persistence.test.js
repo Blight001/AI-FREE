@@ -14,6 +14,7 @@ function createComposerFixture(chatResult) {
   const select = { value: 'model-a' };
   const persisted = [];
   const events = [];
+  let now = 0;
   const streamView = {
     row: { remove() {} },
     addReasoning() {},
@@ -21,10 +22,11 @@ function createComposerFixture(chatResult) {
     replaceContent() {},
     upsertTool() {},
     setContent(value) { this.content = value; },
-    finalize() { this.finalized = true; },
+    finalize({ durationMs }) { this.durationMs = durationMs; },
   };
   const context = vm.createContext({
     console,
+    performance: { now: () => now },
     window: {
       setTimeout,
       aiFree: {
@@ -34,6 +36,7 @@ function createComposerFixture(chatResult) {
           onChatEvent: () => () => {},
           chat: async () => {
             events.push('chat');
+            now = 3000;
             return chatResult;
           },
         },
@@ -53,6 +56,8 @@ function createComposerFixture(chatResult) {
       quota: null, lastQuotaCost: null,
     };
     const el = (id) => id === 'ai-chat-input' ? input : (id === 'ai-chat-model' ? select : null);
+    function readChatDraft(input) { return { content: input.value, inlineAttachments: [], pending: false }; }
+    function writeChatDraft(input) { input.value = ''; }
     function currentMessages() { return state.messages; }
     function selectedModelIsCustom() { return false; }
     function ensureSessionForSend() {
@@ -92,8 +97,8 @@ test('用户消息先保存再请求 AI，服务失败也保留用户消息和�
   assert.deepEqual(JSON.parse(JSON.stringify(fixture.persisted[0])), [{ role: 'user', content: '保留这条消息' }]);
   assert.deepEqual(JSON.parse(JSON.stringify(fixture.persisted.at(-1))), [
     { role: 'user', content: '保留这条消息' },
-    { role: 'assistant', content: '请求失败：服务器暂时不可用' },
+    { role: 'assistant', content: '请求失败：服务器暂时不可用', turn_duration_ms: 3000 },
   ]);
   assert.equal(fixture.streamView.content, '请求失败：服务器暂时不可用');
-  assert.equal(fixture.streamView.finalized, true);
+  assert.equal(fixture.streamView.durationMs, 3000);
 });

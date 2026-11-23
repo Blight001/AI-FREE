@@ -142,7 +142,16 @@ function resolveLayout(deps, mainWindow, sideView) {
   };
 }
 
+function syncEmbeddedBrowserBounds(deps, layout) {
+  if (!layout.activeTab || !layout.chromiumBounds) return;
+  void deps.browserRuntimeManager?.resize(layout.activeTab.id, 'chromium', layout.chromiumBounds)
+    .then(() => deps.updateTabs?.())
+    .catch((error) => deps.logger.warn?.('[ChromiumRuntime] 同步窗口尺寸失败:', error?.message || error));
+}
+
 function updateMainWindowLayout(deps, mainWindow) {
+  // Windows can report a 0 × 0 client area on minimize. Keep the last layout until restore.
+  if (mainWindow.isMinimized?.()) return;
   const sideView = deps.getSideView?.();
   const layout = resolveLayout(deps, mainWindow, sideView);
   if (sideView && layout.isSidebarVisible) {
@@ -160,10 +169,7 @@ function updateMainWindowLayout(deps, mainWindow) {
       width: layout.isSidebarVisible ? layout.sideViewWidth : 0,
     });
   }
-  if (!layout.activeTab || !layout.chromiumBounds) return;
-  void deps.browserRuntimeManager?.resize(layout.activeTab.id, 'chromium', layout.chromiumBounds)
-    .then(() => deps.updateTabs?.())
-    .catch((error) => deps.logger.warn?.('[ChromiumRuntime] 同步窗口尺寸失败:', error?.message || error));
+  syncEmbeddedBrowserBounds(deps, layout);
 }
 
 function handleMainWindowClosed(deps) {

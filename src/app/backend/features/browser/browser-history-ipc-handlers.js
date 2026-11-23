@@ -260,40 +260,42 @@ async function renameBrowserHistoryBatch(deps, payload) {
   }
 }
 
-async function closeHistoryTab(deps, historyId) {
-  const tab = tabValues(deps.ui).find((item) => text(item.browserHistoryId) === historyId) || null;
-  if (!tab || !tab.id) return null;
-  if (!deps.ui || typeof deps.ui.closeTab !== 'function') throw new Error('当前浏览器窗口无法关闭');
-  await deps.ui.closeTab(tab.id);
-  return tab;
+async function deleteHistoryProfile(runtime, profileId) {
+  if (typeof runtime?.deleteProfileAsync !== 'function') throw new Error('Chromium Profile 管理器不可用');
+  try {
+    if (await runtime.deleteProfileAsync(profileId) !== true) throw new Error('未确认删除完成');
+  } catch (error) {
+    throw new Error(`Chromium Profile 删除失败: ${errorMessage(error)}`, { cause: error });
+  }
 }
 
-function deleteHistoryProfile(deps, record, openTab, latestHistory) {
-  const profileId = text(record.profileId, openTab && openTab.id);
-  const runtime = deps.ui && deps.ui.browserRuntimeManager;
-  if (!profileId || !runtime || typeof runtime.deleteProfile !== 'function') return false;
-  try {
-    return runtime.deleteProfile(profileId) === true;
-  } catch (error) {
-    deps.writeBrowserHistorySafe(latestHistory);
-    throw new Error(`Chromium Profile 删除失败: ${errorMessage(error)}`);
-  }
+function removeHistoryRecord(deps, historyId) {
+  const latestHistory = deps.readBrowserHistorySafe();
+  const nextHistory = latestHistory.filter((item) => item.id !== historyId);
+  if (nextHistory.length === latestHistory.length) throw new Error('浏览器历史不存在');
+  if (!deps.writeBrowserHistorySafe(nextHistory)) throw new Error('浏览器历史未能删除');
+  callOptional(deps.ui, 'sendToSide', 'browser-history-changed');
 }
 
 async function deleteBrowserHistory(deps, payload) {
   try {
     const historyId = text(payload && payload.historyId);
-    const history = deps.syncOpenTabsToBrowserHistory(deps.ui);
-    const record = history.find((item) => item.id === historyId);
+    const record = deps.syncOpenTabsToBrowserHistory(deps.ui).find((item) => item.id === historyId);
     if (!record) throw new Error('浏览器历史不存在');
-    const openTab = await closeHistoryTab(deps, historyId);
-    const latestHistory = deps.readBrowserHistorySafe();
-    const nextHistory = latestHistory.filter((item) => item.id !== historyId);
-    if (nextHistory.length === latestHistory.length) throw new Error('浏览器历史不存在');
-    if (!deps.writeBrowserHistorySafe(nextHistory)) throw new Error('浏览器历史未能删除');
-    const profileDeleted = deleteHistoryProfile(deps, record, openTab, latestHistory);
-    callOptional(deps.ui, 'sendToSide', 'browser-history-changed');
-    return { ok: true, historyId, name: record.name, closed: Boolean(openTab), profileDeleted };
+    const fallbackProfileId = deps.resolveHistoryProfileId(record);
+    const openTab = tabValues(deps.ui).find((tab) => (
+      text(tab.browserHistoryId) === historyId || text(tab.id) === fallbackProfileId
+    ));
+    const profileId = text(record.profileId, openTab?.id, fallbackProfileId);
+    if (openTab && openTab.id !== profileId) throw new Error('浏览器记录与运行环境不一致，请刷新后重试');
+    if (typeof deps.ui?.closeTab !== 'function') throw new Error('当前浏览器窗口无法关闭');
+    return await deps.ui.closeTab(profileId, {
+      async afterStop() {
+        await deleteHistoryProfile(deps.ui.browserRuntimeManager, profileId);
+        removeHistoryRecord(deps, historyId);
+        return { ok: true, historyId, name: record.name, closed: Boolean(openTab), profileDeleted: true };
+      },
+    });
   } catch (error) {
     return { ok: false, error: errorMessage(error) };
   }

@@ -89,7 +89,6 @@ function resolveTabIconFallbackUrl(tab = {}) {
 function serializeTab(tab, deps) {
   const applied = resolveAppliedProfile(tab, deps.browserRuntimeManager);
   const runtimeState = deps.browserRuntimeManager?.getState?.(String(tab.id)) || null;
-  const actualProxyServer = text(applied?.proxyServer);
   const browserSettings = applied?.browserSettings;
   return {
     id: tab.id,
@@ -99,7 +98,6 @@ function serializeTab(tab, deps) {
     isActive: tab.id === deps.resolveActiveTabId(),
     accountId: text(tab.accountId),
     browserHistoryId: text(tab.browserHistoryId),
-    networkMagicEnabled: tab.networkMagicApplied === true && !!actualProxyServer,
     browserSettings: browserSettings && typeof browserSettings === 'object' ? browserSettings : null,
     runtimeEnvironment: serializeRuntimeEnvironment(applied, runtimeState),
     runtimeType: text(tab.runtimeType || 'chromium'),
@@ -117,7 +115,7 @@ function tabSignatureFields(item) {
   const profile = item.browserProfile || {};
   return [
     item.id, item.title, fallback(item.iconUrl), fallback(item.iconFallbackUrl), Number(item.isActive), fallback(item.accountId), fallback(item.browserHistoryId),
-    Number(item.networkMagicEnabled), JSON.stringify(item.browserSettings || {}),
+    JSON.stringify(item.browserSettings || {}),
     fallback(runtime.windowWidth, 0), fallback(runtime.windowHeight, 0),
     Number(runtime.hardwareAcceleration !== false), fallback(runtime.extensionCount, 0),
     fallback(item.runtimeType), fallback(item.runtimeStatus), fallback(profile.browserBrand),

@@ -223,6 +223,8 @@ const IPC_PAYLOAD_SCHEMAS = Object.freeze({
     for (const key of ['modelId', 'requestId', 'browserConnectionId', 'automationCardId']) {
       stringField(channel, input, key);
     }
+    stringField(channel, input, 'resumeRequestId', { maxLength: 128 });
+    stringField(channel, input, 'parentSessionId', { maxLength: 128 });
     stringListField(channel, input, 'browserConnectionIds');
     stringListField(channel, input, 'attachmentPaths');
     validateArtifactReferences(channel, input.artifactReferences);
@@ -235,6 +237,11 @@ const IPC_PAYLOAD_SCHEMAS = Object.freeze({
       if (!Array.isArray(input.messages)) fail(channel, 'messages', '必须是数组');
       input.messages.forEach((message, index) => validateChatMessage(channel, message, index));
     }
+    return input;
+  },
+  'ai.managed-chat': (channel, payload) => {
+    const input = objectPayload(channel, payload);
+    stringField(channel, input, 'action', { maxLength: 32 });
     return input;
   },
   'ai.chat-insert': (channel, payload) => {

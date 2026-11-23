@@ -329,7 +329,7 @@ function normalizeAccountFillPayload(input) {
 
 async function dispatchRuntimeAutomation(runtime, profileId, command, source, options = {}) {
   if (command === 'fill-account-field' && !options.expectedPageToken) {
-    throw automationError('BROWSER_TARGET_REQUIRED', '凭据填充需要页面绑定');
+    throw automationError('BROWSER_TARGET_REQUIRED', '该操作需要页面绑定');
   }
   const payload = normalizeRuntimeAutomation(command, source);
   if (options.expectedPageToken !== undefined && command === 'perform-action' && payload.action === 'upload_file') {

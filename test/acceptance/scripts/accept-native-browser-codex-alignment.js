@@ -23,11 +23,27 @@ if (chromiumPath) {
   delete process.env.AI_FREE_CHROMIUM_PATH;
 }
 
-const fixture = nativeBrowserFixture(BrowserWindow);
+const debugPanel = args.includes('--mcp-debug-panel');
+const debugHost = 'mcp-panel.example.test';
+const runtimeIndex = args.indexOf('--fixture-resources');
+const panelAppIndex = args.indexOf('--panel-app-root');
+const panelAppRoot = panelAppIndex < 0 ? path.resolve(__dirname, '../../..') : path.resolve(args[panelAppIndex + 1]);
+const fixture = nativeBrowserFixture(BrowserWindow, {
+  resourcesPath: runtimeIndex < 0 ? undefined : path.resolve(args[runtimeIndex + 1]),
+  extraArgs: debugPanel ? ['--no-proxy-server',
+    `--host-resolver-rules=MAP ${debugHost} 127.0.0.1, MAP * ~NOTFOUND, EXCLUDE 127.0.0.1`] : undefined,
+  webPreferences: debugPanel ? { preload: path.join(panelAppRoot, 'src/app/backend/preload.js'),
+    sandbox: true, contextIsolation: true } : undefined,
+});
 
 async function main() {
-  const { automation, id, origin } = await fixture.start();
-  if (workflowOnly) return workflow.run(automation, id, origin, scenario);
+  const context = await fixture.start();
+  if (debugPanel) return require('./mcp-debug-panel-scenario').checkMcpDebugPanel({ ...context, panelAppRoot, debugHost });
+  const { automation, id, origin } = context;
+  if (workflowOnly) {
+    await workflow.checkSameOriginFrames(automation, id, origin);
+    return workflow.run(automation, id, origin, scenario);
+  }
   const result = await runFlow(scenario || require('../flows/native-alignment.json'), {
     ...nativeBrowserDrivers(automation, id, origin),
     input: { firstUrl: `${origin}/one`, secondUrl: `${origin}/two`, text: 'Codex' },

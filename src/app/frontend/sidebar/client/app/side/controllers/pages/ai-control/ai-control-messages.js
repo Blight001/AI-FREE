@@ -56,12 +56,14 @@
       setStatus('无法定位该消息', 'warning');
       return;
     }
-    const content = String(messages[userIndex].content || '');
+    const { content, inlineAttachments } = messages[userIndex];
     // 撤回：删除该气泡及之后的全部内容
     messages.splice(userIndex);
+    state.pausedChat = null;
+    syncSendState();
     const input = el('ai-chat-input');
     if (input) {
-      input.value = content;
+      writeChatDraft(input, String(content || ''), inlineAttachments);
       resizeInput();
       syncSendState();
       reclaimAiInputFocus(input);
@@ -110,6 +112,8 @@
     // 删除：仅移除本轮用户消息及其对应 AI 回复（含中间 tool 消息），不影响后续轮次
     const end = findTurnEndExclusive(messages, userIndex);
     messages.splice(userIndex, end - userIndex);
+    state.pausedChat = null;
+    syncSendState();
     if (!messages.length) {
       if (state.currentSession) {
         state.currentSession.title = '新对话';
@@ -187,6 +191,7 @@
   function hasAssistantMessageContent(content, options) {
     if (String(content || '').trim()) return true;
     if (options.pending || String(options.reasoning || '').trim()) return true;
+    if (Number.isSafeInteger(options.durationMs) && options.durationMs >= 0) return true;
     return (Array.isArray(options.toolEvents) && options.toolEvents.length > 0)
       || (Array.isArray(options.traceEvents) && options.traceEvents.length > 0)
       || (Array.isArray(options.artifacts) && options.artifacts.length > 0);
@@ -286,6 +291,7 @@
       reasoning: message.reasoning,
       toolEvents: message.tool_events,
       traceEvents: message.trace_events,
+      durationMs: message.turn_duration_ms,
       artifacts: message.artifacts,
     });
   }
@@ -341,6 +347,7 @@
         reasoning: message.reasoning,
         toolEvents: message.tool_events,
         traceEvents: message.trace_events,
+        durationMs: message.turn_duration_ms,
         attachmentPaths: message.attachmentPaths,
         artifacts: message.artifacts,
       });
@@ -351,12 +358,16 @@
   function chatInputHasSendableContent(input = el('ai-chat-input')) {
     const hasAttachments = typeof hasSelectedChatAttachments === 'function'
       && hasSelectedChatAttachments();
-    return Boolean(String(input?.value || '').trim())
-      || (!state.loading && hasAttachments);
+    const draft = readChatDraft(input);
+    if (draft.pending || (state.loading && draft.inlineAttachments.length)) return false;
+    return Boolean(draft.content.trim()) || (!state.loading && hasAttachments);
   }
 
   function resolveChatButtonMode(hasContent) {
-    if (!state.loading) return { icon: 'send', label: '发送消息', stop: false, insert: false };
+    if (!state.loading) {
+      if (!hasContent && state.pausedChat) return { icon: 'play', label: '继续 AI 输出', stop: false, insert: false };
+      return { icon: 'send', label: '发送消息', stop: false, insert: false };
+    }
     if (state.stopping) return { icon: 'stop', label: '正在停止', stop: true, insert: false };
     if (hasContent) return { icon: 'send', label: '插入当前对话', stop: false, insert: true };
     return { icon: 'stop', label: '停止 AI 输出', stop: true, insert: false };
@@ -367,13 +378,16 @@
     const input = el('ai-chat-input');
     const model = el('ai-chat-model');
     const modelUnavailable = !model?.value;
-    const quotaExhausted = !selectedModelIsCustom() && state.accountAuthenticated && isQuotaExhausted();
     const hasContent = chatInputHasSendableContent(input);
     const mode = resolveChatButtonMode(hasContent);
+    const useCustomApi = mode.icon === 'play' ? state.pausedChat.useCustomApi : selectedModelIsCustom();
+    const quotaExhausted = !useCustomApi && state.accountAuthenticated && isQuotaExhausted();
     if (send) {
       send.disabled = state.loading
         ? state.stopping
-        : modelUnavailable || quotaExhausted || !hasContent;
+        : quotaExhausted || (mode.icon === 'play'
+          ? readChatDraft(input).pending
+          : modelUnavailable || !hasContent);
       if (send.dataset.iconMode !== mode.icon) {
         send.innerHTML = SEND_BUTTON_ICONS[mode.icon];
         send.dataset.iconMode = mode.icon;

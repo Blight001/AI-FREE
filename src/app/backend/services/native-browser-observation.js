@@ -84,12 +84,16 @@ function expiredObservedRefResult(input) {
 
 function mismatchedObservationResult(input) {
   if (input.observationMismatch !== true) return null;
+  const ref = text(input.ref);
   return {
     success: false,
     action: text(input.action).toLowerCase(),
     errorCode: 'OBSERVATION_MISMATCH',
-    error: 'observation_id 与最近一次 browser_observe 快照不一致。请重新观察后使用新返回的 observationId 和 ref。',
-    ref: text(input.ref),
+    error: ref
+      ? 'observation_id 与最近一次 browser_observe 快照不一致。请重新观察后使用新返回的 observationId 和 ref。'
+      : '坐标对应的观察已失效或无法确认页面身份，请重新观察并从同一页面的新快照取点。',
+    ref,
+    ...(!ref ? { actionExecuted: false } : {}),
     observationId: text(input.observation_id),
     suggestedTool: 'browser_observe',
   };

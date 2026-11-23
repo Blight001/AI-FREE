@@ -159,6 +159,7 @@ function prepareChatRequest(deps, event, input, chatRuns, getWindowTools) {
     deps.aiSandboxDir, options.attachmentPaths, options.mentions, options.artifactReferences,
   );
   const toolContext = buildChatToolContext({
+    disableTools: options.disableTools,
     connections: resolvedConnections.connections,
     controlledConnectionId: resolvedConnections.controlledConnectionId,
     windowTools,
@@ -171,7 +172,8 @@ function prepareChatRequest(deps, event, input, chatRuns, getWindowTools) {
   return {
     ...access,
     ...options,
-    ...started,
+    runKey: started.key,
+    run: started.run,
     bridge: deps.browserAutomationBridge,
     workspaceDir: deps.aiSandboxDir,
     connections: resolvedConnections.connections,
@@ -182,7 +184,32 @@ function prepareChatRequest(deps, event, input, chatRuns, getWindowTools) {
   };
 }
 
+function prepareChatContinuation(deps, event, input, chatRuns) {
+  const options = normalizeChatOptions(input);
+  const checkpoint = chatRuns.getContinuation(event, input.resumeRequestId);
+  if (!checkpoint || !options.useStream || !options.requestId) {
+    return { error: { ok: false, errorCode: 'AI_CONTINUATION_UNAVAILABLE', message: '当前回复无法继续，请发送新消息' } };
+  }
+  const saved = checkpoint.state;
+  const access = resolveChatAccess(deps, { ...input, modelId: saved.modelId });
+  if (access.error) return access;
+  if (access.key !== saved.key || access.deviceId !== saved.deviceId) {
+    return { error: { ok: false, errorCode: 'AI_CONTINUATION_UNAVAILABLE', message: '登录状态已变更，请发送新消息' } };
+  }
+  const started = chatRuns.begin(event, options.requestId);
+  return {
+    ...saved,
+    ...access,
+    runKey: started.key,
+    run: started.run,
+    requestId: options.requestId,
+    startRound: checkpoint.round,
+    emit: createChatEmitter(event, options),
+  };
+}
+
 module.exports = {
+  prepareChatContinuation,
   createChatEmitter,
   createIdentityRecovery,
   normalizeChatOptions,

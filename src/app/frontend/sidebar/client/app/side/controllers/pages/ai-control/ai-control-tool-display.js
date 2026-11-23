@@ -1,27 +1,44 @@
-  function restoredToolActivity(tool) {
-    if (tool?.name === 'run_command' && tool.status === 'running') {
-      return { ...tool, status: 'error', result: { state: 'termination_unconfirmed' } };
-    }
-    return tool || {};
+  function formatTurnDuration(durationMs) {
+    const seconds = Math.floor(durationMs / 1000);
+    if (!seconds) return '用时不到 1 秒';
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor(seconds / 60) % 60;
+    const parts = [];
+    if (hours) parts.push(hours + ' 小时');
+    if (minutes) parts.push(minutes + ' 分钟');
+    if (seconds % 60) parts.push(seconds % 60 + ' 秒');
+    return '用时 ' + parts.join(' ');
   }
 
-  function createActivityGroup() {
+  function createActivityDisclosure(className, bodyClassName, open, durationLabel = '') {
     const element = document.createElement('details');
-    element.className = 'ai-chat-activity';
-    element.open = true;
-    element.hidden = true;
+    element.className = className;
+    element.open = open;
     const summary = document.createElement('summary');
-    summary.innerHTML = '<span class="ai-chat-activity-arrow" aria-hidden="true">➣</span><span class="ai-chat-activity-label">运行过程</span><span class="ai-chat-activity-status" aria-live="polite"></span><span class="ai-chat-disclosure" aria-hidden="true">›</span>';
+    const markers = durationLabel ? '' : '<span class="ai-chat-activity-arrow" aria-hidden="true">➣</span>';
+    summary.innerHTML = markers + '<span class="ai-chat-activity-label"></span><span class="ai-chat-activity-status" aria-live="polite"></span><span class="ai-chat-disclosure" aria-hidden="true">›</span>';
+    const label = summary.querySelector('.ai-chat-activity-label');
+    label.textContent = durationLabel || '运行过程';
     const body = document.createElement('div');
-    body.className = 'ai-chat-trace';
+    body.className = bodyClassName;
     element.append(summary, body);
-    const disclosure = enableDetailsAnimation(element, body);
     return {
       body,
       element,
-      label: summary.querySelector('.ai-chat-activity-label'),
+      label,
       status: summary.querySelector('.ai-chat-activity-status'),
-      setOpen: disclosure.setOpen,
+      ...enableDetailsAnimation(element, body),
+    };
+  }
+
+  function createActivityGroup() {
+    const activity = createActivityDisclosure('ai-chat-activity', 'ai-chat-trace', true);
+    activity.element.hidden = true;
+    return {
+      ...activity,
+      openedTools: new Set(),
+      hasTools: false,
+      foldHandled: false,
     };
   }
 
@@ -33,12 +50,13 @@
     };
   }
 
-  function enableDetailsAnimation(details, content) {
+  function enableDetailsAnimation(details, content, onToggle = () => {}) {
     const summary = details.querySelector(':scope > summary');
     let heightAnimation = null;
     let contentAnimation = null;
     let targetOpen = details.open;
     let sequence = 0;
+    let manuallyToggled = false;
 
     const prefersReducedMotion = () =>
       window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -107,9 +125,11 @@
     summary.setAttribute('aria-expanded', String(targetOpen));
     summary.addEventListener('click', (event) => {
       event.preventDefault();
+      manuallyToggled = true;
       setOpen(!targetOpen);
+      onToggle(targetOpen);
     });
-    return { setOpen };
+    return { setOpen, isOpen: () => targetOpen, wasToggled: () => manuallyToggled };
   }
 
   class AssistantView {
@@ -124,17 +144,13 @@
       this.activities = [];
       this.row.appendChild(this.stack);
       container.appendChild(this.row);
-      this.content = '';
-      this.answer = null;
-      this.answerRound = -1;
-      this.answerCopy = null;
-      this.answerWrap = null;
+      this.resetAnswer();
       this.thinkingViews = new Map();
       this.toolViews = new Map();
       this.startActivityGroup();
       this.hydrate({ traceEvents: options.traceEvents || [], reasoning: options.reasoning, toolEvents: options.toolEvents || [] });
       if (options.content) this.addContent(options.content, Number.MAX_SAFE_INTEGER);
-      if (!options.pending) this.finalize();
+      if (!options.pending) this.finalize({ durationMs: options.durationMs });
     }
 
     startActivityGroup() {
@@ -169,7 +185,15 @@
       return this.answer;
     }
 
+    foldCurrentTools() {
+      const activity = this.activity;
+      if (!activity.hasTools || activity.foldHandled) return;
+      activity.foldHandled = true;
+      if (!activity.wasToggled() && !activity.openedTools.size) activity.setOpen(false);
+    }
+
     updateAnswer(value) {
+      if (String(value || '').trim()) this.foldCurrentTools();
       renderMarkdownInto(this.ensureAnswer(), value);
       this.answerCopy.dataset.copyText = String(value || '');
     }
@@ -215,27 +239,23 @@
 
     appendStep(value) {
       if (!String(value || '').trim()) return;
-      this.content = String(value);
-      this.updateAnswer(this.content);
-      this.answer.classList.remove('is-streaming');
-      this.answerWrap.classList.add('ai-chat-step-answer');
-      this.content = '';
+      this.setContent(value);
+      this.demoteAnswerToStep();
+    }
+
+    resetAnswer() {
       this.answer = null;
       this.answerCopy = null;
       this.answerWrap = null;
+      this.content = '';
       this.answerRound = -1;
-      this.startActivityGroup();
     }
 
     demoteAnswerToStep() {
       if (!this.content.trim() || !this.answer) return;
       this.answer.classList.remove('is-streaming');
       this.answerWrap.classList.add('ai-chat-step-answer');
-      this.answer = null;
-      this.answerCopy = null;
-      this.answerWrap = null;
-      this.content = '';
-      this.answerRound = -1;
+      this.resetAnswer();
       this.startActivityGroup();
     }
 
@@ -288,12 +308,11 @@
       this.content = String(value || '');
       if (!this.content) {
         this.answerWrap?.remove();
-        this.answer = null;
-        this.answerCopy = null;
-        this.answerWrap = null;
-        this.answerRound = -1;
+        this.resetAnswer();
       } else {
         this.answerRound = roundId;
+        this.discardEmptyThinking(roundId);
+        this.finishThinking(roundId);
         this.updateAnswer(this.content);
       }
     }
@@ -310,8 +329,14 @@
         this.discardEmptyThinking(roundId);
         this.finishThinking(roundId);
         this.demoteAnswerToStep();
-        view = createToolActivity(tool);
-        view.activity = this.activity;
+        if (this.activity.foldHandled) this.startActivityGroup();
+        const activity = this.activity;
+        activity.hasTools = true;
+        view = createToolActivity(tool, (open) => {
+          if (open) activity.openedTools.add(id);
+          else activity.openedTools.delete(id);
+        });
+        view.activity = activity;
         this.toolViews.set(id, view);
         this.trace.appendChild(view.card);
       } else {
@@ -344,7 +369,46 @@
       toolEvents.forEach((tool, index) => this.upsertTool(restoredToolActivity(tool), index + 1));
     }
 
-    finalize() {
+    resume(round) {
+      if (this.process) {
+        if (this.process.wasToggled()) this.processOpenedByUser = this.process.isOpen();
+        this.stack.prepend(...this.process.body.children);
+        this.process.element.remove();
+        this.process = null;
+      }
+      this.durationLabel?.remove();
+      this.durationLabel = null;
+      this.replaceContent('', this.answerRound);
+      const partialThinking = this.thinkingViews.get(Number(round));
+      if (partialThinking) {
+        partialThinking.element.remove();
+        this.thinkingViews.delete(Number(round));
+        this.syncActivityGroup(partialThinking.activity);
+      }
+      this.row.classList.add('pending');
+    }
+
+    compactStagedReply(durationLabel) {
+      const steps = [...this.stack.children].filter((node) =>
+        node.classList.contains('ai-chat-step-answer') || node.classList.contains('ai-chat-activity'));
+      if (!steps.some((node) => !node.hidden && (durationLabel || node.classList.contains('ai-chat-step-answer')))) return false;
+      const keepOpen = this.processOpenedByUser || this.activities.some((activity) =>
+        activity.isOpen() && (activity.wasToggled() || activity.openedTools.size > 0));
+      this.process = createActivityDisclosure('ai-chat-process', 'ai-chat-process-body', Boolean(keepOpen), durationLabel);
+      this.process.body.append(...steps);
+      this.stack.prepend(this.process.element);
+      return true;
+    }
+
+    showTurnDuration(durationLabel) {
+      this.durationLabel ||= document.createElement('div');
+      this.durationLabel.className = 'ai-chat-turn-duration';
+      this.durationLabel.textContent = durationLabel;
+      this.stack.prepend(this.durationLabel);
+    }
+
+    finalize({ durationMs } = {}) {
+      this.foldCurrentTools();
       this.row.classList.remove('pending');
       this.thinkingViews.forEach((view, round) => {
         if (view.content) this.finishThinking(round);
@@ -352,6 +416,12 @@
       });
       this.answer?.classList.remove('is-streaming');
       this.activities.forEach((activity) => this.syncActivityGroup(activity));
+      const durationLabel = Number.isSafeInteger(durationMs) && durationMs >= 0 ? formatTurnDuration(durationMs) : '';
+      if (this.process) {
+        if (durationLabel) this.process.label.textContent = durationLabel;
+      } else if (!this.compactStagedReply(durationLabel) && durationLabel) {
+        this.showTurnDuration(durationLabel);
+      }
     }
   }
 

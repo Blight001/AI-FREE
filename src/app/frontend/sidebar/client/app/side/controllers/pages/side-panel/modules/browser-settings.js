@@ -113,9 +113,9 @@
     selectedHistoryId = String(historyId || '');
     const item = browserHistory.find((entry) => entry.id === selectedHistoryId);
     const recordFields = el('browser-record-edit-fields');
-    const deleteButton = el('delete-browser-record');
+    const recordActions = el('browser-record-actions');
     if (recordFields) recordFields.hidden = false;
-    if (deleteButton) deleteButton.hidden = false;
+    if (recordActions) recordActions.hidden = false;
     setValue('browser-record-name', text(item && item.name, '新建窗口'));
     if (el('save-ai-free-settings')) el('save-ai-free-settings').textContent = '保存修改';
     if (options.openDialog === true) {
@@ -139,7 +139,7 @@
     el('browser-cookie-config-row').hidden = true;
     selectedHistoryId = '';
     if (el('browser-record-edit-fields')) el('browser-record-edit-fields').hidden = true;
-    if (el('delete-browser-record')) el('delete-browser-record').hidden = true;
+    if (el('browser-record-actions')) el('browser-record-actions').hidden = true;
     if (el('save-ai-free-settings')) el('save-ai-free-settings').textContent = '保存参数';
     openBrowserSettingsDialog('浏览器默认环境配置', focusId);
     setStatus('正在读取默认环境参数…');

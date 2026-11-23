@@ -51,9 +51,20 @@ function clearObservations(owner, connectionId) {
   }
 }
 
+function resolveCoordinateObservation(owner, connection, args) {
+  const observationId = text(args.observation_id ?? args.observationId);
+  if (!observationId || text(args.selector) || !nonNegativePoint(args.x, args.y)) return args;
+  if (!/^(click|double_click|right_click)$/.test(text(args.action))) return args;
+  const token = expectedPageToken(connection);
+  const snapshot = observationStore(owner, connection).observationHistory.get(connection.id)?.at(-1);
+  if (token && snapshot?.observationId === observationId && matchesPage(snapshot, token)
+    && Date.now() - snapshot.createdAt <= OBSERVATION_HISTORY_TTL_MS) return args;
+  return { ...args, observation_id: observationId, observationMismatch: true };
+}
+
 function resolveObservedTarget(owner, connection, args) {
   const ref = observedRef(args);
-  if (!ref) return args;
+  if (!ref) return resolveCoordinateObservation(owner, connection, args);
   const input = text(args.ref) ? args : { ...args, ref };
   const token = expectedPageToken(connection);
   if (token === undefined && text(input.selector)) return input;
@@ -102,7 +113,7 @@ function rememberObservation(owner, connection, observationId, targets) {
   const store = observationStore(owner, connection);
   store.observeTargets.set(connection.id, targets);
   const history = store.observationHistory.get(connection.id) || [];
-  history.push({ observationId, createdAt: Date.now(), targets });
+  history.push({ observationId, createdAt: Date.now(), targets, [PAGE_TOKEN]: expectedPageToken(connection) });
   store.observationHistory.set(connection.id, history.slice(-OBSERVATION_HISTORY_LIMIT));
 }
 

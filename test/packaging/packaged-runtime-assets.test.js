@@ -97,6 +97,7 @@ test('sidebar logos use the runtime asset resolver in source and packaged apps',
   assert.doesNotMatch(aiControlPage, /id="(?:home-mcp|ai-chat-browser(?:-trigger)?|ai-chat-target|ai-prompt-diagnostics-dialog)/);
   for (const file of ['styles/app-shell-console.css', 'controllers/pages/app-shell/shell-home-console.js',
     'styles/app-shell-flow-studio.css', 'controllers/pages/app-shell/automation-canvas.js',
+    'controllers/pages/app-shell/automation-mcp-node-editor.js',
     'controllers/pages/app-shell/shell-home-automation.js',
     'controllers/pages/app-shell/site-preference-transfer.js',
     'styles/app-shell-site-data.css', 'controllers/pages/app-shell/site-data.js',
@@ -164,4 +165,42 @@ test('embedded Chromium clears hover tooltips when hidden or deactivated', () =>
   assert.match(focusManager, /ShowWindowAsync\(hwnd, SW_HIDE\)/);
   assert.match(hostWindow, /HideHostWindow[\s\S]*?DismissBrowserTransientUi/);
   assert.match(shellWindow, /mainWindow\.on\('blur',[\s\S]*?dismissActiveBrowserTransientUi/);
+});
+
+test('app shell loads the shared automation schema before the classic editor and controller scripts', () => {
+  const views = path.resolve(__dirname, '../../src/app/frontend/views');
+  const shell = fs.readFileSync(path.join(views, 'app-shell.html'), 'utf8');
+  const scripts = [...shell.matchAll(/<script src="([^"]+)"[^>]*><\/script>/g)].map((match) => match[1]);
+  const editorScripts = [
+    '../../shared/automation-schema.js',
+    '../renderer/controllers/pages/app-shell/automation-mcp-node-editor.js',
+    '../renderer/controllers/pages/app-shell/shell-home-automation.js',
+  ];
+  assert.deepEqual(scripts.filter((src) => editorScripts.includes(src)), editorScripts);
+  for (const src of editorScripts) assert.ok(fs.statSync(path.resolve(views, src)).isFile(), src);
+});
+
+test('app shell loads shared browser history hit geometry before tab selection handlers', () => {
+  const views = path.resolve(__dirname, '../../src/app/frontend/views');
+  const shell = fs.readFileSync(path.join(views, 'app-shell.html'), 'utf8');
+  const scripts = [...shell.matchAll(/<script src="([^"]+)"[^>]*><\/script>/g)].map((match) => match[1]);
+  const geometryScript = '../../shared/browser-history-gesture-layout.js';
+  assert.ok(scripts.indexOf(geometryScript) >= 0);
+  assert.ok(scripts.indexOf(geometryScript) < scripts.indexOf('../renderer/controllers/pages/app-shell/tabs-shell-ui.js'));
+  assert.ok(fs.statSync(path.resolve(views, geometryScript)).isFile());
+});
+
+
+test('managed chat uses the existing sidebar page and ships its controller and stylesheet', () => {
+  const root = path.resolve(__dirname, '../..');
+  const assets = ['client/app/side/controllers/pages/ai-control/ai-control-managed-chat.js',
+    'client/app/side/styles/modules/ai-control-managed-chat.css'];
+  for (const tree of ['src/app', '.generated/app/src/app']) {
+    const sidebar = path.join(root, tree, 'frontend/sidebar');
+    const page = fs.readFileSync(path.join(sidebar, 'ai-control.html'), 'utf8');
+    for (const asset of assets) {
+      assert.ok(page.includes(`./${asset}`));
+      assert.ok(fs.statSync(path.join(sidebar, asset)).size > 0);
+    }
+  }
 });

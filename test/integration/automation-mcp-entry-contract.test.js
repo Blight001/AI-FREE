@@ -14,17 +14,22 @@ const CONNECTION_ID = 'native:automation-fixture';
 const TERMINAL_RUN_STATES = new Set(['succeeded', 'failed', 'cancelled', 'timed_out']);
 const CARD_TOOL = NATIVE_BROWSER_TOOL_DEFINITIONS.find((tool) => tool.name === 'manage_card');
 
-function createFixture(t, { pageToken } = {}) {
+function createFixture(t, { pageToken, connected = true, blockNavigation = false } = {}) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aifree-automation-mcp-entry-'));
   t.after(() => fs.rmSync(dataDir, { recursive: true, force: true }));
   const calls = [];
+  let states = connected ? [{ profileId: 'automation-fixture', pid: 7412, bridgeConnected: true, status: 'ready' }] : [];
   let takeoverActive = false;
+  let releaseNavigation;
+  const navigationGate = new Promise((resolve) => { releaseNavigation = resolve; });
+  let markNavigationStarted;
+  const navigationStarted = new Promise((resolve) => { markNavigationStarted = resolve; });
   const activeTab = {
     id: '0', title: 'Offline fixture', url: 'https://fixture.invalid/',
     ...(pageToken ? { pageToken } : {}),
   };
   const browserRuntimeManager = {
-    listStates: () => [{ profileId: 'automation-fixture', pid: 7412, bridgeConnected: true, status: 'ready' }],
+    listStates: () => states,
     async dispatchAutomationByProcessId(_pid, command, args = {}, options = {}) {
       calls.push({ command, args, expectedPageToken: options.expectedPageToken });
       if (command === 'list-tabs') {
@@ -54,6 +59,10 @@ function createFixture(t, { pageToken } = {}) {
       throw new Error('Unexpected mocked browser command: ' + command);
     },
     async navigate(_profileId, _runtime, url) {
+      if (blockNavigation) {
+        markNavigationStarted();
+        await navigationGate;
+      }
       activeTab.url = url;
       activeTab.pageToken = 'fixture-page-token-after-navigation';
       return { success: true, url };
@@ -66,7 +75,18 @@ function createFixture(t, { pageToken } = {}) {
     getExternalMcpAccess: () => true,
     logger: { log() {}, warn() {} },
   });
-  return { bridge, calls, dataDir, activeTab, takeoverActive: () => takeoverActive };
+  return {
+    bridge, calls, dataDir, activeTab,
+    get navigationStarted() { return waitForNavigation(navigationStarted); },
+    setTargets: (...targets) => { states = targets.map(([profileId, pid]) => ({ profileId, pid, bridgeConnected: true, status: 'ready' })); },
+    releaseNavigation: () => releaseNavigation?.(), takeoverActive: () => takeoverActive,
+  };
+}
+
+async function waitForNavigation(started) {
+  let timer;
+  const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Fixture navigation did not start')), 2000); });
+  try { await Promise.race([started, timeout]); } finally { clearTimeout(timer); }
 }
 
 function cardData(name, steps = [{ type: 'end' }]) {
@@ -102,7 +122,7 @@ async function waitForRunStatus(callManageCard, runId, expectedStatus) {
 
 async function capture(operation) {
   try { return { ok: true, value: await operation() }; }
-  catch (error) { return { ok: false, error: String(error?.message || error) }; }
+  catch (error) { return { ok: false, error: String(error?.message || error), errorCode: error?.code || '' }; }
 }
 
 function sidebarContext(fixture) {
@@ -194,7 +214,7 @@ test('external MCP start_run and run lifecycle actions use the bridge run manage
   await check('list_run_steps', { run_id: runId }, (outcome) => outcome.ok && outcome.value.success === true);
   await check('cancel_run', { run_id: runId }, (outcome) => outcome.ok && outcome.value.success === true);
   await check('retry_run', { run_id: runId }, (outcome) => (
-    outcome.ok && outcome.value.success === true && Boolean(outcome.value.run?.id)
+    !outcome.ok && /仅可重试标记为可重试的失败运行/.test(outcome.error)
   ));
   await check('pause_run', { run_id: runId }, (outcome) => (
     !outcome.ok && /不能暂停/.test(outcome.error)
@@ -206,12 +226,6 @@ test('external MCP start_run and run lifecycle actions use the bridge run manage
     !outcome.ok && /单步运行仅可用于已暂停/.test(outcome.error)
   ));
 
-  const retried = outcomes.find((item) => item.action === 'retry_run' && item.passed);
-  if (retried) {
-    const runList = fixture.bridge.manageCard(CONNECTION_ID, { action: 'list_runs' });
-    const retryRun = runList.items.find((item) => item.sourceRunId === runId);
-    if (retryRun) await waitForRun(fixture.bridge, retryRun.id);
-  }
   assert.deepEqual(outcomes.filter((item) => !item.passed), [], JSON.stringify(outcomes, null, 2));
   assert.equal(started.ok, true);
 });
@@ -276,7 +290,7 @@ test('local sidebar start_run and get_run share external MCP run state', async (
   assert.deepEqual(completed, externalRead.run);
 });
 
-test('both MCP entries cancel an in-flight managed card run', async (t) => {
+test('each MCP entry can cancel a run started by the other after the browser disconnects', async (t) => {
   for (const entryName of ['external', 'sidebar']) {
     const fixture = createFixture(t, { pageToken: 'fixture-page-token' });
     const entry = entryAdapter(fixture, entryName);
@@ -290,10 +304,101 @@ test('both MCP entries cancel an in-flight managed card run', async (t) => {
     const running = await waitForRunStatus(entry.manageCard, started.run.id, 'running');
     assert.equal(running.status, 'running', entryName);
 
-    const cancelled = await entry.manageCard('cancel_run', { run_id: started.run.id, reason: 'contract test' });
+    fixture.setTargets();
+    const peer = entryAdapter(fixture, entryName === 'external' ? 'sidebar' : 'external');
+    const cancelled = await peer.manageCard('cancel_run', { run_id: started.run.id, reason: 'contract test' });
     assert.equal(cancelled.success, true, entryName);
     const finalRun = await waitForRunStatus(entry.manageCard, started.run.id, 'cancelled');
     assert.equal(finalRun.error.code, 'RUN_CANCELLED', entryName);
+    assert.deepEqual((await peer.manageCard('get_run', { run_id: started.run.id })).run, finalRun);
+    assert.ok((await peer.manageCard('list_run_steps', { run_id: started.run.id })).items.length);
+  }
+});
+
+test('both entries expose card management without a browser and defer target checks until execution', async (t) => {
+  const fixture = createFixture(t, { connected: false });
+  const external = entryAdapter(fixture, 'external');
+  const sidebar = entryAdapter(fixture, 'sidebar');
+  const externalTools = fixture.bridge.listExternalMcpTools().tools;
+  const sidebarDefinitions = buildChatToolContext({
+    connections: [], windowTools: { tools: [], has: () => false },
+    automationCards: [], localInteraction: true, initialMessages: [{ role: 'user', content: 'manage automation cards' }],
+  });
+  assert.ok(externalTools.some((tool) => tool.name === 'manage_card'));
+  assert.ok(sidebarDefinitions.tools.some((tool) => tool.name === 'manage_card'));
+
+  const written = await external.manageCard('write', { cardData: cardData('offline-managed-card') });
+  assert.equal(written.success, true);
+  const fetched = await sidebar.manageCard('get', { id: written.item.id });
+  assert.equal(fetched.success, true);
+  assert.equal(fetched.item.id, written.item.id);
+
+  const externalRun = await capture(() => external.manageCard('start_run', { id: written.item.id }));
+  const sidebarRun = await sidebar.manageCard('start_run', { id: written.item.id });
+  assert.equal(externalRun.ok, false);
+  assert.equal(externalRun.errorCode, 'BROWSER_ROUTE_NOT_FOUND');
+  assert.equal(sidebarRun.success, false);
+  assert.equal(sidebarRun.errorCode, externalRun.errorCode);
+  assert.equal((await external.manageCard('list_runs')).items.length, 0);
+});
+
+test('both MCP entries require takeover to retry, resume, or single-step a bound run', async (t) => {
+  for (const entryName of ['external', 'sidebar']) {
+    const fixture = createFixture(t, { pageToken: 'fixture-page-token' });
+    const entry = entryAdapter(fixture, entryName);
+    const retryCard = await saveCard(fixture.bridge, cardData(`${entryName}-retry-gate`, [
+      { type: 'mcp', tool: 'browser_action', arguments: { action: 'click', selector: '#submit', after: 'none' } },
+    ]));
+    const failedRun = (await fixture.bridge.manageCard(CONNECTION_ID, { action: 'start_run', id: retryCard.id })).run;
+    await waitForRun(fixture.bridge, failedRun.id);
+    const retry = await entry.manageCard('retry_run', { run_id: failedRun.id });
+    assert.equal(retry.errorCode, 'BROWSER_TAKEOVER_REQUIRED', entryName);
+
+    const pausedCard = await saveCard(fixture.bridge, cardData(`${entryName}-resume-gate`, [
+      { type: 'delay', delayMs: 30 }, { type: 'delay', delayMs: 30 }, { type: 'end' },
+    ]));
+    const pausedRun = (await fixture.bridge.manageCard(CONNECTION_ID, { action: 'start_run', id: pausedCard.id })).run;
+    try {
+      await waitForRunStatus((action, args) => fixture.bridge.manageCard('', { action, ...args }), pausedRun.id, 'running');
+      fixture.bridge.manageCard('', { action: 'pause_run', run_id: pausedRun.id });
+      await waitForRunStatus((action, args) => fixture.bridge.manageCard('', { action, ...args }), pausedRun.id, 'paused');
+      assert.equal((await entry.manageCard('resume_run', { run_id: pausedRun.id })).errorCode, 'BROWSER_TAKEOVER_REQUIRED', entryName);
+      assert.equal((await entry.manageCard('step_run', { run_id: pausedRun.id })).errorCode, 'BROWSER_TAKEOVER_REQUIRED', entryName);
+      assert.equal(fixture.bridge.manageCard('', { action: 'get_run', run_id: pausedRun.id }).run.status, 'paused', entryName);
+    } finally {
+      await fixture.bridge.manageCard('', { action: 'cancel_run', run_id: pausedRun.id });
+      await waitForRun(fixture.bridge, pausedRun.id);
+    }
+  }
+});
+
+test('both MCP entries keep a run cancelling until a non-cooperative navigation returns', async (t) => {
+  for (const entryName of ['external', 'sidebar']) {
+    const fixture = createFixture(t, { pageToken: 'fixture-page-token', blockNavigation: true });
+    const entry = entryAdapter(fixture, entryName);
+    await entry.callTool('browser_control', { action: 'acquire' });
+    const card = await saveCard(fixture.bridge, cardData(`${entryName}-in-flight-navigation`, [
+      { type: 'mcp', tool: 'browser_tab', arguments: { action: 'replace', url: 'https://commit-on-return.invalid/' } },
+      { type: 'mcp', tool: 'browser_action', arguments: { action: 'click', selector: '#submit', after: 'none' } },
+    ]));
+    const started = await entry.manageCard('start_run', { id: card.id });
+    try {
+      await fixture.navigationStarted;
+
+      const stopRequest = await entry.manageCard('cancel_run', { run_id: started.run.id });
+      assert.equal(stopRequest.run.status, 'cancelling', entryName);
+      assert.equal(stopRequest.run.finishedAt, null, entryName);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      assert.equal((await entry.manageCard('get_run', { run_id: started.run.id })).run.status, 'cancelling', entryName);
+    } finally {
+      fixture.releaseNavigation();
+      await fixture.bridge.manageCard('', { action: 'cancel_run', run_id: started.run.id });
+      await waitForRun(fixture.bridge, started.run.id);
+    }
+    const finalRun = await waitForRunStatus(entry.manageCard, started.run.id, 'cancelled');
+    assert.equal(fixture.activeTab.url, 'https://commit-on-return.invalid/', entryName);
+    assert.equal(finalRun.status, 'cancelled', entryName);
+    assert.equal(fixture.calls.some((call) => call.command === 'perform-action'), false, entryName);
   }
 });
 
@@ -357,4 +462,140 @@ test('browser actions and card execution require takeover; card MCP recursion is
   });
   assert.equal(recursiveRun.success, false);
   assert.match(recursiveRun.error, /禁止递归调用 manage_card/);
+});
+
+function installSoftwareFixture(fixture, invoke = () => ({ success: true })) {
+  const calls = [];
+  fixture.bridge.configureExternalMcp({ getWindowTools: () => ({
+    tools: [{ name: 'fixture_write', input_schema: { type: 'object' } }], has: (name) => name === 'fixture_write',
+    execute: (name, args) => { calls.push(name); return invoke(args); },
+  }) });
+  return calls;
+}
+
+for (const entryName of ['external', 'sidebar']) {
+  for (const change of ['release', 'replace-process', 'disconnect']) {
+    test(`${entryName} blocks software dispatch after ${change}`, async (t) => {
+      const fixture = createFixture(t, { blockNavigation: true });
+      const entry = entryAdapter(fixture, entryName);
+      const calls = installSoftwareFixture(fixture);
+      await entry.callTool('browser_control', { action: 'acquire' });
+      const card = await saveCard(fixture.bridge, cardData('dispatch gate', [
+        { type: 'navigate', url: 'https://before-change.invalid/' }, { type: 'mcp', tool: 'fixture_write' },
+      ]));
+      const { run } = await entry.manageCard('start_run', { id: card.id });
+      try {
+        await fixture.navigationStarted;
+        if (change === 'release') {
+          await entry.callTool('browser_control', { action: 'release' });
+          await entry.callTool('browser_control', { action: 'acquire' });
+        } else if (change === 'replace-process') {
+          fixture.setTargets(['automation-fixture', 7777]);
+          await entry.callTool('browser_control', { action: 'acquire' });
+        } else fixture.setTargets(['remaining', 8888]);
+      } finally {
+        fixture.releaseNavigation();
+        await waitForRun(fixture.bridge, run.id);
+      }
+      const result = (await entry.manageCard('get_run', { run_id: run.id })).run;
+      assert.equal(result.status, 'failed');
+      assert.equal(result.error.code, { release: 'BROWSER_TAKEOVER_REQUIRED', 'replace-process': 'RUN_TARGET_MISMATCH',
+        disconnect: 'BROWSER_CONNECTION_NOT_FOUND' }[change]);
+      assert.deepEqual(calls, []);
+    });
+  }
+}
+
+test('permanent deletion from either MCP entry requires takeover and preserves the recycled card on denial', async (t) => {
+  for (const name of ['external', 'sidebar']) {
+    const fixture = createFixture(t);
+    const entry = entryAdapter(fixture, name);
+    const peer = entryAdapter(fixture, name === 'external' ? 'sidebar' : 'external');
+    const { item } = await entry.manageCard('write', { cardData: cardData('purge-gate') });
+    await peer.manageCard('delete', { id: item.id });
+    const recycled = () => peer.manageCard('list', { include_deleted: true });
+    assert.equal((await recycled()).items[0].id, item.id);
+    assert.equal((await entry.manageCard('purge', { id: item.id })).errorCode, 'BROWSER_TAKEOVER_REQUIRED');
+    assert.equal((await recycled()).items[0].id, item.id);
+    await entry.callTool('browser_control', { action: 'acquire' });
+    assert.equal((await entry.manageCard('purge', { id: item.id })).success, true);
+    assert.deepEqual((await recycled()).items, []);
+  }
+});
+
+for (const name of ['external', 'sidebar']) {
+  test(`${name} cannot resume, step or retry on a different acquired window`, async (t) => {
+    const fixture = createFixture(t);
+    const other = 'native:other';
+    fixture.setTargets(['automation-fixture', 7412], ['other', 8888]);
+    const entry = entryAdapter(fixture, name);
+    const calls = installSoftwareFixture(fixture, () => ({ success: false, error: 'fixture failure', retryable: true, actionExecuted: false }));
+    const retryCard = await saveCard(fixture.bridge, cardData('retryable', [{ type: 'mcp', tool: 'fixture_write' }]));
+    const { run: failed } = await fixture.bridge.manageCard(CONNECTION_ID, { action: 'start_run', id: retryCard.id });
+    assert.equal((await waitForRun(fixture.bridge, failed.id)).retryAvailable, true);
+    assert.deepEqual(calls, ['fixture_write']);
+    const pausedCard = await saveCard(fixture.bridge, cardData('paused target', [
+      { type: 'delay', delayMs: 40 }, { type: 'mcp', tool: 'fixture_write' },
+    ]));
+    const { run: paused } = await fixture.bridge.manageCard(CONNECTION_ID, { action: 'start_run', id: pausedCard.id });
+    try {
+      await entry.manageCard('pause_run', { run_id: paused.id });
+      assert.equal((await waitForRunStatus(entry.manageCard, paused.id, 'paused')).status, 'paused');
+      await entry.callTool('browser_control', { action: 'acquire', change_browser: other });
+      for (const [action, run_id] of [['resume_run', paused.id], ['step_run', paused.id], ['retry_run', failed.id]]) {
+        const error = await capture(() => entry.manageCard(action, { run_id, change_browser: other, connectionId: CONNECTION_ID }));
+        assert.equal(error.errorCode, 'RUN_TARGET_MISMATCH');
+      }
+      assert.equal((await entry.manageCard('get_run', { run_id: paused.id })).run.status, 'paused');
+      assert.equal((await entry.manageCard('list_runs')).items.length, 2);
+      assert.deepEqual(calls, ['fixture_write']);
+    } finally {
+      await entry.manageCard('cancel_run', { run_id: paused.id });
+      await waitForRun(fixture.bridge, paused.id);
+    }
+  });
+}
+
+test('an MCP continuation of a home-started run guards subsequent software steps', async (t) => {
+  for (const action of ['resume_run', 'step_run', 'retry_run']) {
+    const fixture = createFixture(t, { blockNavigation: true });
+    const entry = entryAdapter(fixture, 'external');
+    let fail = action === 'retry_run';
+    const calls = installSoftwareFixture(fixture, () => {
+      if (!fail) return { success: true };
+      fail = false;
+      return { success: false, error: 'initial failure', retryable: true, actionExecuted: false };
+    });
+    const card = await saveCard(fixture.bridge, cardData(action, [
+      action === 'retry_run' ? { type: 'mcp', tool: 'fixture_write' } : { type: 'delay', delayMs: 30 },
+      { type: 'navigate', url: 'https://after-resume.invalid/' }, { type: 'mcp', tool: 'fixture_write' },
+    ]));
+    const unsubscribe = fixture.bridge.onRunProgress(({ event, run: active }) => {
+      const step = active.steps.at(-1);
+      if (event === 'progress' && step?.type === 'delay' && step.phase === 'started') {
+        fixture.bridge.manageCard('', { action: 'pause_run', run_id: active.id });
+      }
+    });
+    let { run } = await fixture.bridge.manageCard(CONNECTION_ID, { action: 'start_run', id: card.id });
+    try {
+      if (action === 'retry_run') assert.equal((await waitForRun(fixture.bridge, run.id)).retryAvailable, true);
+      else assert.equal((await waitForRunStatus(entry.manageCard, run.id, 'paused')).status, 'paused');
+      await entry.callTool('browser_control', { action: 'acquire' });
+      run = (await entry.manageCard(action, { run_id: run.id })).run;
+      await fixture.navigationStarted;
+      await entry.callTool('browser_control', { action: 'release' });
+      fixture.releaseNavigation();
+      if (action === 'step_run') {
+        assert.equal((await waitForRunStatus(entry.manageCard, run.id, 'paused')).status, 'paused');
+        await fixture.bridge.manageCard(CONNECTION_ID, { action: 'resume_run', run_id: run.id });
+      }
+      assert.equal((await waitForRun(fixture.bridge, run.id)).error.code, 'BROWSER_TAKEOVER_REQUIRED');
+      assert.equal(calls.length, action === 'retry_run' ? 2 : 0);
+    } finally {
+      unsubscribe();
+      fixture.releaseNavigation();
+      await entry.manageCard('cancel_run', { run_id: run.id });
+      await waitForRun(fixture.bridge, run.id);
+    }
+  }
 });

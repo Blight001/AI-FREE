@@ -279,7 +279,7 @@ class ProxyTrafficMonitor {
     this.unavailableNotified = true;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
-    this.logger.warn?.('[流量计量] Mihomo 控制端口连续不可用，已停止轮询并恢复直连');
+    this.logger.warn?.('[流量计量] Mihomo 控制端口连续不可用，已停止轮询');
     await this.flush({ force: true }).catch(() => {});
     await Promise.resolve(this.onUnavailable?.(error)).catch(() => {});
   }

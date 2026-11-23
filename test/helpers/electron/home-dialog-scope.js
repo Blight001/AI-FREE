@@ -117,6 +117,22 @@ async function checkConfirmationAndReturnHome(contents, click, read) {
   pressEscape(contents);
   assert.ok((await poll(() => read(editor), (state) => state.visible)).visible);
   assert.equal(await execute(() => (/** @type {HTMLInputElement} */ (document.getElementById('browser-record-name'))).value), draft);
+  const recordActions = await execute(() => {
+    const group = document.getElementById('browser-record-actions');
+    return {
+      visible: group.hidden === false,
+      buttons: Array.from(group.children).map((button) => button.id),
+    };
+  });
+  assert.deepEqual(recordActions, {
+    visible: true,
+    buttons: ['delete-browser-record', 'clear-browser-record-data'],
+  });
+  await click('#clear-browser-record-data');
+  assert.ok((await poll(() => read(confirmation), (state) => state.visible)).visible);
+  await click('#home-confirm-dialog button[value="cancel"]');
+  assert.ok((await poll(() => read(confirmation), (state) => !state.visible)).visible === false);
+  assert.ok((await poll(() => read(editor), (state) => state.visible)).visible);
   await click('#browser-settings-dialog-close');
   assert.equal((await read(editor)).visible, false);
 }

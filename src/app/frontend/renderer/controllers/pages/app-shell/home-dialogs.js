@@ -5,6 +5,7 @@ const homeDialogs = (() => {
   const content = document.getElementById('ai-free-settings-panel');
   const confirmation = document.getElementById('home-confirm-dialog');
   const stack = [];
+  let browserDataClearConfirmationBound = false;
 
   function release(dialog, restoreFocus) {
     const { resolveFocus, previousFocus, onClose } = stack.pop();
@@ -73,5 +74,27 @@ const homeDialogs = (() => {
     });
   }
 
+  function bindBrowserDataClearConfirmation() {
+    const browser = window.aiFree?.browser;
+    if (typeof browser?.onDataClearConfirmRequested !== 'function' || browserDataClearConfirmationBound) return;
+    browserDataClearConfirmationBound = true;
+    browser.onDataClearConfirmRequested((payload = {}) => {
+      const requestId = String(payload?.requestId || '').trim();
+      if (!requestId) return;
+      const browserTitle = String(payload?.title || '当前浏览器').trim() || '当前浏览器';
+      const message = `确认清空"${browserTitle}"的浏览器数据?\n\nCookie、缓存、浏览历史、本地存储和页面会话将被删除，浏览器会自动重新打开。窗口配置和已下载文件会保留。`;
+      void confirm(message).then(async (confirmed) => {
+        try {
+          const result = await browser.resolveDataClearConfirm({ requestId, confirmed });
+          if (confirmed && !result?.ok) window.MessageModal?.showErrorMessage(result?.message || '清空浏览器数据失败');
+          else if (confirmed) window.MessageModal?.showSuccessMessage('浏览器数据已清空');
+        } catch (error) {
+          if (confirmed) window.MessageModal?.showErrorMessage(error?.message || '清空浏览器数据失败');
+        }
+      });
+    });
+  }
+
+  bindBrowserDataClearConfirmation();
   return Object.freeze({ open, close, reset, confirm });
 })();

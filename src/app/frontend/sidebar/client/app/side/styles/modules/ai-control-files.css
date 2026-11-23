@@ -75,3 +75,40 @@
 .theme-light .ai-chat-workspace-preview-heading strong, .theme-light .ai-chat-workspace-preview-body { color: #252638; }
 .theme-light .ai-chat-workspace-actions button, .theme-light .ai-chat-workspace-file-attach, .theme-light .ai-chat-workspace-file-preview, .theme-light .ai-chat-mention-menu button { color: #35364b; }
 .theme-light .ai-chat-workspace-heading strong { color: #252638; }
+
+.ai-chat-inline-chip {
+  display: inline-block;
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  vertical-align: -0.29em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 600;
+  cursor: default;
+}
+
+.ai-chat-inline-chip::before {
+  display: inline-block;
+  width: 11px;
+  height: 12px;
+  margin-inline-end: 5px;
+  border-radius: 2px 4px 2px 2px;
+  background: #168dcc;
+  color: white;
+  content: '';
+  vertical-align: -1px;
+}
+
+.ai-chat-inline-chip[data-kind="图片"]::before {
+  background:
+    radial-gradient(circle at 32% 32%, white 1px, transparent 1.4px),
+    linear-gradient(139deg, transparent 53%, #b7e6ff 55% 70%, transparent 72%),
+    linear-gradient(42deg, transparent 25%, #b7e6ff 27% 54%, transparent 56%),
+    #168dcc;
+}
+
+.ai-chat-inline-chip[data-path=""] { opacity: .58; }

@@ -8,12 +8,17 @@ const path = require('path');
 const { once } = require('events');
 const { app, BrowserWindow } = require('electron');
 const { createBrowserRuntimeManager } = require('../../../src/app/backend/browser-runtime');
+const { buildBrowserRuntimeEnvironment } = require('../../../src/app/backend/features/browser/browser-tab-runtime-profile');
+const { resolveTabBrowserProfile } = require('../../../src/app/backend/utils/browser-profile');
 const { MAX_MESSAGE_BYTES, PROTOCOL_VERSION } = require('../../../src/app/backend/browser-runtime/chromium-command-client');
+const { createCardLoginFixture, verifyAutomationCard } = require('../../helpers/flows/chromium-automation-card');
 const { acceptPageBinding } = require('../../helpers/flows/chromium-page-binding-cases');
 const { acceptMcpFileParity, acceptMcpSessionParity, serveMcpFileFixture } = require('../../helpers/flows/chromium-mcp-file-parity');
 const { verifySidebarReload, verifyTakeoverPointer } = require('../../helpers/flows/chromium-takeover-pointer');
 const { acceptChromiumRobustness } = require('../../helpers/flows/chromium-runtime-robustness');
+const { verifyBrowserHistoryDeletion } = require('../../helpers/flows/chromium-browser-deletion');
 const { resolveTestResources } = require('../../helpers/flows/chromium-candidate-resources');
+const { withFixturePosition } = require('../../helpers/flows/chromium-geolocation');
 
 const acceptanceChromiumPath = String(process.env.AI_FREE_ACCEPTANCE_CHROMIUM_PATH || '').trim();
 if (acceptanceChromiumPath) {
@@ -42,7 +47,7 @@ function cookieHeaderHas(header, name, value) {
   return String(header || '').split(/;\s*/).includes(`${name}=${value}`);
 }
 
-function createTestServer() {
+function createTestServer(loginFixture) {
   return http.createServer((request, response) => {
     const url = new URL(request.url, 'http://127.0.0.1');
     const profile = String(url.searchParams.get('profile') || 'origin');
@@ -52,11 +57,13 @@ function createTestServer() {
       profile,
       cookie: String(request.headers.cookie || ''),
       doNotTrack: request.headers.dnt,
+      userAgent: String(request.headers['user-agent'] || ''),
       secChUa: String(request.headers['sec-ch-ua'] || ''),
       secChUaPlatform: String(request.headers['sec-ch-ua-platform'] || ''),
     });
     response.setHeader('Content-Type', 'text/html; charset=utf-8');
     response.setHeader('Cache-Control', 'no-store');
+    if (loginFixture?.serve(url, request.method, response)) return;
     if (serveMcpFileFixture(url, response)) return;
     if (url.pathname === '/tutorial-entry') {
       response.writeHead(302, { Location: '/page?profile=a' });
@@ -78,6 +85,28 @@ function createTestServer() {
         navigator.permissions.query({ name: 'geolocation' }).then(({ state }) => {
           fetch('/location-result?profile=' + new URLSearchParams(location.search).get('profile') + '&state=' + state);
         });
+      </script>`);
+      return;
+    }
+    if (url.pathname === '/color-scheme') {
+      response.end(`<!doctype html><meta charset="utf-8"><script>
+        const scheme = matchMedia('(prefers-color-scheme: dark)');
+        const update = () => { document.title = scheme.matches ? 'THEME_DARK' : 'THEME_LIGHT'; };
+        scheme.addEventListener("change", update);
+        update();
+      </script>`);
+      return;
+    }
+    if (url.pathname === '/browser-identity') {
+      response.end(`<!doctype html><meta charset="utf-8"><script>
+        (async () => {
+          const { uaFullVersion } = await navigator.userAgentData.getHighEntropyValues(['uaFullVersion']);
+          const params = new URLSearchParams(location.search);
+          params.set('ua', navigator.userAgent);
+          params.set('version', uaFullVersion);
+          params.set('brands', JSON.stringify(navigator.userAgentData.brands));
+          fetch('/browser-identity-result?' + params);
+        })();
       </script>`);
       return;
     }
@@ -103,10 +132,12 @@ function createTestServer() {
           };
           document.title = 'ENVIRONMENT_' + JSON.stringify(values);
           fetch('/environment-values?values=' + encodeURIComponent(JSON.stringify(values))).catch(() => {});
+          const { state } = await navigator.permissions.query({ name: 'geolocation' });
+          const reportLocation = (result) => fetch('/environment-result?' + new URLSearchParams({ state, ...result }));
           navigator.geolocation.getCurrentPosition((position) => {
-            fetch('/environment-result?latitude=' + position.coords.latitude + '&longitude=' +
-              position.coords.longitude + '&accuracy=' + position.coords.accuracy).catch(() => {});
-          }, (error) => fetch('/environment-result?geoError=' + error.code).catch(() => {}), {timeout: 3000});
+            const { latitude, longitude, accuracy } = position.coords;
+            reportLocation({ latitude, longitude, accuracy });
+          }, (error) => reportLocation({ geoError: error.code }), {timeout: 3000});
         </script>`);
       return;
     }
@@ -305,7 +336,8 @@ async function launchProfile(profileId, targetUrl, options = {}) {
     doNotTrack: options.doNotTrack === true,
     geolocationPermission: options.geolocationPermission,
     environmentSettings: options.environmentSettings,
-    extraArgs: ['--enable-logging=stderr'],
+    proxyServer: options.proxyServer,
+    extraArgs: ['--enable-logging=stderr', ...(options.extraArgs || [])],
   }, { x: 0, y: 41, width: options.width || 1180, height: 719 });
   assert.equal(state.status, 'ready');
   assert.equal(state.bridgeConnected, true);
@@ -334,6 +366,68 @@ async function launchProfile(profileId, targetUrl, options = {}) {
   return { state, result };
 }
 
+async function verifyDefaultBrowserIdentity(origin) {
+  const settings = { os: 'win11', kernelVersion: 'auto', ua: { mode: 'default' }, secChUa: { mode: 'default' } };
+  const resolved = await resolveTabBrowserProfile({ browserSettings: settings });
+  const configured = buildBrowserRuntimeEnvironment(settings, resolved);
+  const results = [];
+  for (const [id, environment] of Object.entries({ native: {}, default: configured })) {
+    const profileId = `phase3_identity_${id}`;
+    const state = await manager.launchProfile({
+      profileId, runtimeType: 'chromium', launchTimeoutMs: 30000,
+      ...environment, initialUrl: `${origin}/browser-identity?profile=${id}`,
+    }, { x: 0, y: 41, width: 1180, height: 719 });
+    assert.equal(state.status, 'ready');
+    try {
+      const result = await waitForRequest((request) => request.path === '/browser-identity-result' && request.profile === id);
+      const initial = requests.find((request) => request.path === '/browser-identity' && request.profile === id);
+      const values = new URLSearchParams(result.query);
+      assert.match(initial.userAgent, /Chrome\/\d+\./);
+      assert.match(initial.secChUa, /"Chromium";v="\d+"/);
+      assert.equal(values.get('ua'), initial.userAgent);
+      assert.match(values.get('version'), /^\d+\.\d+\.\d+\.\d+$/);
+      assert.ok(initial.userAgent.includes(`Chrome/${values.get('version').split('.')[0]}.`));
+      const brands = JSON.parse(values.get('brands'));
+      for (const { brand, version } of brands) assert.ok(initial.secChUa.includes(`"${brand}";v="${version}"`));
+      results.push({ userAgent: initial.userAgent, version: values.get('version') });
+    } finally {
+      await stopAndAssertReleased(profileId, state.pid);
+    }
+  }
+  assert.deepStrictEqual(results[1], results[0]);
+  console.log(`[phase3-acceptance] Default profile uses bundled Chromium identity ${results[1].version}`);
+}
+
+async function verifyBrowserColorScheme(profileId, origin) {
+  await manager.navigate(profileId, 'chromium', `${origin}/color-scheme`);
+  async function waitForTitle(title) {
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      const activeTab = (await manager.listTabs(profileId, 'chromium')).result?.activeTab;
+      if (activeTab?.title === title) return activeTab.title;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    throw new Error(`等待 Chromium 页面主题标题失败: ${title}`);
+  }
+  async function waitForThemeTitle() {
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      const activeTab = (await manager.listTabs(profileId, 'chromium')).result?.activeTab;
+      if (['THEME_LIGHT', 'THEME_DARK'].includes(activeTab?.title)) return activeTab.title;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    throw new Error('等待 Chromium 页面报告当前 prefers-color-scheme 超时');
+  }
+  const currentTitle = await waitForThemeTitle();
+  assert.ok(['THEME_LIGHT', 'THEME_DARK'].includes(currentTitle));
+  const darkResult = await manager.setPreferredColorScheme('dark');
+  assert.equal(darkResult.ok, true, 'Chromium must support applying the dark app theme');
+  assert.equal(await waitForTitle('THEME_DARK'), 'THEME_DARK');
+  const lightResult = await manager.setPreferredColorScheme('light');
+  assert.equal(lightResult.ok, true);
+  assert.equal(await waitForTitle('THEME_LIGHT'), 'THEME_LIGHT');
+  console.log('[phase3-acceptance] existing Chromium pages react to light/dark app theme changes');
+}
 async function stopAndAssertReleased(profileId, pid) {
   const paths = manager.store.getProfilePaths(profileId);
   const instance = manager.chromium.instances.get(profileId);
@@ -342,6 +436,72 @@ async function stopAndAssertReleased(profileId, pid) {
   assert.equal(isPidAlive(pid), false, `${profileId} Chromium 根进程必须退出`);
   assert.equal(fs.existsSync(paths.lock), false, `${profileId} Profile Lock 必须释放`);
   assert.equal(instance.commandClient.server, null, `${profileId} Named Pipe server 必须关闭`);
+}
+
+async function verifyManualProxy(origin) {
+  const profileId = 'phase3_proxy_a';
+  const { state } = await launchProfile(profileId, 'http://manual-proxy.test/page?profile=a&manual-proxy=1', {
+    proxyServer: origin,
+    extraArgs: ['--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1'],
+  });
+  assert.equal((await waitForRequest((request) => request.query.includes('manual-proxy=1'))).path, '/page');
+  await stopAndAssertReleased(profileId, state.pid);
+  console.log('Chromium used the explicitly configured local proxy port');
+}
+
+async function verifyBrowserEnvironment(origin) {
+  const profileId = 'phase3_environment';
+  const fixtureStartUrl = `${origin}/page?profile=t`;
+  await launchProfile(profileId, fixtureStartUrl, {
+    geolocationPermission: 'allow',
+    // Exercise the site permission independently of the host's Windows location consent.
+    extraArgs: [
+      '--disable-features=WinSystemLocationPermission',
+      '--remote-debugging-port=0',
+      '--no-proxy-server',
+      '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1',
+    ],
+    environmentSettings: {
+      cpu: 12,
+      memory: 16,
+      browserVersion: '150.0.0.0',
+      os: 'win11',
+      ua: { mode: 'custom', value: 'AI-FREE acceptance environment' },
+      secChUa: {
+        mode: 'custom',
+        brands: [{ brand: 'Chromium', version: '150' }, { brand: 'AI-FREE Test', version: '1' }],
+        platform: 'win11',
+        mobile: false,
+      },
+      resolution: { mode: 'custom', width: 1280, height: 720 },
+      deviceName: { mode: 'custom', value: 'Acceptance Device' },
+      canvas: { mode: 'noise', seed: 'phase3-environment' },
+      geolocation: { permission: 'allow', enabled: true, latitude: 31.23, longitude: 121.47, accuracy: 25 },
+    },
+  });
+  const environmentPaths = manager.store.getProfilePaths(profileId);
+  await withFixturePosition(environmentPaths.chromiumData, fixtureStartUrl, async () => {
+    await manager.navigate(profileId, 'chromium', `${origin}/environment`);
+    const environmentValuesRequest = await waitForRequest((item) => item.path === '/environment-values');
+    const environmentValues = JSON.parse(new URLSearchParams(environmentValuesRequest.query).get('values'));
+    assert.equal(environmentValues.cpu, 12);
+    assert.equal(environmentValues.memory, 16);
+    assert.equal(environmentValues.model, 'Acceptance Device');
+    assert.equal(environmentValues.width, 1280);
+    assert.equal(environmentValues.height, 720);
+    assert.equal(environmentValues.noiseCount, 1);
+    assert(environmentValues.brands.some((brand) => brand.brand === 'AI-FREE Test'));
+    const environmentRequest = requests.find((item) => item.path === '/environment');
+    assert.match(environmentRequest?.secChUa || '', /AI-FREE Test/);
+    assert.equal(environmentRequest?.secChUaPlatform, '"Windows"');
+    const syntheticLocation = await waitForRequest((item) => item.path === '/environment-result');
+    assert.deepStrictEqual(Object.fromEntries(new URLSearchParams(syntheticLocation.query)), {
+      state: 'granted', latitude: '31.23', longitude: '121.47', accuracy: '25',
+    });
+  });
+  console.log('[phase3-acceptance] granted configured geolocation passed with a local fixture position');
+  await manager.stop(profileId, 'chromium', { timeoutMs: 5000 });
+  assert.equal(fs.readdirSync(environmentPaths.root).some((name) => name.startsWith('runtime-environment-')), false);
 }
 
 async function shutdown(exitCode) {
@@ -356,7 +516,9 @@ async function shutdown(exitCode) {
 }
 
 app.whenReady().then(async () => {
-  server = createTestServer();
+  const cardOnly = process.argv.includes('--automation-card-only');
+  const loginFixture = cardOnly ? createCardLoginFixture() : null;
+  server = createTestServer(loginFixture);
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const origin = `http://127.0.0.1:${server.address().port}`;
@@ -373,6 +535,34 @@ app.whenReady().then(async () => {
     getParentWindow: () => window,
     logger: console,
   });
+
+  if (process.argv.includes('--browser-delete-only')) {
+    await verifyBrowserHistoryDeletion({ manager, window, origin });
+    return shutdown(0);
+  }
+
+  if (process.argv.includes('--browser-environment-only')) {
+    await verifyBrowserEnvironment(origin);
+    return shutdown(0);
+  }
+
+  if (process.argv.includes('--browser-identity-only')) {
+    await verifyDefaultBrowserIdentity(origin);
+    return shutdown(0);
+  }
+
+  if (process.argv.includes('--theme-sync-only')) {
+    const profileId = 'phase3_a';
+    const { state } = await launchProfile(profileId, `${origin}/page?profile=a`);
+    await verifyBrowserColorScheme(profileId, origin);
+    await stopAndAssertReleased(profileId, state.pid);
+    return shutdown(0);
+  }
+
+  if (process.argv.includes('--manual-proxy-only')) {
+    await verifyManualProxy(origin);
+    return shutdown(0);
+  }
 
   if (process.argv.includes('--robustness-only')) {
     await acceptChromiumRobustness({ manager, origin, stopAndAssertReleased });
@@ -431,6 +621,16 @@ app.whenReady().then(async () => {
     return shutdown(0);
   }
 
+  if (cardOnly) {
+    const profileId = 'phase3_card';
+    const { state } = await launchProfile(profileId, `${origin}/page?profile=d`, {
+      extraArgs: ['--no-proxy-server', '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1'],
+    });
+    await verifyAutomationCard({ manager, profileId, origin, workspace: path.join(runtimeRoot, 'cards'), loginFixture });
+    await stopAndAssertReleased(profileId, state.pid);
+    return shutdown(0);
+  }
+
   if (process.argv.includes('--session-export-only')) {
     const profileId = 'phase3_session_export';
     const url = `${origin}/mcp-session-fixture`;
@@ -457,9 +657,12 @@ app.whenReady().then(async () => {
   }
 
   if (!process.argv.includes('--takeover-pointer-only')) {
+    await verifyManualProxy(origin);
     await acceptChromiumRobustness({ manager, origin, stopAndAssertReleased });
   }
+  await verifyDefaultBrowserIdentity(origin);
   const a = await launchProfile('phase3_a', `${origin}/page?profile=a`);
+  await verifyBrowserColorScheme('phase3_a', origin);
   await verifyTakeoverPointer({ manager, pid: a.state.pid, profileId: 'phase3_a', url: `${origin}/page?profile=a` });
   await verifySidebarReload({ manager, profileId: 'phase3_a', origin, waitForRequest });
   if (process.argv.includes('--takeover-pointer-only')) {
@@ -473,44 +676,7 @@ app.whenReady().then(async () => {
     { hideToolbar: true, doNotTrack: true, geolocationPermission: 'block' },
   );
 
-  const environmentProfile = await launchProfile('phase3_environment', `${origin}/environment`, {
-    geolocationPermission: 'allow',
-    environmentSettings: {
-      cpu: 12,
-      memory: 16,
-      browserVersion: '150.0.0.0',
-      os: 'win11',
-      ua: { mode: 'custom', value: 'AI-FREE acceptance environment' },
-      secChUa: {
-        mode: 'custom',
-        brands: [{ brand: 'Chromium', version: '150' }, { brand: 'AI-FREE Test', version: '1' }],
-        platform: 'win11',
-        mobile: false,
-      },
-      resolution: { mode: 'custom', width: 1280, height: 720 },
-      deviceName: { mode: 'custom', value: 'Acceptance Device' },
-      canvas: { mode: 'noise', seed: 'phase3-environment' },
-      geolocation: { permission: 'allow', enabled: true, latitude: 31.23, longitude: 121.47, accuracy: 25 },
-    },
-  });
-  const environmentValuesRequest = await waitForRequest((item) => item.path === '/environment-values');
-  const environmentValues = JSON.parse(new URLSearchParams(environmentValuesRequest.query).get('values'));
-  assert.equal(environmentValues.cpu, 12);
-  assert.equal(environmentValues.memory, 16);
-  assert.equal(environmentValues.model, 'Acceptance Device');
-  assert.equal(environmentValues.width, 1280);
-  assert.equal(environmentValues.height, 720);
-  assert.equal(environmentValues.noiseCount, 1);
-  assert(environmentValues.brands.some((brand) => brand.brand === 'AI-FREE Test'));
-  const environmentRequest = requests.find((item) => item.path === '/environment');
-  assert.match(environmentRequest?.secChUa || '', /AI-FREE Test/);
-  assert.equal(environmentRequest?.secChUaPlatform, '"Windows"');
-  const syntheticLocation = await waitForRequest((item) => item.path === '/environment-result');
-  assert.equal(new URLSearchParams(syntheticLocation.query).get('latitude'), '31.23');
-  assert.equal(new URLSearchParams(syntheticLocation.query).get('longitude'), '121.47');
-  await manager.stop('phase3_environment', 'chromium', { timeoutMs: 5000 });
-  const environmentPaths = manager.store.getProfilePaths('phase3_environment');
-  assert.equal(fs.readdirSync(environmentPaths.root).some((name) => name.startsWith('runtime-environment-')), false);
+  await verifyBrowserEnvironment(origin);
 
   await manager.navigate('phase3_a', 'chromium', `${origin}/location-permission?profile=a`);
   const defaultLocation = await waitForRequest((item) => item.path === '/location-result' && item.profile === 'a');
@@ -709,7 +875,8 @@ app.whenReady().then(async () => {
   });
   assert.equal(selection.result.queued, true);
   const fileInputDispatch = await manager.dispatchInputByProcessId(b.state.pid, {
-    inputType: 'mouse', action: 'click', x: 10, y: 10,
+    // The reference attachment controls cover parts of the full-page file input.
+    inputType: 'mouse', action: 'click', x: 350, y: 60,
     viewportWidth: 1000, viewportHeight: 600,
   });
   assert.equal(fileInputDispatch.result.dispatched, true);
@@ -913,6 +1080,7 @@ app.whenReady().then(async () => {
   console.log('[phase3-acceptance] invalid session/profile/origin/oversized message rejection passed');
   console.log('[phase3-acceptance] process, Named Pipe and Profile Lock release passed');
   console.log('[phase3-acceptance] stopAll graceful quit and last-session restore passed');
+  await verifyBrowserHistoryDeletion({ manager, window, origin });
   await shutdown(0);
 }).catch(async (error) => {
   console.error('[phase3-acceptance] FAILED', error.stack || error);

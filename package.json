@@ -16,6 +16,7 @@
     "accept:chromium-phase2": "node test/helpers/flows/electron-process.js accept-chromium-phase2.js",
     "accept:chromium-input": "node test/helpers/flows/electron-process.js accept-chromium-input.js",
     "accept:chromium-phase3": "node test/helpers/flows/electron-process.js accept-chromium-phase3.js",
+    "accept:mcp-debug-panel": "node scripts/verify-project.js interactions --only mcp-debug-panel",
     "accept:codex-browser": "node scripts/verify-project.js interactions --only chromium-alignment,native-workflow",
     "check:account-session": "node --test test/unit/account/account-service.test.js test/integration/account-device-login.test.js",
     "check:session-storage": "node test/helpers/flows/electron-process.js check-session-storage.js",

@@ -66,6 +66,18 @@
       ]
     },
     {
+      "id": "aiDraft",
+      "use": "checkAiDraft",
+      "args": {},
+      "expect": [
+        {
+          "path": "verified",
+          "op": "equals",
+          "value": true
+        }
+      ]
+    },
+    {
       "id": "shellLoad",
       "use": "load",
       "args": {

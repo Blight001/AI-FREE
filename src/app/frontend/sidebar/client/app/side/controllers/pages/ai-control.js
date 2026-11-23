@@ -18,6 +18,7 @@ const state = {
   loading: false,
   stopping: false,
   activeRequestId: '',
+  pausedChat: null,
   attachmentPaths: [],
   chatMentions: [],
   mcpTools: [],
@@ -29,7 +30,7 @@ const state = {
   customApiSaving: false,
   aiInputComposing: false,
   aiInputCompositionBase: '',
-  aiInputCompositionDraft: '',
+  aiInputCompositionDraft: null,
   aiInputCompositionCancelled: false,
   accountSessionRefreshQueued: false,
   historySaveChains: new Map(),
@@ -39,6 +40,7 @@ const state = {
 const HISTORY_LS_PREFIX = 'ai-free.ai-chat-history.v1.';
 const SEND_BUTTON_ICONS = {
   send: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"></path><path d="M22 2 11 13"></path></svg>',
+  play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l12-7z" fill="currentColor" stroke="none"></path></svg>',
   stop: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"></rect></svg>',
 };
 const el = (id) => document.getElementById(id);

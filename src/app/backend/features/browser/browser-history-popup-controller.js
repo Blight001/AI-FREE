@@ -5,6 +5,12 @@
 const path = require('path');
 const { BrowserWindow, screen } = require('electron');
 const { serializeBrowserHistory } = require('./browser-history-service');
+const {
+  BROWSER_HISTORY_GESTURE_GEOMETRY,
+  createBrowserHistoryGestureRows,
+  getBrowserHistoryGestureMaxRows,
+  getBrowserHistoryGesturePopupHeight,
+} = require('../../../shared/browser-history-gesture-layout');
 
 function getPopupMainWindow(ui) {
   return ui && typeof ui.getMainWindow === 'function' ? ui.getMainWindow() : null;
@@ -36,11 +42,11 @@ function createBrowserHistoryPopupController({ ui }) {
   <style>
     * { box-sizing: border-box; }
     html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; font-family: Inter, "Segoe UI", "Microsoft YaHei", sans-serif; }
-    .panel { width: 100%; height: 100%; padding: 7px; border: 1px solid rgba(90,164,255,.42); border-radius: 10px; background: rgba(17,22,32,.98); color: #e6e8ee; box-shadow: 0 18px 46px rgba(0,0,0,.48), inset 0 0 0 1px rgba(255,255,255,.04); }
+    .panel { width: 100%; height: 100%; padding: ${BROWSER_HISTORY_GESTURE_GEOMETRY.panelPadding}px; border: ${BROWSER_HISTORY_GESTURE_GEOMETRY.panelBorder}px solid rgba(90,164,255,.42); border-radius: 10px; background: rgba(17,22,32,.98); color: #e6e8ee; box-shadow: 0 18px 46px rgba(0,0,0,.48), inset 0 0 0 1px rgba(255,255,255,.04); }
     .light .panel { border-color: rgba(47,127,230,.28); background: rgba(255,255,255,.98); color: #1f3044; box-shadow: 0 18px 42px rgba(45,79,122,.20), inset 0 0 0 1px rgba(255,255,255,.72); }
-    .title { height: 27px; padding: 3px 8px 8px; color: #9aa3b2; font-size: 11px; line-height: 16px; }
+    .title { height: ${BROWSER_HISTORY_GESTURE_GEOMETRY.titleHeight}px; padding: 3px 8px 8px; color: #9aa3b2; font-size: 11px; line-height: 16px; }
     .light .title, .light .url, .light .state { color: #6a7c91; }
-    .item { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 3px 10px; width: 100%; height: 72px; padding: 10px 9px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: inherit; text-align: left; }
+    .item { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 3px 10px; width: 100%; height: ${BROWSER_HISTORY_GESTURE_GEOMETRY.rowHeight}px; padding: 10px 9px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: inherit; text-align: left; }
     .name-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
     .icon { position: relative; flex: 0 0 22px; width: 22px; height: 22px; display: grid; place-items: center; overflow: hidden; border-radius: 5px; color: #9aa3b2; background: rgba(255,255,255,.08); }
     .icon svg, .icon img { position: absolute; inset: 3px; width: 16px; height: 16px; }
@@ -48,7 +54,7 @@ function createBrowserHistoryPopupController({ ui }) {
     .icon img { display: none; object-fit: contain; }
     .icon.has-site-icon img { display: block; }
     .icon.has-site-icon svg { display: none; }
-    .item + .item { margin-top: 3px; }
+    .item + .item { margin-top: ${BROWSER_HISTORY_GESTURE_GEOMETRY.rowGap}px; }
     .item.selected { border-color: rgba(77,163,255,.56); background: rgba(77,163,255,.22); box-shadow: 0 5px 16px rgba(25,102,196,.16); }
     .light .item.selected { border-color: rgba(47,127,230,.38); background: rgba(47,127,230,.12); }
     .name, .url { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -56,7 +62,7 @@ function createBrowserHistoryPopupController({ ui }) {
     .url { grid-column: 1 / -1; color: #9aa3b2; font-size: 15px; }
     .state { align-self: end; color: #9aa3b2; font-size: 15px; }
     .state.open { color: #43bd70; }
-    .message { padding: 20px 12px; color: #9aa3b2; font-size: 12px; text-align: center; }
+    .message { display: grid; place-items: center; height: ${BROWSER_HISTORY_GESTURE_GEOMETRY.emptyMessageHeight}px; color: #9aa3b2; font-size: 12px; text-align: center; }
   </style>
 </head>
 <body>
@@ -137,33 +143,31 @@ function createBrowserHistoryPopupController({ ui }) {
     const display = screen.getDisplayNearestPoint({ x: desiredX, y: anchorY });
     const minTop = Math.max(contentBounds.y + 8, display.workArea.y + 8);
     const availableHeight = Math.max(86, anchorY - minTop);
-    const maxRows = Math.max(1, Math.floor((availableHeight - 48) / 75));
+    const maxRows = getBrowserHistoryGestureMaxRows(availableHeight);
     const visibleHistory = sourceHistory.slice(0, maxRows);
-    const popupHeight = visibleHistory.length
-      ? Math.min(availableHeight, 48 + visibleHistory.length * 72 + Math.max(0, visibleHistory.length - 1) * 3)
-      : Math.min(availableHeight, 92);
+    const popupHeight = Math.min(availableHeight, getBrowserHistoryGesturePopupHeight(visibleHistory.length));
     const workAreaLeft = display.workArea.x + 8;
     const workAreaRight = display.workArea.x + display.workArea.width - 8;
     const x = Math.max(workAreaLeft, Math.min(desiredX, workAreaRight - popupWidth));
     const y = Math.max(minTop, anchorY - popupHeight);
+    const windowX = Math.round(x);
+    const windowY = Math.round(y);
+    const windowWidth = Math.round(popupWidth);
+    const windowHeight = Math.round(popupHeight);
     const layout = {
-      x: x - contentBounds.x,
-      y: y - contentBounds.y,
-      width: popupWidth,
-      height: popupHeight,
-      rows: visibleHistory.map((item, index) => ({
-        id: String(item.id || ''),
-        top: 34 + index * 51,
-        bottom: 34 + index * 51 + 48,
-      })),
+      x: windowX - contentBounds.x,
+      y: windowY - contentBounds.y,
+      width: windowWidth,
+      height: windowHeight,
+      rows: createBrowserHistoryGestureRows(visibleHistory),
     };
 
     const popup = new BrowserWindow({
       parent: mainWindow,
-      x: Math.round(x),
-      y: Math.round(y),
-      width: Math.round(popupWidth),
-      height: Math.round(popupHeight),
+      x: windowX,
+      y: windowY,
+      width: windowWidth,
+      height: windowHeight,
       show: false,
       frame: false,
       transparent: true,

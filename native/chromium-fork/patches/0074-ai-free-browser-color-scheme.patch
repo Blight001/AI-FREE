@@ -1,0 +1,41 @@
+diff --git a/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc b/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
+--- a/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
++++ b/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
+@@ -41,6 +41,8 @@
+ #include "chrome/browser/ui/views/frame/ai_free_page_automation.h"
+ #include "chrome/browser/lifetime/application_lifetime_desktop.h"
+ #include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/themes/theme_service.h"
++#include "chrome/browser/themes/theme_service_factory.h"
+ #include "chrome/browser/ui/ai_free_empty_tab_strip.h"
+ #include "chrome/browser/ui/browser.h"
+ #include "chrome/browser/ui/browser_tabstrip.h"
+@@ -919,6 +921,28 @@ void HandleCommandOnUi(scoped_refptr<BridgeConnection> connection,
+                                       "BROWSER_UNAVAILABLE",
+                                       "Chromium Browser 已关闭");
+   }
++  if (command_name == "set-color-scheme") {
++    const std::string* color_scheme = command.FindString("colorScheme");
++    if (!color_scheme || (*color_scheme != "light" && *color_scheme != "dark")) {
++      return connection->SendErrorAsync(request, command_name,
++                                        "COLOR_SCHEME_INVALID",
++                                        "浏览器主题必须为 light 或 dark");
++    }
++    ThemeService* theme_service =
++        ThemeServiceFactory::GetForProfile(browser->profile());
++    if (!theme_service) {
++      return connection->SendErrorAsync(request, command_name,
++                                        "THEME_SERVICE_UNAVAILABLE",
++                                        "Chromium 浏览器主题服务不可用");
++    }
++    theme_service->SetBrowserColorScheme(
++        *color_scheme == "dark" ? ThemeService::BrowserColorScheme::kDark
++                                 : ThemeService::BrowserColorScheme::kLight);
++    base::DictValue result;
++    result.Set("colorScheme", *color_scheme);
++    return connection->SendSuccessAsync(request, command_name,
++                                        std::move(result));
++  }
+   content::WebContents* web_contents =
+       browser->tab_strip_model()->GetActiveWebContents();
+   AiFreePageGuard page_guard;

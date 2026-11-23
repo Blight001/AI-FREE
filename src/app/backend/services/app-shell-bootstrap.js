@@ -56,7 +56,6 @@ function createBootstrapUiDeps(deps) {
     ensureSidebarVisible: () => { if (!deps.getIsSidebarVisible?.()) deps.toggleSidebar(); },
     purgeBrowserSessionData: typeof deps.purgeBrowserSessionData === 'function' ? deps.purgeBrowserSessionData : null,
     buildManagedTabPartitionName: typeof deps.buildManagedTabPartitionName === 'function' ? deps.buildManagedTabPartitionName : null,
-    applyClashMiniBrowserProxy: typeof deps.applyClashMiniBrowserProxy === 'function' ? deps.applyClashMiniBrowserProxy : null,
     browserRuntimeManager: deps.browserRuntimeManager || null,
     getBrowserCapacity: deps.getBrowserCapacity,
   };

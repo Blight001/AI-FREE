@@ -47,6 +47,7 @@ if (window.aiFree) {
   UiApi.onAppThemeChanged( (theme) => {
     applyAppShellTheme(theme, { persist: true });
   });
+  UiApi.emitAppThemeChanged(getSavedAppTheme());
   ShellApi.onIndependentBrowserCreateFailed( (payload = {}) => {
     if (String(payload?.tabId || '') === String(pendingRenameTabId || '')) pendingRenameTabId = null;
     finishIndependentBrowserCreation(payload);
@@ -256,14 +257,11 @@ function finishIndependentBrowserCreation(payload = {}) {
 function updateBrowserHistoryGestureSelection(clientX, clientY) {
   const layout = browserHistoryGestureState.popupLayout;
   if (!layout || !browserHistoryGestureState.active) return;
-  const insidePopup = clientX >= layout.x
-    && clientX <= layout.x + layout.width
-    && clientY >= layout.y
-    && clientY <= layout.y + layout.height;
-  const relativeY = clientY - layout.y;
-  const selectedRow = insidePopup
-    ? (Array.isArray(layout.rows) ? layout.rows : []).find((row) => relativeY >= row.top && relativeY <= row.bottom)
-    : null;
+  const selectedRow = window.BrowserHistoryGestureLayout?.findBrowserHistoryGestureRowAtPoint(
+    layout,
+    clientX,
+    clientY,
+  );
   const selectedId = String(selectedRow?.id || '');
   if (selectedId === browserHistoryGestureState.selectedId) return;
   browserHistoryGestureState.selectedId = selectedId;

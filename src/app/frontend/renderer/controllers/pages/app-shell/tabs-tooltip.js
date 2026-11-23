@@ -28,6 +28,10 @@ function updateDragHoverState(tabElement, position) {
 }
 
 // 启动/打开/显示：showTabContextMenu的具体业务逻辑。
+function getTabHistoryId(tab) {
+  return String(tab?.browserHistoryId || '').trim();
+}
+
 async function showTabContextMenu(tab, event) {
   const tabId = String(tab?.id || '').trim();
   try {
@@ -36,6 +40,7 @@ async function showTabContextMenu(tab, event) {
     }
     const resp = await ShellApi.showTabContextMenu( {
       tabId,
+      historyId: getTabHistoryId(tab),
       x: Number(event?.clientX ?? 0),
       y: Number(event?.clientY ?? 0),
     });
@@ -168,7 +173,7 @@ function safeDisplayLaunchArgs(value) {
     .join('；');
 }
 
-function formatProxySetting(proxy = {}, networkMagicEnabled = false) {
+function formatProxySetting(proxy = {}) {
   const mode = String(proxy.mode || 'default');
   let value = settingLabel(mode, {
     default: '默认',
@@ -181,7 +186,6 @@ function formatProxySetting(proxy = {}, networkMagicEnabled = false) {
     if (proxy.authenticationConfigured) value += '；已配置认证';
     if (proxy.apiConfigured) value += '；已配置提取接口';
   }
-  if (networkMagicEnabled) value += '；当前由网络魔法接管';
   return value;
 }
 
@@ -192,7 +196,7 @@ function formatUaBrands(brands = []) {
     .join('、');
 }
 
-function buildBasicSettingsTooltip(settings = {}, profile = {}, networkMagicEnabled = false) {
+function buildBasicSettingsTooltip(settings = {}, profile = {}) {
   const os = settingLabel(settings.os, {
     win7: 'Windows 7', win8: 'Windows 8', win10: 'Windows 10', win11: 'Windows 11',
   });
@@ -211,7 +215,7 @@ function buildBasicSettingsTooltip(settings = {}, profile = {}, networkMagicEnab
     `默认 UA 系统选项：${os}`,
     `默认 UA 版本选项：${browserVersion}`,
     `旧版内核版本字段（仅影响默认 UA）：${kernelVersion}`,
-    `代理设置：${formatProxySetting(settings.proxy, networkMagicEnabled)}`,
+    `代理设置：${formatProxySetting(settings.proxy)}`,
     `配置的 Cookie：${Math.max(0, Number(settings.cookieCount) || 0)} 条`,
     `启动主页：${homepage}`,
   ];
@@ -364,9 +368,8 @@ function buildTabTooltip(tab) {
     ...(version && profile.userAgent ? [`UA 版本标识：${version}`] : []),
   ];
   lines.push(...tooltipProfileLines(profile, runtimeEnvironment));
-  if (tab?.networkMagicEnabled === true) lines.push('网络魔法：已开启（当前浏览器已应用）');
   if (browserSettings) {
-    lines.push(...buildBasicSettingsTooltip(browserSettings, profile, tab?.networkMagicEnabled === true));
+    lines.push(...buildBasicSettingsTooltip(browserSettings, profile));
     lines.push(...buildAdvancedSettingsTooltip(browserSettings, profile, runtimeEnvironment));
   } else {
     lines.push(...tooltipDefaultLocaleLines(profile));

@@ -16,7 +16,7 @@
 
   /**
    * 侧栏是 WebContentsView：OS/Chromium 子窗口可能抢走键盘焦点，
-   * 而 DOM 仍显示 textarea:focus，表现为“已聚焦但无法输入”。
+   * 而 DOM 仍显示 输入框处于 focus 状态，表现为“已聚焦但无法输入”。
    * 这里通过主进程把键盘焦点拉回侧栏 webContents，再回焦输入框。
    */
   function reclaimAiInputFocus(input) {
@@ -84,7 +84,7 @@
     messages.push({ role: 'user', content });
     appendMessage('user', content, { messageIndex: messages.length - 1 });
     if (input) {
-      input.value = '';
+      writeChatDraft(input);
       resizeInput();
       flushDeferredAiControlRefresh();
     }
@@ -107,19 +107,25 @@
     }
   }
 
-  async function stopAIOutput() {
-    if (!state.loading || !state.activeRequestId || state.stopping) return;
-    state.stopping = true;
-    syncSendState();
+  let submittedChatRequestId = '';
+
+  async function requestChatStop(requestId) {
     try {
-      await window.aiFree.ai.chatStop({
-        requestId: state.activeRequestId,
-      });
+      const result = await window.aiFree.ai.chatStop({ requestId });
+      if (!result?.ok) throw new Error(result?.message || '停止 AI 回复失败');
     } catch (error) {
+      if (state.activeRequestId !== requestId) return;
       state.stopping = false;
       syncSendState();
       setStatus(error?.message || String(error));
     }
+  }
+
+  async function stopAIOutput() {
+    if (!state.loading || !state.activeRequestId || state.stopping) return;
+    state.stopping = true;
+    syncSendState();
+    if (submittedChatRequestId === state.activeRequestId) await requestChatStop(submittedChatRequestId);
   }
 
   async function refreshQuotaBeforeSend(useCustomApi) {
@@ -130,13 +136,14 @@
     } catch (_) {}
   }
 
-  function prepareChatSend(input, select, content) {
+  function prepareChatSend(input, select, content, draftAttachments) {
     const useCustomApi = selectedModelIsCustom();
     if (!select?.value) return null;
     ensureSessionForSend();
+    state.pausedChat = null;
     const messages = currentMessages();
     const attachmentContext = typeof takeChatAttachmentContext === 'function'
-      ? takeChatAttachmentContext(content)
+      ? takeChatAttachmentContext(content, draftAttachments)
       : { attachmentPaths: [], inlineAttachments: [], mentions: [] };
     const inlineAttachments = attachmentContext.inlineAttachments || [];
     const wasFirstExchange = !messages.some((message) => message.role === 'assistant' && String(message.content || '').trim());
@@ -154,13 +161,13 @@
       inlineAttachments,
     });
     updateSessionTitleUi();
-    input.value = '';
+    writeChatDraft(input);
     resizeInput();
     flushDeferredAiControlRefresh();
     state.loading = true;
     state.stopping = false;
     setStatus('');
-    const run = { content, input, messages, select, useCustomApi, wasFirstExchange, ...attachmentContext };
+    const run = { content, input, messages, modelId: select.value, useCustomApi, wasFirstExchange, ...attachmentContext };
     updateCurrentSessionAfterChat(run);
     syncSendState();
     // 本地写入在函数首次 await 前同步完成；主进程文件保存排队在后台，不阻塞请求发送。
@@ -175,7 +182,11 @@
   }
 
   const chatStreamHandlers = {
-    round_start: (run, event) => run.streamView?.addReasoning('', event.round),
+    round_start: (run, event) => {
+      if (run.resumeRequestId && !run.responseStarted) run.streamView?.resume(event.round);
+      run.responseStarted = true;
+      run.streamView?.addReasoning('', event.round);
+    },
     reasoning_delta: (run, event) => run.streamView?.addReasoning(event.delta, event.round),
     content_delta: (run, event) => run.streamView?.addContent(event.delta, event.round),
     content_replace: (run, event) => run.streamView?.replaceContent(event.content, event.round),
@@ -192,14 +203,17 @@
   }
 
   function subscribeChatStream(run) {
-    run.streamView = createAssistantView({ pending: true });
-    run.insertedDuringRun = false;
+    run.streamView ||= createAssistantView({ pending: true });
     return window.aiFree?.ai?.onChatEvent?.((event) => handleChatStreamEvent(run, event));
   }
 
   function buildChatRequest(run) {
+    if (run.resumeRequestId) {
+      return { stream: true, requestId: run.requestId, resumeRequestId: run.resumeRequestId, quota: state.quota };
+    }
     return {
-      modelId: run.select.value,
+      parentSessionId: state.currentSession?.id || '',
+      modelId: run.modelId,
       messages: run.messages,
       quota: run.useCustomApi ? null : state.quota,
       localInteraction: true,
@@ -228,54 +242,79 @@
       state.messages = result.messages;
       return;
     }
-    run.messages.push({ role: 'assistant', content: String(result.message?.content || '').trim() });
+    if (!result.stopped) run.messages.push({ role: 'assistant', content: String(result.message?.content || '').trim() });
   }
 
-  function applyFinalAssistantMetadata(result) {
+  function applyFinalAssistantMetadata({ message, stopped }, durationMs) {
+    const { content, reasoning, tool_events: toolEvents, trace_events: traceEvents, artifacts } = message || {};
+    if (stopped && !hasAssistantMessageContent(content, { reasoning, toolEvents, traceEvents, artifacts })) {
+      state.messages.push({ role: 'assistant', content: '', turn_duration_ms: durationMs });
+      return;
+    }
     const finalAssistant = [...state.messages].reverse().find((item) => item?.role === 'assistant');
     if (!finalAssistant) return;
-    finalAssistant.reasoning = String(result.message?.reasoning || '');
-    finalAssistant.tool_events = Array.isArray(result.message?.tool_events) ? result.message.tool_events : [];
-    finalAssistant.trace_events = Array.isArray(result.message?.trace_events) ? result.message.trace_events : [];
-    finalAssistant.artifacts = Array.isArray(result.message?.artifacts) ? result.message.artifacts : [];
+    finalAssistant.turn_duration_ms = durationMs;
+    finalAssistant.reasoning = String(reasoning || '');
+    finalAssistant.tool_events = Array.isArray(toolEvents) ? toolEvents : [];
+    finalAssistant.trace_events = Array.isArray(traceEvents) ? traceEvents : [];
+    finalAssistant.artifacts = Array.isArray(artifacts) ? artifacts : [];
   }
 
   function updateCurrentSessionAfterChat(run) {
     if (!state.currentSession) return;
-    state.currentSession.modelId = run.select.value;
+    state.currentSession.modelId = run.modelId;
     state.currentSession.automationCardId = '';
     if (!state.currentSession.title || state.currentSession.title === '新对话') {
       state.currentSession.title = provisionalTitle(run.content);
     }
   }
 
+  function applyStoppedChatResult(run, result, replyText, durationMs) {
+    if (replyText) run.streamView?.setContent(replyText);
+    run.streamView?.finalize({ durationMs });
+    if (run.insertedDuringRun) renderConversation();
+    if (!result.resumable) return;
+    state.pausedChat = {
+      requestId: run.requestId, modelId: run.modelId, useCustomApi: run.useCustomApi,
+      content: run.content, wasFirstExchange: run.wasFirstExchange,
+      streamView: run.insertedDuringRun ? null : run.streamView,
+      insertedDuringRun: run.insertedDuringRun, durationMs,
+    };
+  }
+
+  function measureChatRun(run) {
+    return (run.durationMs || 0) + Math.round(performance.now() - run.startedAt);
+  }
+
   async function applyChatResult(run, result) {
+    const durationMs = measureChatRun(run);
     applyReturnedMessages(run, result);
     const replyText = String(result.message?.content || '').trim();
-    applyFinalAssistantMetadata(result);
+    applyFinalAssistantMetadata(result, durationMs);
     state.lastQuotaCost = result.quota_cost ?? result.quota_cost_increment ?? null;
     renderQuota(run.useCustomApi ? state.quota : (result.quota || state.quota));
     updateCurrentSessionAfterChat(run);
+    state.pausedChat = null;
     if (result.stopped) {
-      run.streamView?.finalize();
-      renderConversation();
+      applyStoppedChatResult(run, result, replyText, durationMs);
       await persistCurrentSession();
       return;
     }
     run.streamView?.setContent(replyText || '模型未返回内容');
     renderAssistantArtifacts(run.streamView, result.message?.artifacts);
-    run.streamView?.finalize();
+    run.streamView?.finalize({ durationMs });
     if (run.insertedDuringRun) renderConversation();
     await persistCurrentSession();
-    if (run.wasFirstExchange) void maybeGenerateTitle(run.select.value);
+    if (run.wasFirstExchange) void maybeGenerateTitle(run.modelId);
   }
 
   async function handleChatSendError(run, error) {
     const message = error?.message || String(error);
     const failureContent = `请求失败：${message}`;
-    run.messages.push({ role: 'assistant', content: failureContent });
+    const durationMs = measureChatRun(run);
+    run.messages.push({ role: 'assistant', content: failureContent, turn_duration_ms: durationMs });
     run.streamView?.setContent(failureContent);
-    run.streamView?.finalize();
+    run.streamView?.finalize({ durationMs });
     updateCurrentSessionAfterChat(run);
     await persistCurrentSession();
     setStatus(message);
@@ -286,9 +325,13 @@
     if (!run.useCustomApi && isQuotaExhausted()) {
       throw new Error('AI 对话额度已用尽，请联系管理员');
     }
-    const result = await window.aiFree.ai.chat(buildChatRequest(run));
+    const pending = window.aiFree.ai.chat(buildChatRequest(run));
+    submittedChatRequestId = run.requestId;
+    if (state.stopping) void requestChatStop(run.requestId);
+    const result = await pending;
     if (result?.ok) return result;
     handleChatBusinessFailure(result);
+    if (result?.errorCode === 'AI_CONTINUATION_UNAVAILABLE') state.pausedChat = null;
     throw new Error(String(result?.message || result?.error || '对话请求失败'));
   }
 
@@ -297,18 +340,58 @@
     state.loading = false;
     state.stopping = false;
     state.activeRequestId = '';
+    submittedChatRequestId = '';
     syncSendState();
     updateSessionTitleUi();
     run.input?.focus();
   }
 
+  async function performChatRun(run) {
+    run.startedAt = performance.now();
+    run.requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    state.activeRequestId = run.requestId;
+    run.unsubscribeStream = subscribeChatStream(run);
+    try {
+      await applyChatResult(run, await requestChatResult(run));
+    } catch (error) {
+      if (run.resumeRequestId) {
+        if (run.responseStarted) {
+          state.pausedChat = null;
+          run.streamView?.setContent(`请求失败：${error?.message || String(error)}`);
+        }
+        run.streamView?.finalize({ durationMs: run.responseStarted ? measureChatRun(run) : run.durationMs });
+        setStatus(error?.message || String(error));
+      } else await handleChatSendError(run, error);
+    } finally {
+      finishChatSend(run);
+    }
+  }
+
+  async function resumeAIOutput() {
+    const paused = state.pausedChat;
+    const input = el('ai-chat-input');
+    if (!paused || state.loading || checkingChatLogin || chatInputHasSendableContent(input) || readChatDraft(input).pending) return;
+    const run = { ...paused, input, messages: currentMessages(), resumeRequestId: paused.requestId };
+    state.loading = true;
+    state.stopping = false;
+    setStatus('');
+    syncSendState();
+    await performChatRun(run);
+  }
+
   async function sendMessage() {
     const input = el('ai-chat-input');
     const select = el('ai-chat-model');
-    const typedContent = String(input?.value || '').trim();
+    const draft = readChatDraft(input);
+    if (draft.pending) return;
+    const typedContent = draft.content.trim();
     const content = typedContent || (hasSelectedChatAttachments() ? '请查看并处理所附文件。' : '');
     if (!content) return;
     if (state.loading) {
+      if (draft.inlineAttachments.length) {
+        setStatus('图片附件可在当前回复结束后发送', 'warning');
+        return;
+      }
       await insertMessageDuringRun(content, input);
       return;
     }
@@ -321,20 +404,11 @@
       } finally {
         checkingChatLogin = false;
       }
-      if (String(input?.value || '').trim() !== typedContent) return;
+      const currentDraft = readChatDraft(input);
+      if (currentDraft.pending || currentDraft.content.trim() !== typedContent
+        || JSON.stringify(currentDraft.inlineAttachments) !== JSON.stringify(draft.inlineAttachments)) return;
     }
-    const run = prepareChatSend(input, select, content);
+    const run = prepareChatSend(input, select, content, draft.inlineAttachments);
     if (!run) return;
-    run.requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    state.activeRequestId = run.requestId;
-    run.unsubscribeStream = subscribeChatStream(run);
-
-    try {
-      const result = await requestChatResult(run);
-      await applyChatResult(run, result);
-    } catch (error) {
-      await handleChatSendError(run, error);
-    } finally {
-      finishChatSend(run);
-    }
+    await performChatRun(run);
   }

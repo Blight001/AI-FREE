@@ -46,6 +46,7 @@ test('native card run opens the website and executes page steps through native t
   });
   assert.equal(result.success, true);
   assert.deepEqual(calls, [
+    ['browser_tab', { action: 'list' }],
     ['browser_tab', { action: 'replace', url: 'https://example.com/form' }],
     ['browser_action', { type: 'type', selector: '#email', variable: 'email', text: 'user@example.com', action: 'type' }],
   ]);
@@ -86,6 +87,57 @@ test('native card can invoke an existing MCP tool with nested input substitution
     'run_command',
     { command: 'echo hello', metadata: { label: 'hello' } },
   ]]);
+});
+
+test('card input schemas reject invalid inputs before dispatching the first step', async () => {
+  const { service } = fixture();
+  let dispatched = 0;
+  const written = await service.execute({
+    action: 'write',
+    inputSchema: {
+      type: 'object', required: ['target'], additionalProperties: false,
+      properties: { target: { type: 'string', enum: ['draft', 'publish'] } },
+    },
+    cardData: { name: 'Schema guarded', steps: [{ type: 'mcp', tool: 'test_action' }] },
+  });
+  const run = (inputs) => service.execute({ action: 'run', id: written.item.id, inputs }, {
+    dispatch: async () => { dispatched += 1; return { success: true }; },
+  });
+
+  await assert.rejects(run({}), /缺少必填输入: inputs.target/);
+  await assert.rejects(run({ target: 'unknown' }), /不在允许值范围内/);
+  await assert.rejects(run({ target: 'draft', extra: true }), /不支持的输入字段/);
+  assert.equal(dispatched, 0);
+  const completed = await run({ target: 'publish' });
+  assert.equal(completed.success, true);
+  assert.equal(dispatched, 1);
+});
+
+test('native card run results redact password-shaped and writeOnly inputs', async () => {
+  const { service } = fixture();
+  const password = 'card-password-6842';
+  const hiddenValue = 'private-value-1947';
+  const written = await service.execute({
+    action: 'write',
+    inputSchema: { type: 'object', properties: {
+      password: { type: 'string' }, accessPhrase: { type: 'string', writeOnly: true },
+    } },
+    cardData: { name: 'Redacted result', steps: [{
+      type: 'mcp', tool: 'echo', arguments: { text: '{password} {accessPhrase}' },
+    }] },
+  });
+  const result = await service.execute({
+    action: 'run', id: written.item.id, inputs: { password, accessPhrase: hiddenValue },
+  }, {
+    inputSchema: written.item.inputSchema,
+    dispatch: async (_tool, args) => ({ success: true, echo: args.text }),
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(JSON.stringify(result).includes(password), false);
+  assert.equal(JSON.stringify(result).includes(hiddenValue), false);
+  assert.equal(result.context.password, '[REDACTED]');
+  assert.equal(result.execution[0].result.echo, '[REDACTED] [REDACTED]');
 });
 
 test('native card rejects an MCP step without an object argument payload', async () => {
@@ -283,7 +335,7 @@ test('delay and end steps support progress, retries and cooperative cancellation
     onProgress: (item) => progress.push(item),
     dispatch: async () => {
       attempts += 1;
-      if (attempts === 1) return { success: false, error: 'temporary' };
+      if (attempts === 1) return { success: false, error: 'temporary', retryable: true, actionExecuted: false };
       return { success: true };
     },
   });
@@ -297,4 +349,117 @@ test('delay and end steps support progress, retries and cooperative cancellation
   await assert.rejects(service.execute({ action: 'run', id: written.item.id }, {
     signal: controller.signal, dispatch: async () => ({ success: true }),
   }), (error) => error.errorCode === 'RUN_CANCELLED');
+});
+
+test('schema-only revisions keep their input contract across store round trips', async () => {
+  const { normalizeCardEntry } = require('../../../src/app/backend/services/automation-card-store');
+  const { service } = fixture();
+  const cardData = { name: 'typed revision', steps: [{ type: 'mcp', tool: 'echo', arguments: { n: '{n}' } }] };
+  const inputSchema = (type) => ({ type: 'object', required: ['n'], properties: { n: { type } } });
+  const first = (await service.execute({ action: 'write', cardData, inputSchema: inputSchema('integer') })).item;
+  const second = (await service.execute({ action: 'write', id: first.id, cardData, inputSchema: inputSchema('boolean') })).item;
+  assert.notEqual(first.latestVersionId, second.latestVersionId);
+  assert.deepEqual(normalizeCardEntry(second).versions.map((v) => v.inputSchema), [inputSchema('integer'), inputSchema('boolean')]);
+  const values = [];
+  const run = (version_id, n) => service.execute({ action: 'run', id: first.id, version_id, inputs: { n } }, {
+    dispatch: async (_name, args) => { values.push(args.n); return { success: true }; },
+  });
+  await assert.rejects(run(first.latestVersionId, true), /类型错误/);
+  await run(first.latestVersionId, 2);
+  await run(second.latestVersionId, false);
+  assert.deepEqual(values, [2, false]);
+});
+
+test('unknown dispatch outcome stops a card with a retry policy after one attempt', async () => {
+  const { service } = fixture();
+  const { item } = await service.execute({ action: 'write', cardData: { name: 'unknown outcome', steps: [
+    { type: 'mcp', tool: 'submit', retryPolicy: { maxAttempts: 2 } },
+  ] } });
+  let dispatched = 0;
+  const result = await service.execute({ action: 'run', id: item.id }, { dispatch: async () => {
+    dispatched += 1;
+    throw new Error('connection closed');
+  } });
+  assert.equal(result.success, false);
+  assert.equal(result.retryable, false);
+  assert.equal(dispatched, 1);
+});
+
+test('a refused website opening stops before the first action and reports the navigation failure', async () => {
+  const { service } = fixture();
+  const { item } = await service.execute({ action: 'write', cardData: { name: 'website opening',
+    website: 'https://example.test/form', steps: [{ type: 'click', selector: '#confirm' }] } });
+  const calls = [];
+  const result = await service.execute({ action: 'run', id: item.id }, { dispatch: async (_tool, args) => {
+    calls.push(args.action);
+    if (args.action === 'list') return { success: true, activeTab: { url: 'about:blank' } };
+    return { ok: false, error: 'navigation refused', errorCode: 'NAVIGATION_DENIED' };
+  } });
+  assert.deepEqual(calls, ['list', 'replace']);
+  assert.equal(result.success, false);
+  assert.equal(result.errorCode, 'NAVIGATION_DENIED');
+  assert.equal(result.execution[0].success, false);
+});
+
+test('a retry hint cannot override an uncertain action result', async () => {
+  const { service } = fixture();
+  const { item } = await service.execute({ action: 'write', cardData: { name: 'uncertain result',
+    steps: [{ type: 'mcp', tool: 'submit', retryPolicy: { maxAttempts: 2 } }] } });
+  let attempts = 0;
+  const result = await service.execute({ action: 'run', id: item.id }, { dispatch: async () => {
+    attempts += 1;
+    return { success: false, retryable: true, actionExecuted: 'unknown' };
+  } });
+  assert.equal(attempts, 1);
+  assert.equal(result.retryable, false);
+  assert.equal(result.sideEffectsMayHaveOccurred, true);
+});
+
+test('implicit entry keeps the active matching document and navigates different routes', async () => {
+  const { service } = fixture();
+  const website = 'https://example.test/home?view=login#form';
+  const { item } = await service.execute({ action: 'write', cardData: { name: 'login fixture', website,
+    steps: [{ type: 'click', selector: '#open' }] } });
+  for (const url of [website, website.replace('login', 'guest'), website.replace('#form', '#account'), 'https://other.test/home']) {
+    const actions = [];
+    const result = await service.execute({ action: 'run', id: item.id }, { dispatch: async (_, args) => {
+      actions.push(args.action);
+      return args.action === 'list' ? { success: true, activeTab: { url } } : { success: true };
+    } });
+    assert.equal(result.success, true);
+    assert.deepEqual(actions, url === website ? ['list', 'click'] : ['list', 'replace', 'click']);
+  }
+});
+
+test('a document inspection error cannot satisfy a missing-text login condition', async () => {
+  const { service } = fixture();
+  const { item } = await service.execute({ action: 'write', cardData: { name: 'postcondition', steps: [
+    { type: 'delay', delayMs: 0 }, { type: 'condition', condition: 'text_missing', text: 'Guest', fail_on_false: true },
+    { type: 'click', selector: '#account' },
+  ] } });
+  const calls = [];
+  const result = await service.execute({ action: 'run', id: item.id }, { dispatch: async (tool) => {
+    calls.push(tool); return { success: false, errorCode: 'BROWSER_TARGET_CHANGED', error: 'Page changed' };
+  } });
+  assert.equal(result.success, false);
+  assert.equal(result.errorCode, 'BROWSER_TARGET_CHANGED');
+  assert.equal(result.stepIndex, 2);
+  assert.equal(calls.length, 1);
+});
+
+test('a positive selector assertion checks the specified login marker, not unrelated controls', async () => {
+  const { service } = fixture();
+  const { item } = await service.execute({ action: 'write', cardData: { name: 'account visible', steps: [
+    { type: 'delay', delayMs: 0 }, { type: 'condition', condition: 'selector_exists', selector: '#account', fail_on_false: true },
+  ] } });
+  for (const present of [false, true]) {
+    const result = await service.execute({ action: 'run', id: item.id }, { dispatch: async (tool, args) => {
+      if (tool === 'browser_observe') return { success: true, items: [{ selector: '#unrelated' }] };
+      assert.equal(args.selector, '#account');
+      return present ? { success: true, condition: 'attached' }
+        : { success: false, errorCode: 'WAIT_TIMEOUT', condition: 'attached' };
+    } });
+    assert.equal(result.success, present);
+    if (!present) assert.equal(result.errorCode, 'CARD_CONDITION_FAILED');
+  }
 });

@@ -10,19 +10,9 @@ const {
 } = require('./browser-environment');
 const { resolveBrowserEnvironmentProfile } = require('./browser-environment-profile');
 const { buildBrowserRuntimeEnvironment } = require('./browser-tab-runtime-profile');
-const { getClashMiniStatus } = require('../network/clash-mini-control-runtime');
 const { resolveLowSpecMode } = require('./low-spec-mode-policy');
 const { getChromiumHandshakeBudget } = require('../../browser-runtime/chromium-launch-recovery');
 const { callOptional, firstText } = require('../../../shared/safe-values');
-
-function resolveEffectiveBrowserProxy(deps, normalized) {
-  const clashStatus = typeof getClashMiniStatus === 'function' ? getClashMiniStatus() : null;
-  const globalMagicEnabled = Boolean(clashStatus && clashStatus.running === true && clashStatus.enabled === true);
-  const configuredProxy = resolveConfiguredBrowserProxy(normalized);
-  const magicProxy = callOptional(deps, 'getBrowserProxyEndpoint');
-  const effectiveProxy = globalMagicEnabled ? magicProxy : configuredProxy;
-  return { effectiveProxy: effectiveProxy || { enabled: false }, globalMagicEnabled };
-}
 
 function buildConfigurationUpdate(browserProfile, normalized, effectiveProxy) {
   return ({ lowSpecSystem }) => {
@@ -65,10 +55,10 @@ async function setTabBrowserSettings(deps, tabId, settings, options = {}) {
       const tab = tabs.get(firstText(tabId));
       if (!tab) return { ok: false, message: '当前没有可配置的浏览器标签页' };
       const normalized = normalizeAiFreeBrowserSettings(settings);
-      const proxyState = resolveEffectiveBrowserProxy(deps, normalized);
+      const effectiveProxy = resolveConfiguredBrowserProxy(normalized) || { enabled: false };
       const browserProfile = await resolveBrowserEnvironmentProfile({
         settings: normalized,
-        effectiveProxy: proxyState.effectiveProxy,
+        effectiveProxy,
         resolveTabBrowserProfile,
         lookupByIp: deps.lookupByIp,
         logger,
@@ -79,14 +69,13 @@ async function setTabBrowserSettings(deps, tabId, settings, options = {}) {
         ? { geolocationWarning: browserProfile.geolocationWarning } : {};
       const configuration = browserRuntimeManager
         ? await browserRuntimeManager.updateProfileConfiguration(tab.id,
-          buildConfigurationUpdate(browserProfile, normalized, proxyState.effectiveProxy),
+          buildConfigurationUpdate(browserProfile, normalized, effectiveProxy),
           { restart: options.restartChromium === true })
         : null;
       if (options.restartChromium === true && browserRuntimeManager) {
         if (!configuration.data.found) throw new Error(`Chromium Profile ${tab.id} 不存在`);
         const state = configuration.data.state;
         tab.runtimeStatus = firstText(state && state.status, tab.runtimeStatus);
-        tab.networkMagicApplied = proxyState.globalMagicEnabled && proxyState.effectiveProxy.enabled === true;
         updateTabs(true);
         return { ok: true, applied: !cookieResult.cookieWarning && !browserProfile.geolocationWarning,
           restarted: true, runtimeType: 'chromium', ...cookieResult, ...locationResult };

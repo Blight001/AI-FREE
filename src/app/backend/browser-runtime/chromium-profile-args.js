@@ -17,7 +17,7 @@ function configuredExtensionPaths(profile) {
 }
 
 function buildChromiumUserAgentMetadataArgument(settings) {
-  if (!settings || typeof settings !== 'object') return '';
+  if (!settings || typeof settings !== 'object' || settings.nativeIdentity === true) return '';
   const normalized = normalizeBrowserEnvironmentScriptSettings(settings);
   const metadata = {
     architecture: normalized.highEntropy.architecture,

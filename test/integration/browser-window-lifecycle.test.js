@@ -719,3 +719,58 @@ test('软件整体退出时不由崩溃回调重复关闭栏目', async () => {
     appContext.setShuttingDown(previousShutdownState);
   }
 });
+
+test('删除正在启动的浏览器会加入既有关闭任务，等最终退出后才清理', async () => {
+  const tabs = new Map();
+  const calls = [];
+  let markLaunching;
+  let finishLaunch;
+  let finishStop;
+  const launching = new Promise((resolve) => { markLaunching = resolve; });
+  const launchGate = new Promise((resolve) => { finishLaunch = resolve; });
+  const stopGate = new Promise((resolve) => { finishStop = resolve; });
+  const tabManager = createTabManager({
+    getTabs: () => tabs,
+    getMainWindow: () => ({ isDestroyed: () => false, getContentSize: () => [1200, 800], emit() {} }),
+    updateTabs() {},
+    browserRuntimeManager: {
+      async hide() {},
+      async show() {},
+      async launchProfile() {
+        calls.push('launch');
+        markLaunching();
+        await launchGate;
+        calls.push('launched');
+        return { status: 'ready' };
+      },
+      async stop() {
+        calls.push('stop');
+        await stopGate;
+        calls.push('stopped');
+      },
+    },
+  });
+  const opening = tabManager.addTab('about:blank', { tabId: 'starting-browser' });
+  const cancelled = assert.rejects(opening, { code: 'BROWSER_TAB_CREATION_CANCELLED' });
+  await Promise.race([launching, cancelled]);
+  assert.deepEqual(calls, ['launch']);
+  let deletion;
+  try {
+    await tabManager.closeTab('starting-browser');
+    assert.equal(tabs.has('starting-browser'), false);
+    deletion = tabManager.closeTab('starting-browser', { afterStop: () => calls.push('delete') });
+    await assert.rejects(tabManager.addTab('about:blank', { tabId: 'starting-browser' }), /正在删除/);
+    assert.deepEqual(calls, ['launch']);
+    finishLaunch();
+    await cancelled;
+    assert.equal(calls.includes('delete'), false);
+    finishStop();
+    await deletion;
+    assert.deepEqual(calls, ['launch', 'launched', 'stop', 'stopped', 'delete']);
+  } finally {
+    finishLaunch();
+    finishStop();
+    await deletion;
+    await cancelled;
+  }
+});

@@ -35,6 +35,7 @@ class BrowserRuntimeManager {
   }
 
   async launchProfile(profile, bounds) { return this.chromium.launchProfile(profile, bounds); }
+  async setPreferredColorScheme(theme) { return this.chromium.setPreferredColorScheme(theme); }
   async prewarmChromium() { return this.chromium.prewarm(); }
   async show(profileId, type) { return this.chromium.show(profileId); }
   async hide(profileId, type) { return this.chromium.hide(profileId); }
@@ -88,12 +89,9 @@ class BrowserRuntimeManager {
     return deleted;
   }
   async deleteProfileAsync(profileId) {
-    if (typeof this.store.deleteProfileAsync === 'function') {
-      const deleted = await this.store.deleteProfileAsync(profileId);
-      this.chromium.stateStore.clearState(profileId);
-      return deleted;
-    }
-    return this.deleteProfile(profileId);
+    const deleted = await this.store.deleteProfileAsync(profileId);
+    if (deleted) this.chromium.stateStore.clearState(profileId);
+    return deleted;
   }
   async waitForLocalModelCleanup() { return this.localModelCleanup; }
   isChromiumAvailable() { return this.windowBridge.isAvailable(); }

@@ -2,6 +2,11 @@
 const { BROWSER_WORKFLOW_TOOL, checkedActionProperties } = require('./browser-workflow-tool-definition');
 
 const { PAGE_BATCH_TOOL } = require('./browser-page-batch');
+const { AUTOMATION_CARD_ACTIONS } = require('./automation-card-contract');
+
+const CARD_SAVE_GUIDANCE = '用户要求保存流程时，复用对话中已成功的步骤，使用稳定定位和凭据引用。仅在格式不明时查一次 rules。用 manage_card write 保存，按返回的 item.id 调用 get 回读步骤和 inputSchema。'
+  + '把正向业务信号写入末步断言（如登录后可见的账号菜单，condition 配 fail_on_false=true）。仅表单消失或点击成功不足以验收。'
+  + '用户要求复测时，先核对指定起点（如按要求退出并确认登录入口可见），接管后用 start_run 运行该卡片，把 run.id 作为 run_id 交给 get_run 查终态。run.status 为 succeeded 且业务断言通过才算验收成功，必要时用 list_run_steps 核对。同步 run 不产生 list_runs 记录。结果未知先核对运行记录和页面，不重放有副作用的步骤。';
 
 const objectSchema = (properties, required = []) => ({
   type: 'object', properties, ...(required.length ? { required } : {}),
@@ -21,14 +26,23 @@ const NATIVE_BROWSER_TOOL_DEFINITIONS = Object.freeze([
   },
   {
     name: 'manage_card',
-    description: '管理并运行原生 Chromium 自动化卡片。用户不会在 AI 控制设置中指定卡片，必须先根据系统卡片目录或 action=list 自行按名称/网站/说明筛选，再对匹配的 id 或唯一 card_name 调用 get/run。rules/list/get 可在只读模式使用；写入或 run 前必须先调用 browser_control action=acquire 接管当前浏览器。接管跟随同一浏览器的活动标签，完成后允许 AI 调用 action=release 停止接管。支持 rules/list/get/write/patch_step/insert_step/delete_step/move_step/delete/run。',
+    description: '管理共享自动化卡片。卡片目录、读取、编辑、移入回收站、运行记录查询、暂停和取消可离线调用。purge 永久删除需要在线接管。run/start_run/retry_run/resume_run/step_run 会开始或继续产生副作用的执行，必须先对 change_browser 所选在线窗口调用 browser_control action=acquire；release 后不能继续。使用已有卡片时按目录筛选并 get 查看步骤和 inputSchema，目录已知为空时跳过 list。start_run 独立于当前对话继续，相同幂等键须绑定完全相同参数。retry_run 只允许可重试失败，从头执行可能重复副作用。'
+      + CARD_SAVE_GUIDANCE,
     input_schema: objectSchema({
-      action: { type: 'string', enum: ['rules', 'list', 'get', 'write', 'patch_step', 'insert_step', 'delete_step', 'move_step', 'delete', 'restore', 'purge', 'run', 'start_run', 'list_runs', 'get_run', 'list_run_steps', 'cancel_run', 'retry_run', 'pause_run', 'resume_run', 'step_run', 'template'] },
-      id: { type: 'string' }, card_name: { type: 'string' }, cardData: { type: 'object' },
-      step_index: { type: 'number' }, to_step_index: { type: 'number' }, insert_after: { type: 'number' },
-      stepData: { type: 'object' }, stepPatch: { type: 'object' }, replace: { type: 'boolean' },
-      inputs: { type: 'object' }, start_step: { type: 'number' }, timeout_seconds: { type: 'number' },
-      run_id: { type: 'string' }, include_deleted: { type: 'boolean' }, reason: { type: 'string' },
+      action: { type: 'string', enum: AUTOMATION_CARD_ACTIONS },
+      id: { type: 'string', description: '读取、编辑或运行既有卡片时提供卡片 ID，亦可提供唯一 card_name。' },
+      card_id: { type: 'string' }, card_name: { type: 'string' },
+      name: { type: 'string' }, cardData: { type: 'object', description: 'write 必填，包含 name 和非空 steps 数组。' },
+      inputSchema: { type: 'object', description: 'write 时定义运行输入的对象 schema。' }, metadata: { type: 'object' }, version_id: { type: 'string' },
+      step_index: { type: 'integer', minimum: 1, description: '卡片步骤序号，从 1 开始。patch_step 必填。修复运行时直接使用 get_run 中目标步骤的 stepIndex（如 run.steps[].stepIndex），先用 get 核对当前步骤的 type 和 tool。' },
+      to_step_index: { type: 'number' }, insert_after: { type: 'number' },
+      stepData: { type: 'object' },
+      stepPatch: { type: 'object', description: 'patch_step 浅合并到目标步骤。原生 click/wait 等字段放在顶层，例如 {"selector":"#ready","timeout":1000}。只有 type=mcp 使用 arguments，传入目标 tool 的完整参数对象。' },
+      replace: { type: 'boolean' },
+      inputs: { type: ['object', 'array'], description: '按 manage_card get 返回的 item.inputSchema 提供流程输入。' },
+      start_step: { type: 'number' }, timeout_seconds: { type: 'number' }, idempotency_key: { type: 'string' },
+      run_id: { type: 'string', description: '查询单次运行、暂停、继续、单步、取消或重试时填 start_run 返回的 run.id。' }, status: { type: 'string' }, limit: { type: 'number' },
+      include_deleted: { type: 'boolean' }, enabled: { type: 'boolean' }, reason: { type: 'string' },
       overrides: { type: 'object', description: 'template 可选覆盖 probes/expect 等字段' },
     }, ['action']),
   },
@@ -127,7 +141,7 @@ const NATIVE_BROWSER_TOOL_DEFINITIONS = Object.freeze([
       value: { type: 'string', description: 'select_option 的 option value；也可使用 label' },
       checked: { type: 'boolean', description: 'set_checked 的目标状态' },
       force_event: { type: 'boolean', description: 'set_checked 即使状态未变化也强制派发事件' },
-      observation_id: { type: 'string', description: 'browser_observe 返回的 observationId；与 ref 一起使用可拒绝过期快照' },
+      observation_id: { type: 'string', description: 'browser_observe 返回的 observationId。与 ref 一起校验引用。纯坐标点击可携带此 ID，要求当前入口最新、未过期且与当前文档一致的观察。' },
       x: { type: 'number', description: '视口起点 X；可覆盖 ref 的默认点击中心' },
       y: { type: 'number', description: '视口起点 Y；可覆盖 ref 的默认点击中心' },
       to_ref: { type: 'string', description: '原生界面拖拽的终点控件，使用同一次观察返回的 ref。' },
@@ -162,6 +176,7 @@ const NATIVE_BROWSER_TOOL_DEFINITIONS = Object.freeze([
 ]);
 
 const CONTROL_TOOL = NATIVE_BROWSER_TOOL_DEFINITIONS.find((tool) => tool.name === 'browser_control');
+const MANAGE_CARD_TOOL_DEFINITION = NATIVE_BROWSER_TOOL_DEFINITIONS.find((tool) => tool.name === 'manage_card');
 
 function browserControlDefinition(connected) {
   if (connected) return CONTROL_TOOL;
@@ -175,4 +190,4 @@ function browserControlDefinition(connected) {
   };
 }
 
-module.exports = { NATIVE_BROWSER_TOOL_DEFINITIONS, browserControlDefinition };
+module.exports = { CARD_SAVE_GUIDANCE, MANAGE_CARD_TOOL_DEFINITION, NATIVE_BROWSER_TOOL_DEFINITIONS, browserControlDefinition };

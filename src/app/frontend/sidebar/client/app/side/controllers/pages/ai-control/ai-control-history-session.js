@@ -1,5 +1,7 @@
   function applySession(session) {
+    state.pausedChat = null;
     state.currentSession = session || null;
+    if (typeof refreshManagedParent === 'function') void refreshManagedParent();
     state.modelSelectionFromHistory = Boolean(session);
     state.messages = Array.isArray(session?.messages) ? [...session.messages] : [];
     const modelSelect = el('ai-chat-model');
@@ -214,6 +216,7 @@
     if (!options.skipSave && currentMessages().length) {
       await persistCurrentSession();
     }
+    state.pausedChat = null;
     state.modelSelectionFromHistory = false;
     selectDefaultAiModel();
     state.currentSession = {
@@ -232,6 +235,7 @@
     setStatus('');
     updateSessionTitleUi();
     renderWelcome();
+    if (typeof refreshManagedParent === 'function') void refreshManagedParent();
     resetAiChatScroll();
     await refreshHistoryList();
     syncSendState();

@@ -69,7 +69,18 @@ function resolveAppShellViewPath() {
   return path.join(__dirname, '../../frontend/views/app-shell.html');
 }
 
+function resolveMcpDebugWindowPaths() {
+  return { view: path.join(__dirname, '../../frontend/views/mcp-debug-panel.html'),
+    preload: path.join(__dirname, '../mcp-debug-panel-preload.js') };
+}
+
+function resolveMcpDebugFixturePath(file) {
+  return path.join(__dirname, '../../frontend/views/mcp-debug-fixture', file);
+}
+
 module.exports = {
+  resolveMcpDebugFixturePath,
+  resolveMcpDebugWindowPaths,
   resolveAiSandboxDir,
   resolveLegacyAiSandboxDir,
   resolveAutomationCardCacheDir,

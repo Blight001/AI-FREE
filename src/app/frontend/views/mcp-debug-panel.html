@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+  <title>MCP 调试面板</title>
+  <link rel="stylesheet" href="../renderer/styles/mcp-debug-panel.css">
+  <script src="../renderer/controllers/pages/mcp-debug-panel.js" defer></script>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>MCP 调试面板</h1>
+      <p id="status" role="status" aria-live="polite">先打开 HTTP 或 HTTPS 网页，再开始调试</p>
+    </div>
+    <div class="actions">
+      <label><span>调试目标</span> <select id="target-mode">
+        <option value="active">当前网页标签</option>
+        <option value="fixture">内置测试页</option>
+      </select></label>
+      <button id="open-fixture" type="button">打开本地测试页</button>
+      <button id="toggle" type="button">鼠标控制调试</button>
+    </div>
+  </header>
+  <main>
+    <section id="preview" aria-label="网页实时预览">
+      <div id="placeholder">开始调试后，这里显示浏览器视口</div>
+      <img id="frame" draggable="false" alt="网页的浏览器视口" hidden>
+      <span id="cursor" aria-hidden="true" hidden></span>
+    </section>
+    <aside>
+      <h2>鼠标回执</h2>
+      <label><input id="double-click" type="checkbox"> 左键发送双击</label>
+      <dl>
+        <div><dt>目标浏览器</dt><dd id="browser">—</dd></div>
+        <div><dt>页面地址</dt><dd id="target-url">—</dd></div>
+        <div><dt>浏览器视口</dt><dd id="viewport">—</dd></div>
+        <div><dt>浮窗坐标</dt><dd id="position">—</dd></div>
+        <div><dt>视口坐标</dt><dd id="mapped">—</dd></div>
+        <div><dt>最近派发</dt><dd id="receipt">—</dd></div>
+      </dl>
+      <details>
+        <summary>MCP 工具目录</summary>
+        <ul id="tools"></ul>
+      </details>
+    </aside>
+  </main>
+  <footer><kbd>Esc</kbd> 结束调试。浮窗圆点指示映射坐标，点击和拖拽由 MCP 移动虚拟鼠标。</footer>
+</body>
+</html>

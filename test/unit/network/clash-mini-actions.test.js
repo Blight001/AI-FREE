@@ -74,3 +74,14 @@ test('单节点重新测速不切换当前节点', async () => {
   assert.equal(controlCalls.some((call) => call.method === 'put'), false);
   assert.equal(progress.at(-1).bestName, '');
 });
+
+
+test('manual and best-latency node changes stay inside the proxy core', async () => {
+  controlCalls.length = 0;
+  const browserWrites = [];
+  const ui = { applyClashMiniBrowserProxy: (...args) => browserWrites.push(args) };
+  assert.equal((await actions.switchClashMiniProxyNode(ui, { nodeName: 'B' })).ok, true);
+  assert.equal((await actions.testClashMiniLowestLatency(ui, { names: ['A'] })).ok, true);
+  assert.deepEqual(controlCalls.filter((call) => call.method === 'put').map((call) => call.options.data.name), ['B', 'A']);
+  assert.deepEqual(browserWrites, []);
+});

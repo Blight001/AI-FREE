@@ -41,6 +41,8 @@ contextBridge.exposeInMainWorld('aiFree', Object.freeze({
   ai: Object.freeze({
     chat: invokeChannel('ai-control-chat'),
     chatInsert: invokeChannel('ai-control-chat-insert'),
+    managedChat: invokeChannel('ai-control-managed-chat'),
+    onManagedChatChanged: subscribeChannel('ai-control-managed-chat-changed'),
     chatStop: invokeChannel('ai-control-chat-stop'),
     getAutomationCards: invokeChannel('ai-control-get-automation-cards'),
     getBrowserConnections: invokeChannel('ai-control-get-browser-connections'),
@@ -234,6 +236,7 @@ contextBridge.exposeInMainWorld('aiFree', Object.freeze({
     getConsoleHistory: invokeChannel('get-app-console-history'),
     clearConsoleHistory: invokeChannel('clear-app-console-history'),
     getMcpCatalog: invokeChannel('get-browser-mcp-catalog'),
+    openMcpDebugPanel: invokeChannel('open-mcp-debug-panel'),
   }),
 }));
 

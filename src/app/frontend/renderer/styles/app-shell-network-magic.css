@@ -9,43 +9,48 @@
   height: var(--shell-tab-height);
 }
 
-.shell-network-magic-btn.is-active {
-  color: #f3e8ff;
-  border-color: rgba(168, 85, 247, 0.55);
-  background: rgba(147, 51, 234, 0.28);
-}
-
 .shell-network-magic-btn.is-open,
 .shell-network-magic-btn:hover {
   transform: translateY(-1px);
 }
 
-.shell-network-magic-btn.is-active:hover {
-  color: #f3e8ff;
-  border-color: rgba(168, 85, 247, 0.72);
-  background: rgba(147, 51, 234, 0.38);
+.shell-network-magic-btn.is-active,
+html:is(.theme-light, .theme-gold) .shell-network-magic-btn.is-active {
+  color: #fffaff;
+  border-color: #b0a1ed;
+  background: linear-gradient(110deg, #16605c, #3b4e92 38%, #65388d 70%, #812e63);
 }
 
-html.theme-light .shell-network-magic-btn.is-active {
-  color: #6b21a8;
-  border-color: rgba(147, 51, 234, 0.32);
-  background: rgba(147, 51, 234, 0.14);
+.shell-network-magic-btn.is-active:hover,
+html:is(.theme-light, .theme-gold) .shell-network-magic-btn.is-active:hover {
+  border-color: #dccbff;
+  background: linear-gradient(110deg, #176c65, #4458a0 38%, #743e9d 70%, #90366f);
 }
 
-html.theme-light .shell-network-magic-btn.is-active:hover {
-  color: #6b21a8;
-  border-color: rgba(147, 51, 234, 0.5);
-  background: rgba(147, 51, 234, 0.22);
+.network-magic-wand-active,
+.shell-network-magic-btn.is-active .network-magic-wand-idle {
+  display: none;
 }
 
-html.theme-gold .shell-network-magic-btn.is-active {
-  color: #f4ead2;
-  border-color: rgba(226, 200, 138, 0.62);
-  background: rgba(212, 183, 118, 0.28);
+.shell-network-magic-btn.is-active .network-magic-wand-active {
+  display: inline;
 }
 
-html.theme-gold .shell-network-magic-btn.is-active:hover {
-  color: #f4ead2;
-  border-color: rgba(226, 200, 138, 0.8);
-  background: rgba(212, 183, 118, 0.38);
+.network-magic-star {
+  stroke: none;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .shell-network-magic-btn.is-active .network-magic-star {
+    animation: network-magic-twinkle 2.6s ease-in-out infinite;
+  }
+  .shell-network-magic-btn.is-active .network-magic-star:nth-of-type(3) { animation-delay: .65s; }
+  .shell-network-magic-btn.is-active .network-magic-star:nth-of-type(4) { animation-delay: 1.3s; }
+}
+
+@keyframes network-magic-twinkle {
+  0%, 100% { opacity: .65; transform: scale(.8); }
+  52% { opacity: 1; transform: scale(1.14); }
 }

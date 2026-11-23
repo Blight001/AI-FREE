@@ -1,8 +1,8 @@
 const { toggleSidebarVisibility } = require('./tab-common');
 const { createBrowserTutorialController } = require('../features/browser/browser-tutorial-controller');
-const { createBrowserNetworkController } = require('../features/browser/browser-network-controller');
 const { createBrowserTabLauncher } = require('../features/browser/browser-tab-launcher');
 const { createBrowserRuntimeSettingsController } = require('../features/browser/browser-runtime-settings-controller');
+const { createTabCloseController } = require('./tab-close-controller');
 const { persistClosedTabIconToBrowserHistory } = require('../features/browser/browser-history-service');
 
 function isUsableWebContents(webContents) {
@@ -49,11 +49,21 @@ class TabManagerRuntime {
   constructor(deps = {}) {
     this.deps = deps;
     this.logger = deps.logger || console;
-    this.closingTabIds = new Set();
-    this.profileStopTasks = new Map();
+    this.tabClose = createTabCloseController({
+      browserRuntimeManager: deps.browserRuntimeManager,
+      clearWebsiteIconSync: (id) => this.clearWebsiteIconSync(id),
+      getActiveTabId: () => this.resolveActiveTabId(),
+      getMainWindow: () => this.resolveMainWindow(),
+      getTabs: () => this.resolveTabs(),
+      logger: this.logger,
+      sendToSide: deps.sendToSide,
+      setActiveTabId: deps.setActiveTabId,
+      switchTab: (id) => this.switchTab(id),
+      updateTabs: deps.updateTabs,
+      waitForTabLaunch: (tab) => this.waitForTabLaunch(tab),
+    });
     this.websiteIconSyncTimers = new Map();
     this.initializeTutorialController();
-    this.initializeNetworkController();
     this.initializeTabLauncher();
     this.initializeSettingsController();
     this.registerRuntimeEvents();
@@ -131,23 +141,11 @@ class TabManagerRuntime {
     this.resolveDefaultTabUrl = controller.resolveDefaultTabUrl;
   }
 
-  initializeNetworkController() {
-    const controller = createBrowserNetworkController({
-      browserRuntimeManager: this.deps.browserRuntimeManager,
-      logger: this.logger,
-      resolveTabs: () => this.resolveTabs(),
-      updateTabs: this.deps.updateTabs,
-    });
-    this.applyClashMiniBrowserProxy = controller.applyClashMiniBrowserProxy;
-    this.getBrowserProxyEndpoint = controller.getBrowserProxyEndpoint;
-  }
-
   initializeTabLauncher() {
     const controller = createBrowserTabLauncher({
       browserLaunchGuard: this.deps.browserLaunchGuard,
       browserRuntimeManager: this.deps.browserRuntimeManager,
       extensionManager: this.deps.extensionManager,
-      getBrowserProxyEndpoint: this.getBrowserProxyEndpoint,
       hasPersistedChromiumProfile: (id) => this.hasPersistedChromiumProfile(id),
       isSideViewFocused: () => this.isSideViewFocused(),
       licenseCache: this.deps.licenseCache,
@@ -155,7 +153,8 @@ class TabManagerRuntime {
       logger: this.logger,
       readPersistedBrowserSettings: () => this.readPersistedBrowserSettings(),
       resolveAdministratorBrowserLimit: this.deps.resolveAdministratorBrowserLimit,
-      waitForProfileStop: (id) => this.profileStopTasks.get(String(id || '')) || null,
+      waitForProfileStop: this.tabClose.waitForProfileStop,
+      assertCanOpenProfile: this.tabClose.assertCanOpenProfile,
       resolveActiveTabId: () => this.resolveActiveTabId(),
       resolveDefaultTabUrl: this.resolveDefaultTabUrl,
       resolveIsSidebarVisible: () => this.resolveIsSidebarVisible(),
@@ -171,13 +170,13 @@ class TabManagerRuntime {
       updateTabs: this.deps.updateTabs,
     });
     this.addTab = controller.addTab;
+    this.waitForTabLaunch = controller.waitForTabLaunch;
   }
 
   initializeSettingsController() {
     const controller = createBrowserRuntimeSettingsController({
       browserRuntimeManager: this.deps.browserRuntimeManager,
       extensionManager: this.deps.extensionManager,
-      getBrowserProxyEndpoint: this.getBrowserProxyEndpoint,
       lookupByIp: this.deps.lookupByIp,
       logger: this.logger,
       resolveTabBrowserProfile: this.deps.resolveTabBrowserProfile,
@@ -347,74 +346,6 @@ class TabManagerRuntime {
     this.deps.updateTabs(true);
   }
 
-  async closeTab(tabId) {
-    const tabs = this.resolveTabs();
-    if (!tabs.has(tabId) || !this.resolveMainWindow() || this.closingTabIds.has(tabId)) return;
-    this.closingTabIds.add(tabId);
-    this.clearWebsiteIconSync(tabId);
-    const orderedTabIds = Array.from(tabs.keys());
-    const tabToClose = tabs.get(tabId);
-    persistClosedTabIconToBrowserHistory({
-      getTabs: () => tabs,
-      sendToSide: this.deps.sendToSide,
-    }, tabToClose);
-    this.hideClosingTab(tabId);
-    tabs.delete(tabId);
-    this.notifyClosedAccount(tabId, tabToClose);
-    this.activateAfterClose(tabId, orderedTabIds, tabs);
-    this.deps.updateTabs(true);
-    this.stopClosingTabInBackground(tabToClose);
-  }
-
-  hideClosingTab(tabId) {
-    const hide = this.deps.browserRuntimeManager?.hide;
-    if (typeof hide !== 'function') return;
-    try {
-      void Promise.resolve(hide.call(this.deps.browserRuntimeManager, tabId, 'chromium')).catch((error) => {
-        this.logger.warn?.('[ChromiumRuntime] 隐藏待关闭环境失败:', error?.message || error);
-      });
-    } catch (error) {
-      this.logger.warn?.('[ChromiumRuntime] 隐藏待关闭环境失败:', error?.message || error);
-    }
-  }
-
-  stopClosingTabInBackground(tab) {
-    const tabId = String(tab?.id || '');
-    let trackedTask;
-    const stopTask = Promise.resolve()
-      .then(() => this.deps.browserRuntimeManager?.stop(tabId, 'chromium', { timeoutMs: 4000 }))
-      .then(
-        () => ({ ok: true }),
-        (error) => {
-          this.logger.warn?.('[ChromiumRuntime] 关闭失败:', error?.message || error);
-          return { ok: false, error };
-        },
-      );
-    trackedTask = stopTask.finally(() => {
-      if (this.profileStopTasks.get(tabId) === trackedTask) this.profileStopTasks.delete(tabId);
-      this.closingTabIds.delete(tabId);
-    });
-    this.profileStopTasks.set(tabId, trackedTask);
-  }
-
-  notifyClosedAccount(tabId, tab) {
-    const accountId = String(tab?.accountId || '').trim();
-    if (!accountId) return;
-    try { this.deps.sendToSide('tab-closed', { tabId, accountId }); } catch (_) {}
-  }
-
-  activateAfterClose(tabId, orderedTabIds, tabs) {
-    const remaining = Array.from(tabs.keys());
-    if (!remaining.length) {
-      this.deps.setActiveTabId?.(null);
-      return;
-    }
-    if (this.resolveActiveTabId() !== tabId) return;
-    const index = orderedTabIds.indexOf(tabId);
-    const neighbors = [orderedTabIds[index - 1], orderedTabIds[index + 1]];
-    this.switchTab(neighbors.find((id) => remaining.includes(id)) || remaining[0]);
-  }
-
   reorderTab(tabId, targetTabId, position = 'before') {
     const tabs = this.resolveTabs();
     if (!tabId || !targetTabId || tabId === targetTabId) return false;
@@ -504,11 +435,10 @@ class TabManagerRuntime {
     return {
       addTab: (...args) => this.addTab(...args),
       openTutorialTab: (...args) => this.openTutorialTab(...args),
-      applyClashMiniBrowserProxy: (...args) => this.applyClashMiniBrowserProxy(...args),
       setTabBrowserSettings: (...args) => this.setTabBrowserSettings(...args),
       refreshBrowsersAfterExtensionChange: (...args) => this.refreshBrowsersAfterExtensionChange(...args),
       switchTab: (...args) => this.switchTab(...args),
-      closeTab: (...args) => this.closeTab(...args),
+      closeTab: this.tabClose.closeTab,
       reorderTab: (...args) => this.reorderTab(...args),
       renameTab: (...args) => this.renameTab(...args),
       setTabAccountId: (...args) => this.setTabAccountId(...args),

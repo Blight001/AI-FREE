@@ -293,7 +293,6 @@ function serializeBrowserHistory(history, ui) {
         tabId: openTab ? String(openTab.id || '') : '',
         isOpen: !!openTab,
         isActive: !!openTab && String(openTab.id || '') === activeTabId,
-        networkMagicActive: !!openTab && openTab.networkMagicApplied === true,
       };
     })
     .sort((left, right) => Number(right.lastOpenedAt || 0) - Number(left.lastOpenedAt || 0));
@@ -331,8 +330,12 @@ async function openBrowserHistoryRecord(ui, historyIdInput) {
       restoreLastSession: true,
     });
   }
-  record.lastOpenedAt = Date.now();
-  writeBrowserHistorySafe(history);
+  const currentHistory = readBrowserHistorySafe();
+  const currentRecord = currentHistory.find((item) => item.id === historyId);
+  if (currentRecord) {
+    currentRecord.lastOpenedAt = Date.now();
+    writeBrowserHistorySafe(currentHistory);
+  }
   callOptional(ui, 'sendToSide', 'browser-history-changed');
   return {
     ok: true,

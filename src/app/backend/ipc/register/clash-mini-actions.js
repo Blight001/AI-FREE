@@ -229,13 +229,6 @@ function selectBestLatencyEntry(entries) {
     .sort((a, b) => a.delay - b.delay)[0] || null;
 }
 
-async function refreshBrowserAfterProxyChange(ui, warningMessage) {
-  if (typeof ui?.applyClashMiniBrowserProxy !== 'function') return;
-  await Promise.resolve(ui.applyClashMiniBrowserProxy(true, { forceProfileRefresh: true })).catch((error) => {
-    emitClashMiniLog(ui, 'warn', `${warningMessage}: ${error?.message || error}`);
-  });
-}
-
 // 最低延时测试主流程：优先用内核组批量测速（一次调用、总耗时≈单节点超时上限），
 // 失败时回退外部逐节点探测；两条路径共用进度上报、选优与切换逻辑。
 async function testClashMiniLowestLatency(ui, options = {}) {
@@ -282,7 +275,6 @@ async function testClashMiniLowestLatency(ui, options = {}) {
       data: { name: best.name },
       timeoutMs: 10000,
     });
-    await refreshBrowserAfterProxyChange(ui, '最低延时节点切换后刷新浏览器地区失败');
   }
 
   emitClashMiniLog(ui, 'info', selectBest
@@ -338,14 +330,6 @@ async function switchClashMiniProxyNode(ui, options = {}) {
     data: { name: nodeName },
     timeoutMs: 10000,
   });
-
-  if (typeof ui?.applyClashMiniBrowserProxy === 'function') {
-    await Promise.resolve(ui.applyClashMiniBrowserProxy(true, {
-      forceProfileRefresh: true,
-    })).catch((error) => {
-      emitClashMiniLog(ui, 'warn', `节点切换后刷新浏览器地区失败: ${error?.message || error}`);
-    });
-  }
 
   emitClashMiniLog(ui, 'info', `节点已切换: ${groupName} -> ${nodeName}`);
 

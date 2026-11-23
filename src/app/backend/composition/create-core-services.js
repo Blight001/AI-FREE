@@ -14,6 +14,7 @@ const { createBrowserPartitionCleaner } = require('../services/browser-partition
 const { createBrowserAutomationBridge } = require('../services/browser-automation-bridge');
 const { createExternalCodexLink } = require('../services/external-codex-link');
 const { createBrowserDownloadService } = require('../services/browser-download-service');
+const { createManagedChatRepository } = require('../platform/managed-chat-repository');
 const { createAiServerDeviceService } = require('../features/ai-chat/ai-server-device-service');
 const { createHeySureFileMaterializer } = require('../features/ai-chat/heysure-file-materializer');
 const { createHeySureFileUploader } = require('../features/ai-chat/heysure-file-uploader');
@@ -389,6 +390,7 @@ function createCoreServices({ app, fs, path, BrowserWindow, dialog, shell, scree
     browserAutomationBridge,
     externalCodexLink,
     aiServerDeviceService,
+    managedChatRepository: createManagedChatRepository({ directory: path.join(app.getPath('userData'), 'ai-managed-chat'), safeStorage }),
     aiModelConfig: createAiModelConfigRepository({
       filePath: path.join(app.getPath('userData'), 'ai-models.json'), getLegacyPath: getStorePath, safeStorage,
     }),

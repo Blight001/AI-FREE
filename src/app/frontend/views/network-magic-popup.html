@@ -21,37 +21,37 @@
   <script src="../sidebar/client/scripts/ui-scale.js"></script>
   <link rel="stylesheet" href="../sidebar/client/styles/control-panel.css" />
   <link rel="stylesheet" href="../sidebar/client/app/side/styles/side.css" />
+  <link rel="stylesheet" href="../renderer/styles/network-magic-popup.css" />
 </head>
 <body>
-  <section id="network-magic-sidebar-dialog" class="network-magic-sidebar-dialog" role="dialog" aria-labelledby="network-magic-sidebar-title">
-    <div class="network-magic-sidebar-panel">
-      <header class="network-magic-sidebar-header">
-        <h2 id="network-magic-sidebar-title">内置代理</h2>
-        <button class="network-magic-sidebar-close" type="button" data-network-magic-close aria-label="关闭">&times;</button>
-      </header>
-      <div class="shell-network-magic-menu-primary">
-        <button id="VPN-switch" class="shell-network-magic-action VPN-btn" type="button" disabled>开启魔法代理</button>
-        <button id="vpn-node-selector-toggle-btn" class="shell-network-magic-action" type="button" aria-expanded="false" aria-controls="vpn-node-selector-panel" disabled>切换节点</button>
-      </div>
-      <fieldset id="network-magic-proxy-mode" class="network-magic-proxy-mode shell-network-magic-menu-modes" aria-label="内置代理模式">
+  <section id="network-magic-sidebar-dialog" class="network-magic-popup" role="dialog" aria-label="内置代理">
+    <button id="VPN-switch" class="magic-power" type="button" aria-pressed="false" disabled>
+      <span class="magic-power-icon" aria-hidden="true">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2v6M4.5 4.5a5 5 0 1 0 7 0" stroke-linecap="round"/></svg>
+      </span>
+      <span data-magic-power-label aria-live="polite">开启魔法代理</span>
+    </button>
+    <div class="magic-controls" hidden>
+      <fieldset id="network-magic-proxy-mode" class="magic-modes" disabled>
         <legend>代理模式</legend>
         <label><input type="radio" name="network-magic-proxy-mode" value="port" checked><span>端口代理</span></label>
         <label><input type="radio" name="network-magic-proxy-mode" value="system"><span>系统代理</span></label>
         <label><input type="radio" name="network-magic-proxy-mode" value="global"><span>全局代理</span></label>
       </fieldset>
-      <div id="vpn-node-selector-panel" class="vpn-node-selector-dialog" hidden>
-        <div class="vpn-node-selector-panel vpn-node-selector-dialog-panel" role="dialog" aria-labelledby="vpn-node-selector-group">
-          <div class="vpn-node-selector-panel-head">
-            <span id="vpn-node-selector-group" class="vpn-node-selector-panel-subtitle">节点选择</span>
-            <div class="vpn-node-selector-panel-heading">
-              <button id="vpn-node-retest-all-btn" class="vpn-node-retest-all" type="button" disabled>重新测速</button>
-              <button class="vpn-node-selector-dialog-close" type="button" data-vpn-node-selector-close aria-label="关闭节点选择">&times;</button>
-            </div>
-          </div>
-          <div id="vpn-node-selector-grid" class="vpn-node-selector-grid"></div>
+    </div>
+    <section class="magic-nodes" hidden aria-labelledby="magic-node-title">
+      <div class="magic-node-toolbar">
+        <h1 id="magic-node-title">节点列表 <span data-magic-node-count></span></h1>
+        <div class="magic-node-actions">
+          <button id="vpn-node-retest-all-btn" type="button" disabled>测速</button>
+          <button class="magic-close" type="button" data-network-magic-close aria-label="关闭弹窗">&times;</button>
         </div>
       </div>
-    </div>
+      <p data-magic-node-hint>暂无可用节点</p>
+      <div id="vpn-node-selector-panel" class="magic-node-list" hidden>
+        <div id="vpn-node-selector-grid" aria-label="代理节点"></div>
+      </div>
+    </section>
   </section>
   <script src="../renderer/controllers/shared/controller-utils.js"></script>
   <script src="../../shared/message-utils.js"></script>
@@ -66,6 +66,7 @@
   <script src="../sidebar/client/app/side/controllers/pages/side-panel/modules/vpn-config.js"></script>
   <script src="../sidebar/client/app/side/controllers/pages/side-panel/modules/vpn-selector.js"></script>
   <script src="../sidebar/client/app/side/controllers/pages/side-panel/modules/vpn-lifecycle.js"></script>
+  <script src="../renderer/controllers/pages/app-shell/network-magic-node-groups.js"></script>
   <script src="../renderer/controllers/pages/app-shell/network-magic-popup.js"></script>
 </body>
 </html>

@@ -17,7 +17,7 @@
   function aiInputHasActiveDraft() {
     const input = el('ai-chat-input');
     return input === document.activeElement
-      && (state.aiInputComposing || Boolean(String(input?.value || '')));
+      && (state.aiInputComposing || Boolean(input?.textContent));
   }
 
   function flushDeferredAiControlRefresh() {

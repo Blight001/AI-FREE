@@ -48,3 +48,17 @@ test('目录提供当前工具的参数、提示词、模拟协议返回和连�
   assert.equal(observe(handle(event).data.tools).availability, 'Chromium 已连接');
   assert.doesNotMatch(JSON.stringify(handle(event)), /fixture-profile/);
 });
+
+test('manage_card 在首页目录区分可离线操作和需要接管的动作', () => {
+  const { handle, event, connect } = fixture(true);
+  const availability = () => handle(event).data.tools.find((tool) => tool.name === 'manage_card').availability;
+  for (const connected of [false, true]) {
+    if (connected) connect();
+    const label = availability();
+    assert.match(label, /离线/);
+    assert.match(label, /接管/);
+    for (const action of ['purge', 'run', 'start_run', 'retry_run', 'resume_run', 'step_run']) {
+      assert.ok(label.split(/[^a-z_]+/).includes(action), action);
+    }
+  }
+});

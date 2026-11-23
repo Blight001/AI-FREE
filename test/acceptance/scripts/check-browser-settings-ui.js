@@ -9,8 +9,10 @@ const { homeWorkspaceDrivers, checkBrowserHistoryResize } = require('../../helpe
 const { checkProviderAccountDialog, bindProviderAccountFixture } = require('../../helpers/electron/provider-account-dialog');
 const { checkHomeAccountIntegration, checkVipShopOnly } = require('../../helpers/electron/home-account-integration');
 const { checkHomeTheme } = require('../../helpers/electron/home-theme');
+const { checkNetworkMagicPopup, checkNetworkMagicLauncher } = require('../../helpers/electron/network-magic-popup');
 const { checkHomeDialogScope } = require('../../helpers/electron/home-dialog-scope');
 const { checkHomeConsole } = require('../../helpers/electron/home-console');
+const { createAutomationUiFixture, checkHomeAutomationEditor } = require('../../helpers/electron/home-automation-editor');
 const { checkHomeMcp } = require('../../helpers/electron/home-mcp');
 const { runFlow } = require('../../helpers/flows/runner');
 const { emitFlowReport } = require('../../../scripts/verification/flow-reports');
@@ -21,6 +23,7 @@ const layout = applicationLayout(runtimeArgument(process.argv, 'source'), {
 const performanceProbeStartedAt = process.hrtime.bigint();
 
 let browserHistoryOpenRequests = 0;
+const browserDataClearConfirmations = [];
 let homeSwitchRequests = 0;
 let independentBrowserCreateRequests = 0;
 let accountSessionRequests = 0;
@@ -76,6 +79,7 @@ ipcMain.handle('ai-control-set-last-model', (_event, { modelId }) => {
   fixtureLastModelId = modelId;
   return { ok: true, data: { modelId } };
 });
+ipcMain.handle('ai-control-managed-chat', () => ({ ok: true, data: { sessions: [] } }));
 ipcMain.handle('ai-control-history-list', () => ({ ok: true, sessions: aiPreferencesEnabled ? fixtureHistory : [] }));
 ipcMain.handle('ai-control-history-pin', (_event, { id, pinned }) => {
   const session = fixtureHistory.find((item) => item.id === id);
@@ -110,9 +114,19 @@ ipcMain.handle('get-ai-free-browser-settings', () => ({
   activeTab: null,
 }));
 ipcMain.handle('set-sidebar-width', () => ({ ok: true, width: 280 }));
-ipcMain.handle('ai-control-manage-automation-card', () => ({
-  ok: true, data: { success: true, selectedId: '', items: [] },
-}));
+ipcMain.handle('clear-browser-runtime-data', (event, payload = {}) => {
+  const requestId = `ui-clear-${browserDataClearConfirmations.length + 1}`;
+  event.sender.send('browser-data-clear-confirm-request', {
+    requestId, profileId: payload.profileId, title: '平台 A',
+  });
+  return { ok: true, pending: true };
+});
+ipcMain.handle('resolve-browser-data-clear-confirm', (_event, payload = {}) => {
+  browserDataClearConfirmations.push({ requestId: payload.requestId, confirmed: payload.confirmed === true });
+  return { ok: true, cancelled: payload.confirmed !== true };
+});
+const automationUi = createAutomationUiFixture(layout);
+ipcMain.handle('ai-control-manage-automation-card', (_event, input) => automationUi.handle(input));
 for (const [channel, response] of /** @type {Array<[string, any]>} */ ([
   ['get-extension-manager-state', {
     ok: true,
@@ -157,6 +171,7 @@ for (const [channel, response] of /** @type {Array<[string, any]>} */ ([
     profileAudit: { totalCount: 13 },
     history: [{
       id: 'shared-browser',
+      profileId: 'shared-browser-profile',
       name: '平台 A',
       accountDisplayName: '账号123456',
       accountType: 'shared',
@@ -180,7 +195,7 @@ for (const [channel, response] of /** @type {Array<[string, any]>} */ ([
     connections: [],
     mcpTools: [
       { name: 'run_command', description: '运行命令' },
-      { name: 'browser_action', description: '页面操作' },
+      automationUi.browserAction,
     ],
   }],
   ['ai-control-workspace-list', { ok: true, rootName: 'AI-Workspace', files: [], truncated: false }],
@@ -383,12 +398,18 @@ app.whenReady().then(async () => {
   }
   const themeOnly = process.argv.includes('--theme-only');
   const vipShopOnly = process.argv.includes('--vip-shop-only');
-  if (!themeOnly && !vipShopOnly) await checkMainWindowFrame();
+  const automationOnly = process.argv.includes('--automation-editor-only');
+  if (!themeOnly && !vipShopOnly && !automationOnly) await checkMainWindowFrame();
   const win = new BrowserWindow({
     width: 805,
     height: 1200,
     show: !!process.env.AI_FREE_UI_CAPTURE,
-    webPreferences: { contextIsolation: true, preload: path.join(layout.root, 'src/app/backend/preload.js') },
+    webPreferences: {
+      contextIsolation: true,
+      // The hidden fixture still asserts animation frames and transitions.
+      backgroundThrottling: false,
+      preload: path.join(layout.root, 'src/app/backend/preload.js'),
+    },
   });
   if (vipShopOnly) {
     ipcMain.handle('provider-categories-list', () => ({ ok: true, data: { categories: [] } }));
@@ -407,6 +428,11 @@ app.whenReady().then(async () => {
     ipcMain.handle('provider-categories-list', () => ({ ok: true, data: { categories: [] } }));
   } else {
     bindProviderAccountFixture(layout, win.webContents);
+  }
+  if (automationOnly) {
+    try { await checkHomeAutomationEditor(win, layout, automationUi); } finally { win.destroy(); }
+    app.quit();
+    return;
   }
   if (process.argv.includes('--mcp-only')) {
     try {
@@ -440,6 +466,14 @@ app.whenReady().then(async () => {
   }
   attachContextMenu(win.webContents);
   await win.loadFile(layout.pages.shell);
+  if (process.argv.includes('--network-magic-only')) {
+    await checkNetworkMagicLauncher(win);
+    await checkNetworkMagicPopup(win, layout);
+    console.log(`network magic popup checks passed (${layout.runtime})`);
+    win.destroy();
+    app.quit();
+    return;
+  }
   await checkHomeTheme(win);
   if (themeOnly) {
     win.destroy();
@@ -465,6 +499,11 @@ app.whenReady().then(async () => {
     return;
   }
   await checkHomeDialogScope(win.webContents);
+  const clearConfirmDeadline = Date.now() + 1000;
+  while (!browserDataClearConfirmations.length && Date.now() < clearConfirmDeadline) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  assert.deepEqual(browserDataClearConfirmations.map((item) => item.confirmed), [false]);
   if (process.argv.includes('--home-dialogs-only')) {
     win.destroy();
     app.quit();
@@ -505,16 +544,6 @@ app.whenReady().then(async () => {
     const nodeAnimationName = getComputedStyle(animationProbe).animationName;
     animationProbe.remove();
     const magicToggle = document.getElementById('shell-network-magic-toggle');
-    const magicMenu = document.getElementById('shell-network-magic-menu');
-    magicToggle?.click();
-    const magicDialogOpened = magicToggle?.getAttribute('aria-expanded') === 'true';
-    const magicMenuVisible = magicMenu === null
-      || (magicMenu.hidden === false && magicToggle?.getAttribute('aria-expanded') === 'true');
-    const sidebarWidthPx = parseFloat(
-      getComputedStyle(document.documentElement).getPropertyValue('--app-shell-sidebar-width'),
-    ) || 0;
-    const magicMenuClearOfSidebar = magicMenu === null
-      || magicMenu.getBoundingClientRect().right <= window.innerWidth - sidebarWidthPx + 1;
     const vpnButton = document.getElementById('VPN-switch');
     const vpnButtonOriginal = {
       busy: vpnButton?.dataset.busy,
@@ -548,7 +577,6 @@ app.whenReady().then(async () => {
     const nodePanelOpenedByToggle = !nodePanel || (nodePanel.hidden === false
       && nodeToggle?.getAttribute('aria-expanded') === 'true');
     if (nodeToggle) nodeToggle.disabled = nodeToggleWasDisabled;
-    const magicMenuClosedAfterNode = !magicMenu || magicMenu.hidden === true;
     await new Promise((resolve) => setTimeout(resolve, 20));
     document.getElementById('home-plugins-tab').click();
     const extensionList = document.getElementById('extension-plugin-list');
@@ -605,10 +633,6 @@ app.whenReady().then(async () => {
         && !document.querySelector('#browser-empty-state .settings-network-tools-proxy-title')
         && !document.getElementById('browser-empty-state')?.textContent.includes('内置代理'),
       magicLauncherVisible: magicToggle?.getBoundingClientRect().width > 0,
-      magicDialogOpened,
-      magicMenuOpened: magicMenuVisible,
-      magicMenuClearOfSidebar,
-      magicMenuClosedAfterNode,
       nodeToggleVisible,
       nodePanelCollapsedByDefault,
       nodePanelVisible: nodePanelOpenedByToggle,
@@ -667,10 +691,6 @@ app.whenReady().then(async () => {
     || !result.woolResourceInPersonal
     || !result.homeProxyRemoved
     || !result.magicLauncherVisible
-    || !result.magicDialogOpened
-    || !result.magicMenuOpened
-    || !result.magicMenuClearOfSidebar
-    || !result.magicMenuClosedAfterNode
     || !result.nodeToggleVisible
     || JSON.stringify(result.proxyModes) !== JSON.stringify([
       { value: 'port', checked: true },
@@ -903,6 +923,10 @@ app.whenReady().then(async () => {
   ), 0) / 1024;
   await checkHomeConsole(win, layout);
   await checkHomeMcp(win, layout);
+  await checkHomeAutomationEditor(win, layout, automationUi);
+  await checkNetworkMagicLauncher(win);
+  await checkNetworkMagicPopup(win, layout);
+  console.log(`network magic popup checks passed (${layout.runtime})`);
   const destroyStartedAt = process.hrtime.bigint();
   win.destroy();
   const destroyMs = Number(process.hrtime.bigint() - destroyStartedAt) / 1e6;

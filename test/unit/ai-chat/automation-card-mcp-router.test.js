@@ -76,3 +76,46 @@ test('card MCP router also blocks recursive manage_card aliases', async () => {
     /禁止递归调用 manage_card/,
   );
 });
+
+test('card MCP router rejects invalid schema arguments before dispatch', async () => {
+  const calls = [];
+  const router = createAutomationCardMcpRouter({
+    listConnections: () => [{ id: 'browser-1', name: '主窗口' }],
+    getConnection: () => ({ tools: [{ name: 'typed_action', input_schema: {
+      type: 'object', required: ['count'], additionalProperties: false,
+      properties: { count: { type: 'integer', enum: [1, 2] } },
+    } }] }),
+    dispatch: async (...args) => { calls.push(args); return { success: true }; },
+  });
+  await assert.rejects(() => router.execute('browser-1', 'typed_action', { count: 1.5 }), /类型错误/);
+  await assert.rejects(() => router.execute('browser-1', 'typed_action', { count: 3 }), /允许值范围/);
+  await assert.rejects(() => router.execute('browser-1', 'typed_action', { count: 1, extra: true }), /不支持的输入字段/);
+  assert.equal(calls.length, 0);
+});
+
+test('a bound card refuses the remaining window even when its name matches the original id', async () => {
+  const calls = [];
+  const router = createAutomationCardMcpRouter({
+    listConnections: () => [{ id: 'remaining', name: 'original' }],
+    getConnection: (id) => id === 'remaining' ? { id, tools: [{ name: 'action' }] } : null,
+    dispatch: (...args) => calls.push(args),
+  });
+  await assert.rejects(router.execute('original', 'action'), { code: 'BROWSER_CONNECTION_NOT_FOUND' });
+  assert.deepEqual(calls, []);
+});
+
+test('card arguments use only the destination tool schema, including explicit switches', async () => {
+  const reads = [], calls = [];
+  const router = createAutomationCardMcpRouter({
+    listConnections: () => [{ id: 'a' }, { id: 'b' }],
+    getConnection: (id) => {
+      reads.push(id);
+      return { id, tools: [{ name: 'action', inputSchema: { type: 'object', required: [id] } }] };
+    },
+    dispatch: (id) => calls.push(id),
+  });
+  await router.execute('a', 'action', { change_browser: 'b', b: 1 });
+  await assert.rejects(router.execute('b', 'action', { a: 1 }), /inputs.b/);
+  assert.deepEqual(reads, ['b', 'b']);
+  assert.deepEqual(calls, ['b']);
+});

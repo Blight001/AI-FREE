@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-  window.MessageModal.initServerMessageListener();
+  window.MessageModal.initServerMessageListener({ bindBrowserDataClearConfirm: false });
   initAnnouncementListener();
   bindHomeAccountRuntime();
   bindSidebarAccountAuth();

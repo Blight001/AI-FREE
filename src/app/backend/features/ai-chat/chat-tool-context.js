@@ -1,7 +1,7 @@
 'use strict';
 
 const { limitAiControlMessages } = require('../../lib/ai-control-message-window');
-const { browserControlDefinition } = require('../../services/native-browser-tool-definitions');
+const { CARD_SAVE_GUIDANCE, MANAGE_CARD_TOOL_DEFINITION, browserControlDefinition } = require('../../services/native-browser-tool-definitions');
 const {
   findConnectionByReference,
   withBrowserRouteParam,
@@ -35,7 +35,8 @@ function collectConnectionTools(connections, windowTools, _localInteraction) {
 }
 
 const BROWSER_ENVIRONMENT_INTENT = /(?:浏览器|栏目|窗口)?.{0,10}(?:环境|配置|设置|指纹|代理|proxy|user[ -]?agent|\bua\b|语言|时区|定位|分辨率|webrtc|canvas|webgl|字体|cpu|内存|启动参数)/i;
-const LOCAL_WEB_TEST_INTENT = /(?:测试|回归|重复操作|验收|验证|workflow|regression|test)/i;
+const LOCAL_WEB_TEST_INTENT = /(?:测试|复测|重跑|回归|重复操作|验收|验证|workflow|regression|test)/i;
+const CARD_WORKFLOW_INTENT = /(?:制成|做成|转成|生成|保存|复用|录制|固化).{0,16}(?:自动化|流程|卡片|步骤)|(?:步骤|操作)自动化|自动化(?:流程|卡片)|(?:复测|验收|重跑|运行).{0,12}卡片|(?:卡片|流程).{0,12}(?:保存|复测|验收)|\b(?:automate|automation card|(?:save|reusable) (?:the |this )?workflow)\b/i;
 
 function shouldIncludeBrowserEnvironment(messages = []) {
   const recentUsers = messages.filter((message) => message?.role === 'user').slice(-2);
@@ -59,29 +60,44 @@ function appendOptionalWorkflows(workflow, available) {
   if (available.has('run_command')) {
     workflow.push('需要查看或处理 AI-Workspace 文件时使用 run_command；上传文件时把工作区内路径交给 browser_file action=upload；浏览器下载也会自动保存到该工作区');
   }
-  if (available.has('manage_card')) {
-    workflow.push('自动化卡片必须由你根据用户目标自行筛选：先看系统提供的卡片目录或调用 manage_card action=list，再对匹配的 id 或唯一 card_name 调用 get/run；禁止把工作台 selectedId、第一张卡片或设置项当成用户已指定的任务');
-  }
   if (available.has('browser_environment')) {
     workflow.push('仅在用户要求查看或修改浏览器环境、指纹、代理等配置时使用 browser_environment');
   }
 }
 
-function isLocalWebTest(messages, url) {
-  return LOCAL_WEB_TEST_INTENT.test(messages.map((message) => message?.content || '').join('\n'))
-    || /^(https?:\/\/)?(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?\//i.test(url);
+function workflowIntent(messages) {
+  const requests = messages.filter((message) => message?.role === 'user'
+    && !message.ai_free_transient_image && !message.ai_free_attachment_context).slice(-2);
+  const [latest = '', previous = ''] = requests.reverse().map(({ content }) => Array.isArray(content)
+    ? content.filter((part) => part?.type === 'text').map((part) => part.text).join(' ') : String(content || ''));
+  if (CARD_WORKFLOW_INTENT.test(latest)) return 'card';
+  if (!LOCAL_WEB_TEST_INTENT.test(latest)) return 'page';
+  return CARD_WORKFLOW_INTENT.test(previous) ? 'card' : 'web-test';
 }
 
-function describeBrowserWorkflow(available, controlled, initialMessages) {
+function appendTestWorkflow(workflow, available, controlled, intent) {
+  if (intent === 'card' && available.has('manage_card')) {
+    if (available.has('browser_workflow')) workflow.push('browser_workflow run 只执行临时网页步骤。保存流程或复测卡片请使用 manage_card');
+    workflow.push(CARD_SAVE_GUIDANCE
+      + '已保存卡片复测失败时，先从 get_run 返回的 run.steps 找到最近成功步骤，重新观察当前页面。'
+      + '若动作已派发且页面已变，不要从头重跑或点击被遮挡的目标。副作用未知时停止，不重放。'
+      + '修正无效参数等失败原因。仅在可安全复位时恢复页面（如安全关闭临时弹窗），重新观察并确认回到卡片起点后才做一次复测');
+    return;
+  }
+  const url = String(controlled?.url || controlled?.tabUrl || controlled?.currentUrl || '');
+  const localUrl = /^(https?:\/\/)?(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?\//i.test(url);
+  if (available.has('browser_workflow') && (intent === 'web-test' || localUrl)) {
+    workflow.push('一次性网页回归使用 browser_control acquire 后的 browser_workflow automation，每步配置稳定 locator 和业务 probes/expect，失败暂停并转 debug');
+  }
+}
+
+function describeBrowserWorkflow(available, controlled, intent) {
   const workflow = [];
   if (available.has('browser_tab')) workflow.push('使用 browser_tab 确认、切换或导航标签页');
   if (available.has('browser_observe') && available.has('browser_action')) {
     workflow.push('网页操作前先用 browser_observe 获取当前状态，再用 browser_action 操作；导航、切换标签页或页面明显变化后重新 observe，禁止跨浏览器或跨页面复用旧 ref');
   } else if (available.has('browser_observe')) workflow.push('用 browser_observe 读取当前页面，不虚构未返回的元素');
-  const controlledUrl = String(controlled?.url || controlled?.tabUrl || controlled?.currentUrl || '');
-  if (available.has('browser_workflow') && isLocalWebTest(initialMessages, controlledUrl)) {
-    workflow.push('本地 Web 测试、回归、验收或重复操作默认使用 browser_control acquire 后的 browser_workflow automation；每步配置稳定 locator、业务 probes/expect，失败自动暂停并转 debug。只有用户明确要求单步低层操作时才直接使用 browser_action');
-  }
+  appendTestWorkflow(workflow, available, controlled, intent);
   if (available.has('browser_wait')) workflow.push('仅在页面确实需要加载或等待元素时使用 browser_wait');
   appendOptionalWorkflows(workflow, available);
   return workflow.length
@@ -100,7 +116,7 @@ function createMcpContext(tools, connections, resolver, controlledConnectionId, 
     : (connections.length === 1
       ? `当前唯一可用浏览器为 ${resolver.describeConnections()}；无需传 change_browser，除非之后出现新的可用连接。用户不会在设置中指定目标浏览器。`
       : '当前没有可用的浏览器自动化连接，不要调用或虚构浏览器工具。需要浏览器时用 windows_tab 打开或创建栏目，等待 mcp_connected=true 后再操作页面。');
-  const browserWorkflow = describeBrowserWorkflow(available, controlled, initialMessages);
+  const browserWorkflow = describeBrowserWorkflow(available, controlled, workflowIntent(initialMessages));
   return {
     role: 'system',
     content: `你可以使用这些 AI-FREE MCP 工具：${toolNames}。${routing}${browserWorkflow}`
@@ -134,13 +150,12 @@ function formatAutomationCardCatalog(cards) {
   }).join('；');
 }
 
-function createCardCatalogContext(cards, connections) {
-  if (!connections.length) return null;
+function createCardCatalogContext(cards) {
   const allCards = Array.isArray(cards) ? cards.filter((card) => card?.id) : [];
   if (!allCards.length) {
     return {
       role: 'system',
-      content: '软件卡片库当前没有自动化卡片。需要卡片时通过 manage_card 的 rules/write 新建；不要假装已有可用卡片，也不要等待用户在设置中选择。',
+      content: '软件卡片库当前没有自动化卡片，无需再 list。需要保存时按 manage_card 的说明新建。',
       ai_free_card_context: true,
     };
   }
@@ -149,7 +164,7 @@ function createCardCatalogContext(cards, connections) {
   const extra = omitted > 0 ? `目录仅列出前 ${visible.length} 张，其余 ${omitted} 张请用 manage_card action=list 继续筛选。` : '';
   return {
     role: 'system',
-    content: `软件卡片库现有 ${allCards.length} 张自动化卡片，必须由你根据用户目标自行筛选，不要依赖用户在 AI 控制设置中选择，也不要把工作台 selectedId 当作任务指定卡片。目录：${formatAutomationCardCatalog(visible)}。${extra}需要查看详情或运行时，用 manage_card 的 get/run 并传入匹配到的 id 或唯一 card_name；没有合适卡片时先 list 确认或按 rules 新建。禁止未筛选就默认使用第一张或某张“当前卡片”。`,
+    content: `软件卡片库现有 ${allCards.length} 张自动化卡片，必须由你根据用户目标自行筛选，不要依赖用户在 AI 控制设置中选择，也不要把工作台 selectedId 当作任务指定卡片。目录：${formatAutomationCardCatalog(visible)}。${extra}使用匹配的 id 或唯一 card_name 调用 manage_card get，按 inputSchema 提供 inputs。`,
     ai_free_card_context: true,
   };
 }
@@ -160,10 +175,16 @@ function buildChatToolContext(options = {}) {
     initialMessages, attachmentMessages = [],
   } = options;
   const resolver = createConnectionResolver(connections);
+  if (options.disableTools) {
+    return { ...resolver, tools: [], modelMessages: limitAiControlMessages([...initialMessages, ...attachmentMessages]) };
+  }
   const tools = [...selectedWindowTools(windowTools, initialMessages),
     ...collectConnectionTools(connections, windowTools, options.localInteraction)];
+  if (!tools.some((tool) => tool.name === 'manage_card')) {
+    tools.push(withBrowserRouteParam(MANAGE_CARD_TOOL_DEFINITION));
+  }
   if (!connections.length && options.localInteraction) tools.push(withBrowserRouteParam(browserControlDefinition(false)));
-  const cardContext = createCardCatalogContext(automationCards, connections);
+  const cardContext = createCardCatalogContext(automationCards);
   const mcpContext = createMcpContext(tools, connections, resolver, controlledConnectionId, initialMessages);
   const localBoundary = options.localInteraction ? {
     role: 'system', ai_free_card_context: true,

@@ -127,6 +127,17 @@ test('工具协议和活动时间线在保存后完整恢复', () => {
   assert.equal(messages[3].trace_events[0].tool.duration_ms, 1234);
 });
 
+test('history round-trips a measured turn and leaves legacy or invalid durations unset', () => {
+  const { repository } = fixture();
+  repository.saveSession({}, { id: 'timing', messages: [
+    { role: 'assistant', content: '已完成', turn_duration_ms: 237000 },
+    { role: 'assistant', content: '旧记录' },
+    { role: 'assistant', content: '无效数据', turn_duration_ms: -1 },
+  ] });
+  const { messages } = repository.getSession({}, 'timing').session;
+  assert.deepEqual(messages.map((message) => message.turn_duration_ms), [237000, undefined, undefined]);
+});
+
 test('空会话不落盘，已有会话删空会删除；写入失败不报告成功', () => {
   const data = fixture();
   assert.equal(data.repository.saveSession({}, { id: 'empty', messages: [] }).skipped, true);

@@ -18,6 +18,8 @@ test('AI 控制页装配上传、工作文件和 @ 引用资源', () => {
   }
   for (const relativePath of [
     'client/app/side/controllers/pages/ai-control/ai-control-files.js',
+    'client/app/side/controllers/pages/ai-control/ai-control-draft.js',
+    'client/app/side/controllers/pages/ai-control/ai-control-inline-files.js',
     'client/app/side/styles/modules/ai-control-files.css',
     'client/app/side/styles/modules/website-console-theme.css',
   ]) {

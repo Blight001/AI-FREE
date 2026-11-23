@@ -1,9 +1,12 @@
 const { registerHomeConsoleIpc } = require('../features/window/register-home-console-ipc');
+const { registerMcpDebugPanelIpc } = require('../features/browser/register-mcp-debug-panel-ipc');
 const { registerMcpCatalogIpc } = require('../features/browser/register-mcp-catalog-ipc');
 const { createAiSupportService } = require('../features/ai-chat/ai-support-service');
 const { registerAiHistoryIpc } = require('../features/ai-chat/register-history-ipc');
 const { createAiChatHistoryRepository } = require('../features/ai-chat/history-repository');
 const { registerAiSupportIpc } = require('../features/ai-chat/register-support-ipc');
+const { registerManagedChatIpc } = require('../features/ai-chat/register-managed-chat-ipc');
+const { combineToolSets } = require('./combine-tool-sets');
 const { registerAiChatIpc } = require('../features/ai-chat/register-chat-ipc');
 const { createAccountService } = require('../features/account/account-service');
 const { registerAccountIpc } = require('../features/account/register-account-ipc');
@@ -124,7 +127,10 @@ function createAndRegisterAiServices(deps, ipc) {
     logger: deps.logger,
   });
   registerAiSupportIpc({ ipc, service: aiSupport });
+  const managedChat = deps.managedChatRepository ? registerManagedChatIpc({ ipc, deps, getModels: aiSupport.getModels }) : null;
+  if (managedChat) deps.app?.once?.('before-quit', managedChat.dispose);
   const aiChatService = registerAiChatIpc({
+    getParentChatTools: managedChat?.getParentTools,
     ...deps,
     ipc,
     readStoreConfigSafe: deps.readStoreConfigSafe,
@@ -132,11 +138,14 @@ function createAndRegisterAiServices(deps, ipc) {
     licenseCache: deps.licenseCache,
     logger: deps.logger,
   });
+  const getWindowTools = () => combineToolSets(aiChatService.getWindowTools(), managedChat?.getExternalTools());
   deps.browserAutomationBridge?.configureExternalMcp?.({
     getConnections: () => aiSupport.getBrowserConnections().connections,
-    getWindowTools: aiChatService.getWindowTools,
+    getWindowTools,
   });
-  registerMcpCatalogIpc(ipc, { ...deps, getWindowTools: aiChatService.getWindowTools });
+  registerMcpCatalogIpc(ipc, { ...deps, getWindowTools });
+  const disposeMcpDebug = registerMcpDebugPanelIpc(ipc, { ...deps, getWindowTools });
+  deps.app?.once('will-quit', disposeMcpDebug);
   if (deps.aiServerDeviceService) {
     registerAiServerDeviceIpc({ ipc, service: deps.aiServerDeviceService, getMainWindow: deps.getMainWindow });
   }

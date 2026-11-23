@@ -1,0 +1,13 @@
+:root { font: 15px/1.5 "Segoe UI", "Microsoft YaHei", sans-serif; color: #142034; background: #f3f5f8; }
+body { margin: 16px; }
+h1 { margin: 0 0 10px; font-size: 22px; }
+h2 { margin: 0 0 8px; font-size: 15px; }
+.layout { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.target { display: block; margin-bottom: 8px; padding: 7px; border-radius: 5px; border: 1px solid #b7c9e4; background: #fff; color: inherit; font: inherit; }
+.hover:hover { background: #c5e7d0; }
+.scroll { height: 70px; overflow: auto; }
+.track { position: relative; margin-bottom: 8px; height: 48px; background: #d9e4f7; border-radius: 5px; overflow: hidden; }
+#drag-target { position: absolute; top: 7px; left: 7px; padding: 5px; cursor: grab; touch-action: none; }
+iframe { width: 100%; height: 76px; border: 1px solid #b7c9e4; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; font: 12px/1.5 Consolas, monospace; }
+@media (max-width: 460px) { .layout { grid-template-columns: minmax(0, 1fr); } }

@@ -189,4 +189,4 @@ async function acceptMcpSessionParity({ manager, profileId, url, workspace }) {
   process.stdout.write('External MCP and sidebar exported the same bound Chromium session locally.\n');
 }
 
-module.exports = { acceptMcpFileParity, acceptMcpSessionParity, serveMcpFileFixture };
+module.exports = { acceptMcpFileParity, acceptMcpSessionParity, entryTools, serveMcpFileFixture };

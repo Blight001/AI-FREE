@@ -1,6 +1,8 @@
 'use strict';
 
 const os = require('os');
+const { callDeviceTask, deliverPendingChatTasks, emitDeviceTaskTerminal, makeDeviceChatCaller } = require('./managed-chat-device-delivery');
+
 const {
   normalizeToolError,
   normalizeToolSchema,
@@ -308,6 +310,7 @@ class AiServerDeviceService {
         ? '设备已在线；请到作坊面板分配 AI 并勾选 MCP 权限'
         : '设备已在线并绑定 AI',
     });
+    deliverPendingChatTasks(this);
     this.scheduleUpdateCheck();
   }
 
@@ -395,12 +398,17 @@ class AiServerDeviceService {
     const taskId = String(task.taskId || '').trim();
     const socket = this.socket;
     if (!taskId || !socket) return;
-    if (this.completedTasks.has(taskId)) return;
+    const completed = this.completedTasks.get(taskId);
+    if (completed) {
+      if (completed.managed) socket.emit(completed.event, completed.payload);
+      return;
+    }
     if (this.inFlightTasks.has(taskId)) return;
     this.inFlightTasks.add(taskId);
     const tool = String(task.tool || '').trim();
+    const sourceName = this.routes.get(tool);
+    const actor = makeDeviceChatCaller(this);
     try {
-      const sourceName = this.routes.get(tool);
       if (!sourceName) throw new Error(`未知或当前不可用的 MCP 工具: ${tool}`);
       const toolArgs = await prepareHeySureBrowserFileArgs({
         sourceName, args: task.args, task,
@@ -408,7 +416,7 @@ class AiServerDeviceService {
         server: this.credentials?.server,
         token: this.token,
       });
-      const localResult = await this.callTool(sourceName, toolArgs);
+      const localResult = await callDeviceTask(this, sourceName, toolArgs);
       const result = await attachHeySureDownloadedFile({
         sourceName, args: task.args, result: localResult,
         upload: this.uploadWorkspaceFile,
@@ -420,8 +428,7 @@ class AiServerDeviceService {
         taskId, deviceId: this.serviceId, success: true, tool,
         result, summary: taskSummary(tool, result),
       };
-      this.rememberCompletedTask(taskId, { event: 'task:result', payload });
-      socket.emit('task:result', payload);
+      emitDeviceTaskTerminal(this, socket, sourceName, 'task:result', payload, actor);
     } catch (error) {
       const normalized = normalizeToolError(error, {
         code: 'MCP_TOOL_FAILED',
@@ -436,8 +443,7 @@ class AiServerDeviceService {
         phase: normalized.phase,
         retryable: normalized.retryable,
       };
-      this.rememberCompletedTask(taskId, { event: 'task:error', payload });
-      socket.emit('task:error', payload);
+      emitDeviceTaskTerminal(this, socket, sourceName, 'task:error', payload, actor);
     } finally {
       this.inFlightTasks.delete(taskId);
     }

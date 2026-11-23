@@ -45,7 +45,7 @@ function buildBrowserTabRuntimeProfile(context, profile, extensionManager) {
     restoreLastSession,
     hideToolbar: context.options.hideBrowserToolbar === true,
     restoreFallbackUrl: String(url || '').trim(),
-    ...buildBrowserRuntimeEnvironment(browserSettings, profile, proxy.value),
+    ...buildBrowserRuntimeEnvironment(browserSettings, profile, proxy),
     executablePath: browserSettings.chromiumExecutablePath,
     extensionPaths: resolveChromiumExtensionPaths(browserSettings, extensionManager),
     allowPrototypeWindowDiscovery: browserSettings.allowPrototypeWindowDiscovery === true,

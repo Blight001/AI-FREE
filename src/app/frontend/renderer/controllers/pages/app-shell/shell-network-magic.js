@@ -5,10 +5,7 @@ function bindNetworkMagicShell() {
   toggle.addEventListener('click', (event) => {
     event.preventDefault();
     event.stopPropagation();
-    const open = toggle.getAttribute('aria-expanded') !== 'true';
-    setNetworkMagicLauncherOpen(open);
     window.aiFree?.shell?.toggleNetworkMagicPanel?.({
-      open,
       anchor: readNetworkMagicButtonAnchor(toggle),
     });
   });
@@ -16,7 +13,7 @@ function bindNetworkMagicShell() {
     setNetworkMagicLauncherOpen(payload?.open === true);
   });
   window.aiFree?.network?.onClashStatus?.((status) => {
-    syncNetworkMagicLauncherState(Boolean(status?.running && (status?.enabled || status?.proxyAppliedByApp)));
+    syncNetworkMagicLauncherState(status?.running === true && status.enabled === true);
   });
   toggle.dataset.bound = '1';
 }

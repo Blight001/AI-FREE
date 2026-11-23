@@ -114,9 +114,6 @@
       if (!clickedButton || !container.contains(clickedButton) || clickedButton.disabled) return;
       if (await redirectToAccountLogin()) return;
       const task = withBusyButton(clickedButton, () => openDreamPlatform(clickedButton, container), {
-        companions: [
-          document.getElementById('VPN-switch'),
-        ],
         onError: (err) => {
 // 处理：msg的具体业务逻辑。
           const msg = (err && err.message) ? err.message : String(err);

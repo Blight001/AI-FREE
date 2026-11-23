@@ -3,6 +3,7 @@
 const { pathToFileURL } = require('node:url');
 const { bindDomain } = require('./domains');
 const { pageProbes } = require('./page-probes');
+const { exerciseAiDraft } = require('./electron-ai-draft');
 
 function electronPageFixture(BrowserWindow, layout) {
   let window;
@@ -37,6 +38,19 @@ function electronPageFixture(BrowserWindow, layout) {
       if (page !== currentPage || !Object.hasOwn(pageProbes, page)) throw new Error('PAGE_PROBE_MISMATCH');
       if (target.webContents.getURL() !== pathToFileURL(layout.pages[page]).href) throw new Error('UNEXPECTED_PAGE_URL');
       return target.webContents.executeJavaScript(`(${pageProbes[page].toString()})()`);
+    },
+    checkAiDraft: async () => {
+      const target = liveWindow();
+      if (currentPage !== 'ai' || target.webContents.getURL() !== pathToFileURL(layout.pages.ai).href) {
+        throw new Error('PAGE_PROBE_MISMATCH');
+      }
+      try {
+        await exerciseAiDraft(target.webContents);
+      } catch (error) {
+        console.error('AI draft interaction failed:', error);
+        throw error;
+      }
+      return { verified: true };
     },
     close: async () => close(),
     inspectWindow: async () => ({ open: !!window && !window.isDestroyed() }),

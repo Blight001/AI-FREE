@@ -59,7 +59,6 @@
       currentPlatformName: '',
     },
     vpn: {
-      vpnSwitchBtn: null,
       testLatencyBtn: null,
       vpnButtons: [],
       isVpnEnabled: false,
@@ -219,9 +218,6 @@
   });
   defineWindowStateProxy('cookieImportUnlocked', () => sidePanelState.session.cookieImportUnlocked, (value) => {
     sidePanelState.session.cookieImportUnlocked = value === true;
-  });
-  defineWindowStateProxy('vpnSwitchBtn', () => sidePanelState.vpn.vpnSwitchBtn, (value) => {
-    sidePanelState.vpn.vpnSwitchBtn = value || null;
   });
   defineWindowStateProxy('testLatencyBtn', () => sidePanelState.vpn.testLatencyBtn, (value) => {
     sidePanelState.vpn.testLatencyBtn = value || null;

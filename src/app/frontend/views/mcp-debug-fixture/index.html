@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<title>AI-FREE 鼠标调试测试页</title>
+<link rel="stylesheet" href="{{route}}/fixture.css">
+<script src="{{route}}/fixture.js" defer></script>
+<h1>鼠标控制测试页</h1>
+<div class="layout">
+  <section>
+    <label class="target"><input id="check" type="checkbox"> 单击复选框或标签</label>
+    <button class="target" id="click-target">左键 · 双击 · 中键 · 右键</button>
+    <div class="target hover" id="hover-target">悬停测试</div>
+    <div class="track" id="track"><button id="drag-target">拖动我</button></div>
+    <div class="target scroll" id="scroll-target" tabindex="0" aria-label="滚轮测试">
+      <div>滚轮测试<br>向下滚动<br>第 3 行<br>第 4 行<br>第 5 行<br>第 6 行<br>第 7 行</div>
+    </div>
+    <iframe src="{{route}}/frame.html" title="同源 iframe 测试"></iframe>
+  </section>
+  <section>
+    <h2>页面收到的事件</h2>
+    <pre id="events" aria-live="off">等待鼠标事件</pre>
+  </section>
+</div>
+</html>

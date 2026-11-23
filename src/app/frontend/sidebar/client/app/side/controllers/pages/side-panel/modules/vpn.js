@@ -1,5 +1,12 @@
 // 侧边栏 VPN / Clash Mini 相关逻辑
-let proxyTrafficQuotaSnapshot = null;
+let vpnControlOperation = '';
+let onVpnControlsChanged = null;
+let renderVpnNodeGroups = null;
+let clashCoreRunning = false;
+
+function vpnNodeActionsLocked() {
+  return !canUseVpnFeatures() || !!vpnControlOperation || vpnNodeSelectorBusy || isNetworkMagicStartFlowActive();
+}
 
 function formatProxyTrafficBytes(value) {
   const bytes = Math.max(0, Number(value) || 0);
@@ -11,13 +18,8 @@ function formatProxyTrafficBytes(value) {
 
 function renderProxyTrafficQuota(quota) {
   const normalized = window.AiFreeQuotaDisplay?.normalizeTrafficQuota?.(quota) || quota;
-  proxyTrafficQuotaSnapshot = normalized && typeof normalized === 'object' ? normalized : null;
   if (typeof renderAccountProxyTrafficUsage === 'function') {
-    renderAccountProxyTrafficUsage(proxyTrafficQuotaSnapshot);
-  }
-  if (vpnSwitchBtn) {
-    vpnSwitchBtn.textContent = isVpnEnabled ? '关闭魔法代理' : '开启魔法代理';
-    vpnSwitchBtn.title = isVpnEnabled ? '点击关闭魔法代理' : '点击开启魔法代理';
+    renderAccountProxyTrafficUsage(normalized && typeof normalized === 'object' ? normalized : null);
   }
 }
 // 设置/更新/持久化：setVpnNodeSelectorOpen的具体业务逻辑。
@@ -60,9 +62,10 @@ function applyVpnActionAvailability() {
   const canUse = canUseVpnFeatures();
   setVpnNodeSelectorButtonsDisabled({
     toggleDisabled: !canUse,
-    actionDisabled: !canUse || vpnNodeSelectorBusy || isNetworkMagicStartFlowActive(),
+    actionDisabled: vpnNodeActionsLocked(),
   });
 
+  onVpnControlsChanged?.();
   if (testLatencyBtn) {
     testLatencyBtn.title = !isLicenseValidated()
       ? '请先完成验证'
@@ -72,45 +75,30 @@ function applyVpnActionAvailability() {
   }
 }
 
-// 格式化/规范化：normalizeProxyEntries的具体业务逻辑。
-function normalizeProxyEntries(entries, currentName) {
-  const selectedName = String(currentName || '').trim();
-  const list = Array.isArray(entries) ? entries : [];
-  return list.map((item) => {
-    const name = String(item?.name || '').trim();
-    const delay = Number(item?.delay);
-    const hasDelay = Number.isFinite(delay) && delay > 0;
-    const hasError = Boolean(item?.error);
-    return {
-      name,
-      delay: hasDelay ? delay : null,
-      delayText: String(hasDelay
-        ? `${Math.round(delay)}ms`
-        : (hasError ? 'error' : (item?.delayText || '测速中...'))),
-      selected: name === selectedName,
-    };
-  }).filter((item) => item.name);
+function normalizeProxyEntries(entries, currentName, fallbackText) {
+  return (Array.isArray(entries) ? entries : [])
+    .map((item) => normalizeProxyEntry(item, currentName, fallbackText))
+    .filter((item) => item.name);
 }
 
 function getPositiveVpnDelay(source) {
-  const value = Number(source && source.delay);
+  const value = Number(source?.delay);
   return Number.isFinite(value) && value > 0 ? value : null;
 }
 
-function normalizeMergedProxyEntry(item, previous, currentName) {
-  const name = String((item && item.name) || '').trim();
-  const nextDelay = getPositiveVpnDelay(item);
-  const previousDelay = getPositiveVpnDelay(previous);
-  const delay = nextDelay !== null ? nextDelay : previousDelay;
-  const hasError = (item && item.error) || (previous && previous.error);
-  const itemText = item && item.delayText;
-  const previousText = previous && previous.delayText;
+function getVpnDelayFailureText(item) {
+  if (item?.delayText === '超时' || item?.error === '超时') return '超时';
+  return item?.error || item?.delayText === 'error' ? 'error' : '';
+}
+
+function normalizeProxyEntry(item, currentName, fallbackText = '测速中...') {
+  const name = String(item?.name || '').trim();
+  const failure = getVpnDelayFailureText(item);
+  const delay = failure ? null : getPositiveVpnDelay(item);
   return {
     name,
     delay,
-    delayText: String(delay !== null
-      ? `${Math.round(delay)}ms`
-      : (hasError ? 'error' : (itemText || previousText || '测速中...'))),
+    delayText: delay !== null ? `${Math.round(delay)}ms` : (failure || item?.delayText || fallbackText),
     selected: name === String(currentName || '').trim(),
   };
 }
@@ -128,7 +116,8 @@ function mergeProxyEntriesWithPrevious(entries, previousEntries, currentName) {
   return nextList.map((item) => {
     const name = String((item && item.name) || '').trim();
     const previous = previousMap.get(name) || {};
-    return normalizeMergedProxyEntry(item, previous, currentName);
+    const hasResult = getPositiveVpnDelay(item) !== null || getVpnDelayFailureText(item);
+    return normalizeProxyEntry(hasResult ? item : (previous.name ? previous : item), currentName);
   }).filter((item) => item.name);
 }
 
@@ -205,11 +194,16 @@ function getVpnDelayBackground(delay, hasDelay) {
   };
 }
 
+function getVpnDelayTone(delay, delayText) {
+  if (delay !== null) return Math.round(delay) <= 200 ? 'fast' : 'slow';
+  return getVpnDelayFailureText({ delayText }) ? 'failed' : 'pending';
+}
+
 // 设置/更新/持久化：updateVpnNodeSelectorButton的具体业务逻辑。
 function updateVpnNodeSelectorButton(button, name, index, proxyItem, selectedName) {
   if (!button) return;
-  const rawDelay = Number(proxyItem.delay);
-  const hasDelay = Number.isFinite(rawDelay) && rawDelay > 0;
+  const rawDelay = getPositiveVpnDelay(proxyItem);
+  const hasDelay = rawDelay !== null;
   const delayText = String(proxyItem.delayText || (hasDelay ? `${Math.round(rawDelay)}ms` : '测速中...'));
   const delayColor = getVpnDelayColor(rawDelay, hasDelay);
   const delayBackground = getVpnDelayBackground(rawDelay, hasDelay);
@@ -217,7 +211,7 @@ function updateVpnNodeSelectorButton(button, name, index, proxyItem, selectedNam
 
   button.className = `vpn-node-option${isSelected ? ' is-selected' : ''}`;
   // 测速/选路期间面板会被重建或增量渲染，新按钮也要继承禁用状态。
-  button.disabled = vpnNodeSelectorBusy === true;
+  button.disabled = renderVpnNodeGroups ? vpnNodeActionsLocked() : vpnNodeSelectorBusy === true;
   button.setAttribute('role', 'radio');
   button.setAttribute('aria-checked', isSelected ? 'true' : 'false');
   button.dataset.nodeName = name;
@@ -227,11 +221,15 @@ function updateVpnNodeSelectorButton(button, name, index, proxyItem, selectedNam
   const metaEl = button.querySelector('.vpn-node-option-meta');
   if (metaEl) {
     metaEl.className = 'vpn-node-option-meta';
-    metaEl.style.color = delayColor;
     metaEl.textContent = delayText;
-    metaEl.title = `重新测试 ${name} 的延时`;
-    metaEl.setAttribute('role', 'button');
-    metaEl.setAttribute('tabindex', '0');
+    if (renderVpnNodeGroups) {
+      metaEl.dataset.delayTone = getVpnDelayTone(rawDelay, delayText);
+    } else {
+      metaEl.style.color = delayColor;
+      metaEl.title = `重新测试 ${name} 的延时`;
+      metaEl.setAttribute('role', 'button');
+      metaEl.setAttribute('tabindex', '0');
+    }
   }
 }
 
@@ -255,6 +253,12 @@ function buildVpnNodeSelectorButton(name, index, proxyItem, selectedName) {
   // 延时元素创建完成后再写入状态；否则完整重建节点列表时，
   // update 找不到 meta 元素，测速结束后的延时数字会变空。
   updateVpnNodeSelectorButton(button, name, index, proxyItem, selectedName);
+
+  if (renderVpnNodeGroups) {
+    button.title = name;
+    button.addEventListener('click', () => { void switchVpnNode(name); });
+    return button;
+  }
 
   button.addEventListener('click', (event) => {
     if (event.target?.closest?.('.vpn-node-option-meta')) {
@@ -288,6 +292,7 @@ function applyVpnSwitchResult(result, nodeName) {
   clashMiniProxyState.proxies = normalizeProxyEntries(clashMiniProxyState.proxies, clashMiniProxyState.current);
   syncVpnNodeSelectorState();
   scheduleVpnNodeSelectorRender({ forceFull: true });
+  if (renderVpnNodeGroups) return;
   setVpnNodeSelectorOpen(false);
   const modal = window.MessageModal;
   if (modal && typeof modal.showSuccessMessage === 'function') {
@@ -303,13 +308,13 @@ function showVpnSwitchError(error) {
 
 async function switchVpnNode(name) {
     const networkApi = window.aiFree && window.aiFree.network;
-    if (isNetworkMagicStartFlowActive() || vpnNodeSelectorBusy || !networkApi || typeof networkApi.switchClashProxy !== 'function') {
+    if (vpnNodeActionsLocked() || !networkApi || typeof networkApi.switchClashProxy !== 'function') {
       return;
     }
 
     const request = getVpnSwitchRequest(name);
     if (!request) {
-      setVpnNodeSelectorOpen(false);
+      if (!renderVpnNodeGroups) setVpnNodeSelectorOpen(false);
       return;
     }
 

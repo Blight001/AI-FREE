@@ -165,19 +165,22 @@ test('successful start streams logs, reuses running core and stops cleanly', asy
   assert.equal(stopped.stopped, true);
   assert.equal(child.killed, true);
   assert.deepEqual(runtimeConfigs, [{ systemProxyEnabled: false }]);
-  assert.ok(ui.proxyChanges.includes(false));
+  assert.deepEqual(ui.proxyChanges, []);
+  assert.equal(first.enabled, true);
 });
 
-test('global proxy mode switches Mihomo and owns the Windows system proxy until stop', async () => {
+for (const mode of ['system', 'global']) test(`${mode} selects the Clash and Windows modes without changing browser profiles`, async () => {
   const ui = createUi();
   spawnImpl = () => new FakeProcess(9877);
-  const started = await processService.startClashMiniProcess(ui, { proxyMode: 'global' });
+  const started = await processService.startClashMiniProcess(ui, { proxyMode: mode });
   assert.equal(started.ok, true);
-  assert.equal(started.proxyMode, 'global');
-  assert.deepEqual(requestedModes, ['global']);
+  assert.equal(started.proxyMode, mode);
+  assert.equal(started.enabled, true);
+  assert.deepEqual(requestedModes, [mode === 'global' ? 'global' : 'rule']);
   assert.deepEqual(systemProxyChanges, [['enable', '127.0.0.1', 17890]]);
   await processService.stopClashMiniProcess(ui);
   assert.deepEqual(systemProxyChanges.at(-1), ['disable']);
+  assert.deepEqual(ui.proxyChanges, []);
 });
 
 test('control and rule-mode failures stop unhealthy spawned processes', async () => {
@@ -197,14 +200,14 @@ test('control and rule-mode failures stop unhealthy spawned processes', async ()
   assert.equal(child.killed, true);
 });
 
-test('spawn exceptions are contained and no-process stop still clears browser proxy', async () => {
+test('spawn exceptions and idle stop leave browser profiles intact', async () => {
   const ui = createUi();
   spawnImpl = () => { throw new Error('spawn failed'); };
   const failed = await processService.startClashMiniProcessOnce(ui);
   assert.deepEqual({ ok: failed.ok, error: failed.error }, { ok: false, error: 'spawn failed' });
   const stopped = await processService.stopClashMiniProcessOnce(ui);
   assert.equal(stopped.stopped, false);
-  assert.deepEqual(ui.proxyChanges, [false]);
+  assert.deepEqual(ui.proxyChanges, []);
 });
 
 test('cleanup delegates only for existing runtime directories', () => {

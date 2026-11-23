@@ -126,13 +126,50 @@ test('bridge routes persistent asynchronous runs with idempotency, progress, can
     action: 'start_run', id: written.item.id, idempotency_key: 'one-click', inputs: {},
   });
   assert.equal(duplicate.run.id, first.run.id);
+  await assert.rejects(
+    bridge.manageCard('', {
+      action: 'start_run', id: written.item.id, idempotency_key: 'one-click', inputs: { changed: true },
+    }),
+    (error) => error.code === 'IDEMPOTENCY_KEY_REUSED',
+  );
   await waitForRun(bridge, first.run.id, 'running');
-  assert.equal(bridge.manageCard('', { action: 'cancel_run', run_id: first.run.id }).run.status, 'cancelled');
-  const retried = bridge.manageCard('', { action: 'retry_run', run_id: first.run.id }).run;
-  const completed = await waitForRun(bridge, retried.id, 'succeeded');
-  assert.equal(completed.sourceRunId, first.run.id);
-  assert.equal(bridge.manageCard('', { action: 'list_run_steps', run_id: retried.id }).items.length >= 2, true);
-  assert.equal(bridge.manageCard('', { action: 'list_runs', card_id: written.item.id }).items.length, 2);
+  assert.equal(bridge.manageCard('', { action: 'cancel_run', run_id: first.run.id }).run.status, 'cancelling');
+  await waitForRun(bridge, first.run.id, 'cancelled');
+  assert.throws(() => bridge.manageCard('', { action: 'retry_run', run_id: first.run.id }), { code: 'RUN_TARGET_MISMATCH' });
+  assert.equal(bridge.manageCard('', { action: 'list_run_steps', run_id: first.run.id }).items.length >= 1, true);
+  assert.equal(bridge.manageCard('', { action: 'list_runs', card_id: written.item.id }).items.length, 1);
   assert.equal(fs.existsSync(bridge.runsFilePath), true);
   assert.equal(progress.some((event) => event.event === 'progress'), true);
+});
+
+test('start_run uses the saved version schema and deduplicates effective inputs, excluding caller-owned internal fields', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-free-card-request-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const bridge = createBrowserAutomationBridge({ cardCacheDir: root });
+  const manage = (action, fields) => bridge.manageCard('', { action, ...fields });
+  const marker = 'synthetic-field-value';
+  const saved = await manage('write', {
+    cardData: { name: 'schema version', website: 'https://fixture.invalid/', steps: [{ type: 'type', text: marker }, { type: 'end' }] },
+    metadata: { inputSchema: { type: 'object', properties: { var1: { type: 'string', writeOnly: true } } } },
+  });
+  const card = saved.item;
+  await manage('write', { id: card.id, cardData: card.cardData,
+    metadata: { inputSchema: { type: 'object', properties: { var1: { type: 'boolean' } } } } });
+  const fields = { card_name: card.cardName, version_id: ' ' + card.latestVersionId + ' ',
+    start_step: 2, idempotency_key: 'effective-inputs' };
+  await assert.rejects(manage('start_run', { ...fields, inputs: [42] }), { code: 'AUTOMATION_ARGUMENT_INVALID' });
+  assert.equal((await manage('list_runs')).items.length, 0);
+  const started = await manage('start_run', { ...fields, attempt: 9, sourceRunId: 'forged', sensitiveInputPaths: [],
+    redactAllInputs: false, connectionId: 'native:forged', takeoverGrant: { id: 'forged' } });
+  assert.equal(started.run.connectionId, '');
+  assert.equal(started.run.versionId, card.latestVersionId);
+  assert.equal(started.run.attempt, 1);
+  assert.equal(started.run.sourceRunId, '');
+  for (const inputs of [[marker], { var1: marker }]) {
+    const duplicate = await manage('start_run', { ...fields, inputs });
+    assert.equal(duplicate.run.id, started.run.id);
+  }
+  const finalRun = await waitForRun(bridge, started.run.id, 'succeeded');
+  assert.equal(JSON.stringify(finalRun).includes(marker), false);
+  assert.equal(fs.readFileSync(bridge.runsFilePath, 'utf8').includes(marker), false);
 });

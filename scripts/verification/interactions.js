@@ -15,6 +15,8 @@ const interactions = [
     scenario: 'test/acceptance/flows/native-alignment.json', configurable: true, domain: 'native-browser' },
   { id: 'native-workflow', file: 'accept-native-browser-codex-alignment.js', scope: 'browser-workflow',
     args: ['--workflow-only'], scenario: 'test/acceptance/flows/native-workflow.json', configurable: true, domain: 'native-browser' },
+  { id: 'mcp-debug-panel', file: 'accept-native-browser-codex-alignment.js', scope: 'browser-tools',
+    args: ['--mcp-debug-panel'] },
   { id: 'browser-settings-ui', file: 'check-browser-settings-ui.js', scope: 'electron-ui' },
   ...['home-workspace', 'account-preferences'].flatMap((domain) =>
     ['source', 'generated', 'packaged'].map((runtime) => ({
@@ -54,6 +56,7 @@ const nonInteractive = {
   'check-extension-refresh.js': 'mock-extension',
   'check-native-host-load.js': 'native-load',
   'native-browser-workflow-scenarios.js': 'fixture-and-flow-driver',
+  'mcp-debug-panel-scenario.js': 'fixture-and-flow-driver',
   'verify-packaged-runtime.js': 'packaged-layout',
 };
 

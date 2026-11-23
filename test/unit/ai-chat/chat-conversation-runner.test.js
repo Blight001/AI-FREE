@@ -45,6 +45,24 @@ function createRequest(responses, overrides = {}) {
   };
 }
 
+test('local turn timing stays in history and is never passed to the model', async () => {
+  const { request } = createRequest([]);
+  request.toolContext.modelMessages = [
+    { role: 'user', content: '开始' },
+    { role: 'assistant', content: '之前的回复', turn_duration_ms: 4000 },
+    { role: 'user', content: '暂停测试' },
+    { role: 'assistant', content: '', turn_duration_ms: 900 },
+    { role: 'user', content: '继续对话' },
+  ];
+  request.httpClient.sendAIControlMessage = async (_key, _device, _model, messages) => {
+    assert.deepEqual(messages.map(({ content }) => content), ['开始', '之前的回复', '暂停测试', '继续对话']);
+    assert.ok(messages.every((message) => !Object.hasOwn(message, 'turn_duration_ms')));
+    return { ok: true, message: { content: '已完成' } };
+  };
+  const result = await runChatConversation(request);
+  assert.deepEqual(result.messages.map((message) => message.turn_duration_ms).filter(Number.isInteger), [4000, 900]);
+});
+
 test('五类文本工具外壳在流式阶段均被抑制', () => {
   for (const content of [
     '<mcp-call>{', '<mcp_call>{', '<invoke name="tool">', '<tool_call>{',
@@ -150,6 +168,21 @@ test('流式文本 MCP 调用不向界面发送原始外壳并在工具卡前清
   assert.ok(replaceIndex >= 0 && replaceIndex < toolIndex);
   assert.equal(events[replaceIndex].content, '');
   assert.equal(result.message.content, '窗口列表已取得');
+});
+
+test('a complete tool-round update reaches the sidebar before the first tool event', async () => {
+  const events = [];
+  const fixture = createRequest([
+    { ok: true, message: { content: '准备读取窗口', tool_calls: [{ id: 'first',
+      function: { name: 'software_window', arguments: '{"action":"list"}' } }] } },
+    { ok: true, message: { content: '窗口列表已取得' } },
+  ], { useStream: true, emit: (event) => events.push(event) });
+  const result = await runChatConversation(fixture.request);
+  const update = { type: 'content_replace', content: '准备读取窗口', round: 0 };
+  const updateIndex = events.findIndex((event) => event.type === update.type);
+  assert.ok(updateIndex >= 0 && updateIndex < events.findIndex((event) => event.type === 'tool_start'));
+  assert.deepEqual(events[updateIndex], update);
+  assert.deepEqual(result.message.trace_events[0], { type: 'step', round: 0, content: update.content });
 });
 
 test('模型不支持截图输入时把原因回传给 MCP 并继续回答而不发错误事件', async () => {

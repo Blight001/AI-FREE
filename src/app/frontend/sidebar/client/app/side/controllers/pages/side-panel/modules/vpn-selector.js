@@ -4,7 +4,7 @@ function setVpnNodeSelectorBusy(busy) {
   if (vpnNodeSelectorGrid) {
     vpnNodeSelectorGrid.classList.toggle('is-busy', vpnNodeSelectorBusy);
     vpnNodeSelectorGrid.querySelectorAll('button').forEach((button) => {
-      button.disabled = vpnNodeSelectorBusy;
+      button.disabled = renderVpnNodeGroups ? vpnNodeActionsLocked() : vpnNodeSelectorBusy;
     });
   }
 }
@@ -14,6 +14,7 @@ function syncVpnNodeSelectorState() {
   if (!testLatencyBtn || !vpnNodeSelectorPanel) return;
   const enabled = canUseVpnFeatures();
   applyVpnActionAvailability();
+  if (typeof renderVpnNodeGroups === 'function') return;
   if (!enabled) {
     setVpnNodeSelectorOpen(false);
     scheduleVpnNodeSelectorRender({ forceFull: true });
@@ -33,6 +34,13 @@ function renderVpnNodeSelectorOptions() {
   const namesKey = buildVpnNodeSelectorNamesKey(names);
   const selectedName = getVpnNodeSelectorSelectedName();
 
+  const grouped = typeof renderVpnNodeGroups === 'function';
+  if (names.length === 0 && grouped) {
+    vpnNodeSelectorGrid.replaceChildren();
+    vpnNodeSelectorOptionNodes.clear();
+    vpnNodeSelectorRenderedNamesKey = '';
+    return;
+  }
   if (names.length === 0) {
     vpnNodeSelectorOptionNodes.clear();
     vpnNodeSelectorRenderedNamesKey = '';
@@ -59,17 +67,18 @@ function renderVpnNodeSelectorOptions() {
   }
 
   const needsRebuild = vpnNodeSelectorRenderedNamesKey !== namesKey
-    || vpnNodeSelectorGrid.children.length !== names.length;
+    || vpnNodeSelectorOptionNodes.size !== names.length;
   if (needsRebuild) {
     vpnNodeSelectorOptionNodes.clear();
     vpnNodeSelectorGrid.innerHTML = '';
     vpnNodeSelectorRenderedNamesKey = namesKey;
-    names.forEach((name, index) => {
-      const proxyItem = getProxyItemByName(name);
-      const button = buildVpnNodeSelectorButton(name, index, proxyItem, selectedName);
+    const buttons = names.map((name, index) => {
+      const button = buildVpnNodeSelectorButton(name, index, getProxyItemByName(name), selectedName);
       vpnNodeSelectorOptionNodes.set(name, button);
-      vpnNodeSelectorGrid.appendChild(button);
+      return button;
     });
+    if (grouped) renderVpnNodeGroups(vpnNodeSelectorGrid, buttons);
+    else vpnNodeSelectorGrid.append(...buttons);
     return;
   }
 
@@ -104,7 +113,7 @@ function applyClashMiniLatencyProgress(payload) {
     return;
   }
 
-  updateLatencyProgressEntry(payload, hasBest, nextBestName);
+  if (payload.phase === 'probe') updateLatencyProgressEntry(payload, hasBest ? nextBestName : '');
   if (hasBest) selectLatencyProgressBest(nextBestName);
 
   syncVpnNodeSelectorState();
@@ -112,7 +121,7 @@ function applyClashMiniLatencyProgress(payload) {
 }
 
 function applyLatencyResultEntries(entries) {
-  const updates = new Map(normalizeProxyEntries(entries, clashMiniProxyState.current)
+  const updates = new Map(normalizeProxyEntries(entries, clashMiniProxyState.current, '超时')
     .map((item) => [item.name, item]));
   clashMiniProxyState.proxies = clashMiniProxyState.proxies.map((item) => updates.get(item.name) || item);
 }
@@ -122,22 +131,14 @@ function isLatencyProgressForCurrentGroup(payload) {
   return String(payload.groupName).trim() === String(clashMiniProxyState.groupName || '').trim();
 }
 
-function updateLatencyProgressEntry(payload, hasBest, bestName) {
-  const requestedIndex = Number(payload.index);
+function updateLatencyProgressEntry(payload, bestName) {
   const entryName = String(payload.name || '').trim();
-  const index = Number.isInteger(requestedIndex) && requestedIndex >= 0 && clashMiniProxyState.proxies[requestedIndex]
-    ? requestedIndex
-    : clashMiniProxyState.proxies.findIndex((item) => String(item?.name || '').trim() === entryName);
+  const index = entryName
+    ? clashMiniProxyState.proxies.findIndex((item) => item.name === entryName)
+    : Number(payload.index);
   const current = clashMiniProxyState.proxies[index];
   if (!current) return;
-  const delay = Number(payload.delay);
-  const hasDelay = Number.isFinite(delay) && delay > 0;
-  clashMiniProxyState.proxies[index] = {
-    ...current,
-    delay: hasDelay ? delay : null,
-    delayText: hasDelay ? `${Math.round(delay)}ms` : (payload.error ? 'error' : String(current.delayText || '测速中...')),
-    selected: hasBest && String(current.name || '').trim() === bestName,
-  };
+  clashMiniProxyState.proxies[index] = normalizeProxyEntry({ ...payload, name: current.name }, bestName, '超时');
 }
 
 function selectLatencyProgressBest(bestName) {
@@ -224,14 +225,12 @@ function syncLatencyButtonState() {
 }
 
 // 设置/更新/持久化：applyClashMiniStatus的具体业务逻辑。
-function applyClashMiniStatus(status, { startBtn, vpnBtn, loadProxyOptions = true } = {}) {
+function applyClashMiniStatus(status, { loadProxyOptions = true } = {}) {
   try {
     const wasRunning = isVpnEnabled === true;
-    const state = resolveClashMiniUiState(status, startBtn, vpnBtn);
-    const { enabled } = state;
+    clashCoreRunning = status?.running === true;
+    const enabled = clashCoreRunning && status.enabled === true;
     isVpnEnabled = enabled;
-    updateClashStartButton(startBtn, state);
-    updateClashVpnButton(vpnBtn, state);
     syncLatencyButtonState();
     syncVpnNodeSelectorState();
     if (typeof syncLoggedOutProtectedEntryAvailability === 'function') {
@@ -239,35 +238,6 @@ function applyClashMiniStatus(status, { startBtn, vpnBtn, loadProxyOptions = tru
     }
     handleClashStatusTransition(wasRunning, enabled, loadProxyOptions);
   } catch (_) {}
-}
-
-function resolveClashMiniUiState(status, startBtn, vpnBtn) {
-  const running = status?.running === true;
-  const enabled = Boolean(status) && [status.running, status.enabled, status.proxyAppliedByApp].some((value) => value === true);
-  const isBusy = [startBtn, vpnBtn].some((button) => button?.dataset?.busy === '1');
-  return { running, enabled, isBusy };
-}
-
-function updateClashStartButton(button, { running, enabled, isBusy }) {
-  if (!button) return;
-  button.textContent = running ? 'Clash Mini 运行中' : '启动 Clash Mini';
-  button.title = running
-    ? (enabled ? 'Clash Mini 已启动，点击后会再次尝试启动' : 'Clash Mini 已启动，但网络魔法未开启')
-    : '点击启动 Clash Mini 代理模块';
-  button.disabled = running || isBusy;
-}
-
-function updateClashVpnButton(button, { enabled, isBusy }) {
-  if (!button) return;
-  if (isBusy) {
-    button.disabled = true;
-    return;
-  }
-  button.textContent = enabled ? '关闭魔法代理' : '开启魔法代理';
-  button.title = enabled ? '点击关闭魔法代理' : '点击开启魔法代理';
-  if (typeof syncNetworkMagicLauncherState === 'function') {
-    syncNetworkMagicLauncherState(enabled);
-  }
 }
 
 function handleClashStatusTransition(wasRunning, enabled, loadProxyOptions) {

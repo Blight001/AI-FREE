@@ -116,11 +116,6 @@ function syncLoggedOutProtectedEntryAvailability() {
         button.disabled = button.dataset.quotaUnavailable === 'true';
       }
     });
-    const vpnButton = safeGetEl('VPN-switch');
-    restoreAuthenticatedTitle(vpnButton);
-    if (vpnButton && vpnButton.dataset.busy !== '1') {
-      vpnButton.disabled = false;
-    }
     return;
   }
 
@@ -134,14 +129,6 @@ function syncLoggedOutProtectedEntryAvailability() {
     }
   });
 
-  const vpnButton = safeGetEl('VPN-switch');
-  if (vpnButton && vpnButton.dataset.busy !== '1') {
-    if (vpnButton.title !== '登录后使用网络魔法') {
-      vpnButton.dataset.authenticatedTitle = vpnButton.title || '';
-    }
-    vpnButton.disabled = false;
-    vpnButton.title = '登录后使用网络魔法';
-  }
 }
 
 // 设置/更新/持久化：applyFeatureAvailability的具体业务逻辑。
@@ -151,8 +138,7 @@ function applyFeatureAvailability({
   accountTabDisabled = true,
 } = {}) {
   setLicenseRequiredButtonsDisabled(licenseRequiredDisabled);
-  // 主开关必须始终可作为登录入口；测速等二级操作仍由代理运行状态控制。
-  setButtonsDisabled('.VPN-btn:not(#VPN-switch)', vpnDisabled);
+  setButtonsDisabled('.VPN-btn', vpnDisabled);
   setAccountTabDisabled(accountTabDisabled);
   syncLatencyButtonState();
   syncLoggedOutProtectedEntryAvailability();

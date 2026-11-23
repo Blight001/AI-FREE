@@ -162,12 +162,21 @@ async function retestVpnNodes(names = null) {
   try {
     return await invokeVpnLatencyTest(requestedNames);
   } catch (error) {
+    markPendingVpnNodesFailed(affectedNames);
     console.warn('[侧边栏][Clash] 节点测速失败:', error?.message || error);
     return null;
   } finally {
     vpnLatencyTestsInFlight.delete(taskKey);
     if (vpnLatencyTestsInFlight.size === 0) testLatencyBtn?.removeAttribute('aria-busy');
   }
+}
+
+function markPendingVpnNodesFailed(names) {
+  const affected = new Set(names);
+  clashMiniProxyState.proxies = clashMiniProxyState.proxies.map((item) => (
+    affected.has(item.name) && item.delayText === '测速中...' ? { ...item, delayText: 'error' } : item
+  ));
+  scheduleVpnNodeSelectorRender();
 }
 
 function normalizeVpnLatencyNames(names) {

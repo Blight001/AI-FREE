@@ -1,0 +1,159 @@
+diff --git a/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc b/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
+--- a/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
++++ b/chrome/browser/ui/views/frame/ai_free_runtime_bridge_win.cc
+@@ -889,6 +889,7 @@
+   return name == "observe-page" || name == "capture-screenshot" ||
+          name == "inspect-page-state" || name == "inspect-page-diagnostics" ||
+          name == "perform-action" || name == "download-element" ||
++         name == "debug-fixture-input" ||
+          name == "automation-takeover" || name == "select-files" ||
+          name == "fill-account-field" || name == "get-session-data";
+ }
+diff --git a/chrome/browser/ui/views/frame/ai_free_page_automation.cc b/chrome/browser/ui/views/frame/ai_free_page_automation.cc
+--- a/chrome/browser/ui/views/frame/ai_free_page_automation.cc
++++ b/chrome/browser/ui/views/frame/ai_free_page_automation.cc
+@@ -1115,6 +1115,124 @@
+                      std::move(page_guard)));
+ }
+ 
++bool IsDebugFixture(content::WebContents* contents,
++                    const base::DictValue& command,
++                    const AiFreePageGuard& page_guard) {
++  if (!page_guard || PageChanged(page_guard) || !contents) return false;
++  const auto* expected = command.FindString("fixtureUrl");
++  const GURL& url = contents->GetLastCommittedURL();
++  constexpr std::string_view prefix = "/__ai-free-mcp-debug/";
++  const auto path = url.path();
++  return expected && url.spec() == *expected &&
++         contents->GetVisibleURL() == url && url.SchemeIs("http") &&
++         url.host() == "127.0.0.1" && url.has_port() &&
++         !url.has_query() && !url.has_ref() && !url.has_username() &&
++         !url.has_password() && path.starts_with(prefix) &&
++         path.size() == prefix.size() + 32 &&
++         std::ranges::all_of(path.substr(prefix.size()),
++                             [](char ch) { return base::IsHexDigit(ch); });
++}
++
++bool DispatchDebugFixtureMouse(content::RenderWidgetHost* widget,
++                               const gfx::Size& size,
++                               const base::DictValue& command) {
++  const auto* action = command.FindString("action");
++  if (action && *action == "cancel") {
++    const int pressed = command.FindInt("buttons").value_or(0);
++    using Type = blink::WebInputEvent::Type;
++    using Button = blink::WebMouseEvent::Button;
++    constexpr Button values[] = {Button::kLeft, Button::kRight, Button::kMiddle};
++    for (int index = 0; index < 3; ++index) {
++      if (!(pressed & (1 << index))) continue;
++      blink::WebMouseEvent event(Type::kMouseUp,
++                                 blink::WebInputEvent::kNoModifiers,
++                                 ui::EventTimeForNow());
++      event.pointer_type = blink::WebPointerProperties::PointerType::kMouse;
++      event.button = values[index];
++      event.SetPositionInWidget(-1, -1);
++      widget->ForwardMouseEvent(event);
++    }
++    return true;
++  }
++  const auto x = command.FindDouble("x");
++  const auto y = command.FindDouble("y");
++  if (!action || !x || !y || !(*x >= 0 && *x < 1 && *y >= 0 && *y < 1) ||
++      size.width() != command.FindInt("viewWidth").value_or(0) ||
++      size.height() != command.FindInt("viewHeight").value_or(0)) return false;
++  const float px = static_cast<float>(*x * size.width());
++  const float py = static_cast<float>(*y * size.height());
++  const int pressed = command.FindInt("buttons").value_or(0);
++  int modifiers = blink::WebInputEvent::kNoModifiers;
++  if (pressed & 1) modifiers |= blink::WebInputEvent::kLeftButtonDown;
++  if (pressed & 2) modifiers |= blink::WebInputEvent::kRightButtonDown;
++  if (pressed & 4) modifiers |= blink::WebInputEvent::kMiddleButtonDown;
++  if (*action == "wheel") {
++    blink::WebMouseWheelEvent event(blink::WebInputEvent::Type::kMouseWheel,
++                                    modifiers, ui::EventTimeForNow());
++    event.SetPositionInWidget(px, py);
++    event.delta_x = -std::clamp(command.FindDouble("deltaX").value_or(0), -1200.0, 1200.0);
++    event.delta_y = -std::clamp(command.FindDouble("deltaY").value_or(0), -1200.0, 1200.0);
++    event.delta_units = ui::ScrollGranularity::kScrollByPixel;
++    event.event_action = blink::WebMouseWheelEvent::EventAction::kScroll;
++    widget->ForwardWheelEvent(event);
++    return true;
++  }
++  using Type = blink::WebInputEvent::Type;
++  using Button = blink::WebMouseEvent::Button;
++  Type type = Type::kMouseMove;
++  if (*action == "down") type = Type::kMouseDown;
++  else if (*action == "up") type = Type::kMouseUp;
++  else if (*action == "leave") type = Type::kMouseLeave;
++  else if (*action != "move") return false;
++  const int button = command.FindInt("button").value_or(-1);
++  blink::WebMouseEvent event(type, modifiers, ui::EventTimeForNow());
++  event.pointer_type = blink::WebPointerProperties::PointerType::kMouse;
++  if (type == Type::kMouseDown || type == Type::kMouseUp) {
++    if (button < 0 || button > 2) return false;
++    constexpr Button values[] = {Button::kLeft, Button::kMiddle, Button::kRight};
++    event.button = values[button];
++    event.click_count = std::clamp(command.FindInt("clickCount").value_or(1), 1, 2);
++  }
++  event.SetPositionInWidget(px, py);
++  widget->ForwardMouseEvent(event);
++  return true;
++}
++
++void DebugFixtureInput(content::WebContents* contents,
++                       const base::DictValue& command,
++                       const AiFreePageGuard& page_guard,
++                       AiFreeAutomationSuccess success,
++                       AiFreeAutomationFailure failure) {
++  if (!IsDebugFixture(contents, command, page_guard)) {
++    return Fail(std::move(failure), "MCP_DEBUG_FIXTURE_REQUIRED",
++                "鼠标调试目标必须是当前绑定的 AI-FREE 本地测试页");
++  }
++  auto* frame = contents->GetPrimaryMainFrame();
++  auto* widget = frame->GetRenderWidgetHost();
++  auto* view = widget ? widget->GetView() : nullptr;
++  const auto size = view ? view->GetViewBounds().size() : gfx::Size();
++  if (size.IsEmpty()) {
++    return Fail(std::move(failure), "MCP_DEBUG_VIEWPORT_UNAVAILABLE",
++                "测试页视口不可用");
++  }
++  if (const auto* action = command.FindString("action"); action && *action == "frame") {
++    CaptureScreenshot(contents, base::DictValue(), base::BindOnce(
++        [](AiFreeAutomationSuccess success, gfx::Size size, base::DictValue result) {
++          result.Set("viewWidth", size.width());
++          result.Set("viewHeight", size.height());
++          std::move(success).Run(std::move(result));
++        }, std::move(success), size), std::move(failure), page_guard);
++    return;
++  }
++  if (!DispatchDebugFixtureMouse(widget, size, command)) {
++    return Fail(std::move(failure), "MCP_DEBUG_INPUT_STALE",
++                "鼠标数据无效或视口已变化");
++  }
++  base::DictValue result;
++  result.Set("success", true);
++  std::move(success).Run(std::move(result));
++}
++
+ std::string InspectPageStateScript(const base::DictValue& command) {
+   return base::StrCat({R"JS((() => { try {
+   const a=)JS", CommandJson(command), R"JS(;)JS", kPageTargetGeometryScript, R"JS(
+@@ -1245,6 +1363,7 @@
+       *type != "inspect-page-state" && *type != "inspect-page-diagnostics" &&
+       *type != "perform-action" && *type != "get-session-data" &&
+       *type != "capture-screenshot" && *type != "fill-account-field" &&
++      *type != "debug-fixture-input" &&
+       (*type != "download-element" || !page_guard)) {
+     return false;
+   }
+@@ -1278,6 +1397,11 @@
+     result.Set("suggestedTool", "browser_control");
+     result.Set("suggestedAction", "acquire");
+     std::move(success).Run(std::move(result));
++    return true;
++  }
++  if (*type == "debug-fixture-input") {
++    DebugFixtureInput(web_contents, command, page_guard, std::move(success),
++                      std::move(failure));
+     return true;
+   }
+   if (*type == "fill-account-field") {

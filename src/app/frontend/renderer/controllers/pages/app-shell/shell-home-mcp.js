@@ -19,8 +19,13 @@ function bindHomeMcp() {
   const home = document.getElementById('browser-empty-state');
   const panel = document.getElementById('home-mcp');
   const refresh = document.getElementById('home-mcp-refresh');
+  const debug = document.getElementById('home-mcp-debug');
   const status = document.getElementById('home-mcp-status');
   const list = document.getElementById('home-mcp-tools');
+  debug?.addEventListener('click', async () => {
+    const result = await window.aiFree?.diagnostics?.openMcpDebugPanel?.();
+    if (!result?.ok) status.textContent = result?.error?.message || '调试面板不可用';
+  });
   let active = false;
   let selected = '';
 

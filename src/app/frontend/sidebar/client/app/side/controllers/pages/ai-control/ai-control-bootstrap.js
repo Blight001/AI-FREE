@@ -38,20 +38,24 @@
   function bindChatForm() {
     el('ai-chat-form')?.addEventListener('submit', (event) => {
       event.preventDefault();
-      if (state.loading && !chatInputHasSendableContent()) stopAIOutput();
-      else sendMessage();
+      const mode = resolveChatButtonMode(chatInputHasSendableContent());
+      if (mode.stop) void stopAIOutput();
+      else if (mode.icon === 'play') void resumeAIOutput();
+      else void sendMessage();
     });
   }
 
   function handleCompositionEnd(chatInput, event) {
     const unexpectedlyCleared = !state.aiInputCompositionCancelled
       && !String(event.data || '')
-      && chatInput.value === state.aiInputCompositionBase
-      && state.aiInputCompositionDraft !== state.aiInputCompositionBase;
-    if (unexpectedlyCleared) chatInput.value = state.aiInputCompositionDraft;
+      && readChatDraft(chatInput).content === state.aiInputCompositionBase
+      && state.aiInputCompositionDraft?.content !== state.aiInputCompositionBase;
+    if (unexpectedlyCleared) {
+      writeChatDraft(chatInput, state.aiInputCompositionDraft.content, state.aiInputCompositionDraft.inlineAttachments);
+    }
     state.aiInputComposing = false;
     state.aiInputCompositionBase = '';
-    state.aiInputCompositionDraft = '';
+    state.aiInputCompositionDraft = null;
     state.aiInputCompositionCancelled = false;
     delete document.documentElement.dataset.aiInputComposing;
     resizeInput();
@@ -63,19 +67,22 @@
     const chatInput = el('ai-chat-input');
     // 用户点击文本框时由全局侧栏输入路由统一处理原生焦点，避免这里再发起
     // 第二套主页面 → 侧栏焦点切换。程序化聚焦仍通过 reclaimAiInputFocus。
-    chatInput?.addEventListener('input', () => {
+    if (!chatInput) return;
+    bindChatDraftEditor(chatInput);
+    chatInput.addEventListener('input', () => {
+      syncChatDraftPlaceholder(chatInput);
       if (state.aiInputComposing) {
-        state.aiInputCompositionDraft = chatInput.value;
+        state.aiInputCompositionDraft = readChatDraft(chatInput);
       }
       resizeInput();
       syncSendState();
-      if (!chatInput.value) flushDeferredAiControlRefresh();
+      if (!chatInput.textContent) flushDeferredAiControlRefresh();
       renderMentionMenu();
     });
     chatInput?.addEventListener('compositionstart', () => {
       state.aiInputComposing = true;
-      state.aiInputCompositionBase = chatInput.value;
-      state.aiInputCompositionDraft = chatInput.value;
+      state.aiInputCompositionBase = readChatDraft(chatInput).content;
+      state.aiInputCompositionDraft = readChatDraft(chatInput);
       state.aiInputCompositionCancelled = false;
       document.documentElement.dataset.aiInputComposing = 'true';
     });
@@ -84,14 +91,14 @@
       window.setTimeout(flushDeferredAiControlRefresh, 0);
     });
     chatInput?.addEventListener('keydown', (event) => {
-      if (handleChatMentionKey(event)) return;
+      if (!state.aiInputComposing && !event.isComposing && handleChatMentionKey(event)) return;
       if (state.aiInputComposing && event.key === 'Escape') {
         state.aiInputCompositionCancelled = true;
       }
-      if (event.key === 'Enter' && !event.shiftKey && !event.isComposing
-        && event.keyCode !== 229 && !state.aiInputComposing) {
+      if (event.key === 'Enter' && !event.isComposing && event.keyCode !== 229 && !state.aiInputComposing) {
         event.preventDefault();
-        sendMessage();
+        if (event.shiftKey) document.execCommand('insertLineBreak');
+        else sendMessage();
       }
     });
     chatInput?.addEventListener('click', renderMentionMenu);
@@ -139,5 +146,6 @@
     if (typeof bindChatWorkspace === 'function') bindChatWorkspace();
     bindAiAccountSessionRefresh();
     bindCustomModelRefresh();
+    if (typeof bindManagedChat === "function") bindManagedChat();
     startAiControlPolling();
   });

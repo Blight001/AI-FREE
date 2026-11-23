@@ -96,15 +96,6 @@ html.theme-light .wool-platform-buttons .open-wool-platform-btn:hover:not(:disab
   opacity: 0.6;
 }
 
-#VPN-switch[data-busy='1'] {
-  background: #8b929e !important;
-  color: #f1f3f5 !important;
-  box-shadow: none !important;
-  filter: none !important;
-  cursor: wait !important;
-  opacity: 0.78;
-}
-
 .ai-launch-buttons {
   display: flex;
   flex-direction: column;

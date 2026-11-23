@@ -52,27 +52,11 @@ function isDownloadElementUnavailable(value) {
     || message.includes('未找到目标图片元素');
 }
 
-function clashProxyUrl() {
-  try {
-    const {
-      getClashMiniStatus, getClashMiniProxyEndpoint, getClashMiniRuntimeRoot,
-    } = require('../features/network/clash-mini-control-runtime');
-    const status = getClashMiniStatus();
-    if (status?.running !== true) return '';
-    const coreDir = text(status.coreDir) || getClashMiniRuntimeRoot();
-    const endpoint = coreDir ? getClashMiniProxyEndpoint(coreDir) : null;
-    if (!endpoint || !Number.isFinite(Number(endpoint.port))) return '';
-    return `http://${text(endpoint.host) || '127.0.0.1'}:${Number(endpoint.port)}`;
-  } catch (_) {
-    return '';
-  }
-}
-
 function connectionProxyUrl(owner, connection) {
   const instance = owner.runtime?.chromium?.instances?.get(connection.profileId);
   const server = text(instance?.profile?.proxyServer);
   if (server) return server.includes('://') ? server : `http://${server}`;
-  return clashProxyUrl();
+  return '';
 }
 
 function observedResourceUrl(input = {}, args = {}) {

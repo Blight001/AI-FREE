@@ -1,6 +1,6 @@
 # AI-FREE MCP 工具清单
 
-实际目录随浏览器连接、软件功能和入口变化。Chromium 已连接且本机账号工具可用时，外部与侧栏各列出 15 项（侧栏包含环境配置意图时）。两端的完整对照、差异和验收顺序见 [MCP 双入口一致性审计与计划](mcp-entry-parity.md)。
+实际目录随浏览器连接、软件功能和入口变化。Chromium 已连接且本机账号工具可用时，外部与侧栏各列出最多 16 项（侧栏具备父会话且包含环境配置意图时）。两端的完整对照、差异和验收顺序见 [MCP 双入口一致性审计与计划](mcp-entry-parity.md)。
 
 开发者模式下打开 **首页 → MCP 管理** 可查看当前目录、连接条件、JSON Schema、示例提示词及 JSON-RPC 请求和模拟返回。查看示例不会调用工具、读取会话或展示实际模型 Prompt。AI 对话不再受旧的累计 MCP 调用次数设置限制；停止、超时和单批异常请求保护保留。
 
@@ -10,9 +10,10 @@
 | --- | ---: | --- | --- |
 | 外部软件栏目 | 1 | 软件运行期间始终可用 | [`ai-browser-window-tools.js`](../src/app/backend/services/ai-browser-window-tools.js) |
 | 浏览器高级环境 | 1 | 外部常驻，侧栏随环境/指纹/代理等配置意图注入 | [`ai-browser-window-tools.js`](../src/app/backend/services/ai-browser-window-tools.js) |
+| AI 子对话 | 1 | 已登录。本机外部 MCP 和 HeySure 沿用各自的会员与授权条件 | [`managed-chat-contract.js`](../src/app/backend/features/ai-chat/managed-chat-contract.js) |
 | AI 工作区命令 | 1 | 软件运行期间始终可用 | [`ai-sandbox-file-tools.js`](../src/app/backend/services/ai-sandbox-file-tools.js) |
 | 本机账号 | 1 | 本机账号库可用 | [`provider-account-tools.js`](../src/app/backend/features/account/provider-account-tools.js) |
-| 浏览器自动化 | 11 | 页面工具需要已握手的内置 Chromium。两个入口均可在未连接时执行 `browser_control overview` | [`native-browser-tool-definitions.js`](../src/app/backend/services/native-browser-tool-definitions.js) |
+| 浏览器自动化 | 11 | 页面工具需要已握手的内置 Chromium。两个入口均可离线调用 `browser_control overview`、卡片常规读写和运行记录查询 | [`native-browser-tool-definitions.js`](../src/app/backend/services/native-browser-tool-definitions.js) |
 
 内置和外部入口使用下表中的本地工具名。两个入口均提供 `browser_workflow` 和 `browser_page_batch`。连接 HeySure 后，支持注册的设备工具带 `aifree.` 前缀。设备服务以实际外部目录为输入，注册时转换工具名。
 
@@ -20,6 +21,7 @@
 | --- | --- | --- |
 | `windows_tab` | `aifree.windows+tab` | 查询、显示、新建、编辑和关闭外部软件栏目 |
 | `browser_environment` | `aifree.browser+environment` | 按需读取或增量修改栏目的浏览器环境与指纹 |
+| `chat_session` | `aifree.chat+session` | 创建子对话、选择模型、发消息、插话、暂停、继续、等待与取结果 |
 | `run_command` | `aifree.run+command` | 在 AI-Workspace 工作目录中执行有界命令行 |
 | `manage_card` | `aifree.manage+card` | 管理和运行浏览器自动化卡片 |
 | `browser_file` | `aifree.browser+file` | 下载文件、上传本地文件，或保存当前页面 Cookie/Storage |
@@ -80,6 +82,21 @@
 
 Cookie 属于登录会话数据，不属于 `browser_environment.settings` 的可编辑字段；应使用 `browser_file` 的 `save_session` 操作在软件本机采集和保存。
 
+## AI 子对话
+
+`chat_session` 使用与侧栏相同的模型目录，所选模型保存到对应子会话。子会话从父对话卡片或侧栏「任务」打开。正在运行的回复可在子会话内实时查看，返回父对话时恢复原草稿和位置。
+
+1. `{ "action": "models" }` 查询模型 ID。`create` 需要 `model_id` 和 `request_key`，可另外指定 `title`。
+2. `send` 需要 `session_id`、`content` 和本次消息的 `request_key`。`select_model` 在会话可编辑时修改本会话的模型。
+3. `insert` 需要 `run_id`、`content` 和本次插话的 `request_key`。`stop` 和 `resume` 使用同一个 `run_id`。
+4. `status` 接受 `session_id` 或 `run_id`。`wait` 接受 `run_id` 或最多八个 `run_ids`，可一次等待多个子任务。
+
+`send` 和 `wait` 默认最多等待 45 秒。`wait_ms: 0` 立即返回，最长可指定 90 秒。运行仍在进行时返回 `runId` 和 `running`，等待断线后仍可查问同一任务。`sessionId`、`runId` 用于回执展示，请求字段使用 `session_id`、`run_id`。创建、发送和插话可用相同的 `request_key` 与参数重试一次或多次。换用不同参数会返回 `CHAT_REQUEST_CONFLICT`。同一会话一次运行一轮，同一父会话可并发两轮，本机账号最多并发四轮。
+
+子会话由主进程用系统安全存储加密保管。停止与重启恢复保存的模型轮次和工具回执，已完成的步骤直接使用回执。子会话当前可读取自身先前已完成的回复。借此恢复的在途读取允许重试。缺少恢复点的中断显示「需核验」。子任务读取自己会话的数据，最深一层。系统加密不可用时会返回明确错误。账户、入口和父会话共同约束可读范围，本机侧栏可查看当前账号的任务目录。每个账号最多保管 128 个会话，每个会话最多 32 轮。
+
+自动化卡片等待实际结果后才继续执行后续步骤。等待到期时回报 `CHAT_CARD_INCOMPLETE`，可在侧栏「任务」查看该次运行。HeySure 使用设备现有任务结果事件，断线未送达的内存回执在重新注册后补发。设备重启后可用同一请求键重新关联已保存的会话或运行。
+
 ## AI 工作区命令工具
 
 ### `run_command`
@@ -93,21 +110,39 @@ Cookie 属于登录会话数据，不属于 `browser_environment.settings` 的�
 
 ## 浏览器自动化工具
 
-以下 8 个工具由受认证的 Chromium Runtime Bridge 提供。没有浏览器 MCP 连接时，它们不会出现在 AI 或 HeySure 的可用工具目录中。
+`manage_card` 和 `browser_control overview` 可在没有在线浏览器时发现。页面操作使用已握手的内置 Chromium。外部 MCP 仍执行入口的身份和会员校验。
 
 ### `manage_card`
 
-- 作用：查询规则，列出、读取、新建、修改、删除和运行自动化卡片，也可增删、移动或修改卡片步骤。
-- `action`：必填，可用值为 `rules`、`list`、`get`、`write`、`patch_step`、`insert_step`、`delete_step`、`move_step`、`delete`、`run`。
+- 作用：通过 MCP 直接发现、读取、创建、编辑、校验、导入导出、删除和执行与首页自动化工作区共享的卡片；不另建 MCP 专用流程格式或执行器。
+- `action`：必填。卡片动作包括 `rules`、`list`、`get`、`write`、`patch_step`、`insert_step`、`delete_step`、`move_step`、`delete`、`validate`、`clone`、`versions`、`get_version`、`set_enabled`、`export`、`template`、`restore`、`purge`、`run`；运行控制动作包括 `start_run`、`list_runs`、`get_run`、`list_run_steps`、`cancel_run`、`retry_run`、`pause_run`、`resume_run`、`step_run`。输入 schema 与执行器动作清单共享定义。
 - 常用定位参数：`id`、`card_name`。
-- 编辑参数：`cardData`、`step_index`、`to_step_index`、`insert_after`、`stepData`、`stepPatch`、`replace`。
-- 运行参数：`inputs`、`account`、`password`、`email`、`start_step`、`timeout_seconds`、`tab_id`。
+- 编辑参数：`cardData`、`step_index`、`to_step_index`、`insert_after`、`stepData`、`stepPatch`、`replace`、`metadata`、`version_id`、`enabled`。
+- 运行参数：`inputs`、`start_step`、`timeout_seconds`、`idempotency_key`、`run_id`。先 `get` 卡片并按 `item.inputSchema` 的 `required`、`type`、`enum` 组织 `inputs`；新写入的版本独立保存 schema。执行指定版本时使用该版本的规则，老数据中缺少快照的历史版本继续兼容。
 - 注意：不同 `action` 使用不同参数；`write`、步骤编辑和 `delete` 会修改本地卡片数据。
+- 同步与后台运行：短任务可用 `run` 等待最终结果；`start_run` 返回运行对象，将 `run.id` 作为后续调用的 `run_id`，运行独立于当前对话和 MCP 请求继续，之后用 `get_run`/`list_run_steps` 查询，并可暂停、继续或取消。停止 AI 对话或断开发起请求不会自动取消该运行。只有在确认发起结果未知且需要重试同一请求时，才复用相同 `idempotency_key` 与完全相同的参数；同 key 不同参数会以 `IDEMPOTENCY_KEY_REUSED` 拒绝。运行输入仅保留在当前进程内供幂等判断和失败重试，磁盘运行记录不保存原始输入；应用重启后未结束的运行标记为中断，历史记录可查询但不能直接重试，需重新提交输入并使用新幂等键。
+- 取消与超时：对正在执行的运行发出取消或超时后，状态先变为 `cancelling`/`timing_out`；系统等待当前浏览器操作返回后才报告终态，并且不会继续下一个流程步骤。已发生的导航、点击或提交等浏览器副作用无法回滚；取消、超时和结果未知的中断不可通过 `retry_run` 重放。
 - 脚本限制：MCP 不公开 `external_script`，也不允许 `condition_mode=js`；写入、局部编辑和运行历史卡片时都会拒绝任意页面脚本。
 - 失败语义：原生步骤返回 `success=false`/`ok=false` 时卡片立即失败并停止；需要把业务校验作为断言时，在 `condition` 步骤设置 `fail_on_false=true`。
+- 卡片的 `website` 指定入口页面。运行时若活动标签的完整 HTTP(S) 地址与它完全相同，执行器保留当前文档并开始第一步。不同查询参数或片段会触发导航。需要重新加载时可显式使用 `browser_tab reload`。首个步骤为 `navigate` 时总是执行该步骤。
+- 保存并复测已演示过的操作时，用 `write` 保存并按 ID 回读。确认测试起点后用 `start_run` 运行，按 `run.id` 查终态，并核对正向业务信号，例如登录后可见的账号菜单。同步 `run` 的结果随请求返回，`list_runs` 只展示后台运行。
+- 后台运行失败时，从 `get_run` 的 `run.steps` 核对最近成功的步骤。已经派发的点击可能使弹窗保持打开，重新观察并确认起始页面后再复测。`step_index` 和运行记录中的 `stepIndex` 均从 1 开始。原生 `wait` 在步骤顶层填写 `selector`，可省略等待时长。
 - 流程终点：存在 `flow` 时严格按连线执行，没有出边的节点就是终点，不会继续落入 `steps` 数组中的后续步骤。
 - 通用 MCP 节点：卡片步骤可使用 `{ "type": "mcp", "tool": "已有工具名", "arguments": {...} }`，直接复用运行时当前工具目录；`arguments` 内的字符串支持运行输入变量替换。
 - 路由与安全：浏览器 MCP 默认使用工作台选择的窗口，也可在 `arguments.change_browser` 指定其它在线连接。为防止无限递归，卡片内禁止调用 `manage_card`。
+- 授权：卡片目录、卡片读写、运行记录查询、暂停和取消不要求浏览器连接或接管。`run`、`start_run`、`retry_run`、`resume_run` 和 `step_run` 会开始或继续执行，必须路由到运行绑定的唯一在线 AI-FREE 浏览器并完成 `browser_control action=acquire`；目标缺失、歧义、离线或与运行绑定不一致时显式失败，不会静默改用系统浏览器或其它外部浏览器。恢复后每次浏览器动作仍独立检查接管状态。
+- `delete` 将卡片移入回收站。`purge` 永久删除回收站中的卡片，通过 MCP 调用时需要在线浏览器接管，通过首页调用时需要本机确认。
+- 重试语义：`retry_run` 只接受可重试的失败记录，且按稳定幂等键对同一源运行去重。它从头执行整张流程，可能重复之前已完成的副作用；重试前须查看运行详情。成功、取消、超时或结果未知的运行不能通过此动作重放。
+
+最短后台调用示例（卡片 ID、连接 ID 和输入值以实际返回为准）
+
+| 顺序 | 工具 | 参数 |
+|---|---|---|
+| 1 | `manage_card` | `{"action":"list"}` |
+| 2 | `manage_card` | `{"action":"get","id":"<卡片 ID>"}`，从 `item.inputSchema` 读取输入约束 |
+| 3 | `browser_control` | `{"action":"acquire","change_browser":"<连接 ID>"}` |
+| 4 | `manage_card` | `{"action":"start_run","id":"<卡片 ID>","change_browser":"<连接 ID>","inputs":{},"idempotency_key":"<本次请求唯一键>"}`，按第 2 步补齐必填输入 |
+| 5 | `manage_card` | `{"action":"get_run","run_id":"<第 4 步返回的 run.id>"}` |
 
 ### `browser_file`
 
@@ -179,6 +214,7 @@ Cookie 属于登录会话数据，不属于 `browser_environment.settings` 的�
 - 作用：操作网页中的元素或坐标位置。
 - `action`：必填，可用值为 `click`、`double_click`、`right_click`、`drag`、`scroll`、`type`、`insert_text`、`set_selection`、`press_key`。
 - 元素定位：优先同时传入 `browser_observe` 返回的 `observationId` 与 `ref`。原生连接会保存该元素的视口中心坐标，后续点击直接在该坐标注入鼠标事件，由 Chromium 命中测试选择坐标处最上层元素；selector 用于字符选区和坐标缺失时回退。显式传入的 `x`、`y` 会覆盖 `ref` 默认中心。应用短期保留最近 3 次观察（最长 30 秒）；旧 ref 只有在页面 URL 未变化、selector 唯一且稳定、当前元素的标签/角色/名称一致时才会重新定位，成功响应包含 `refRecovered=true`。导航、歧义或语义变化仍返回 `OBSERVED_REF_EXPIRED`，不会复用旧坐标。
+- 根据页面观察取点时，纯坐标点击（`click`、`double_click`、`right_click`）可带上 `observation_id`。显式绑定坐标需要支持文档绑定的内核。应用校验当前入口对该浏览器的最新观察，限 30 秒且必须对应同一份文档。刷新同 URL 也使旧观察失效。快照校验失败返回 `OBSERVATION_MISMATCH` 和 `actionExecuted: false`。文档在校验后切换时，由 Chromium 的页面绑定拒绝操作。观察后发生滚动、缩放或布局变化时，应重新观察并重新取点。
 - 点击实现：Runtime Bridge 与 AI-FREE 建立连接后，Chromium Views 层的虚拟指针会默认悬浮在网页视口中央，并在连接期间常驻；`click`、`double_click`、`right_click` 复用该指针完成平滑移动、按下、抬起和点击反馈，点击结束后停留在最后位置。覆盖层不进入页面 DOM、不接收事件，也不移动 Windows 全局鼠标；RenderWidgetHost 正常执行坐标命中测试，不会穿透遮挡元素。断开 Runtime Bridge 或页面销毁时指针会清除。
 - 网页虚拟指针采用「01 棱镜」样式：白色箭尖、紫蓝渐变描边和近黑内芯由 Chromium 原生绘制。移动时的拖尾为连续曲线，向后收细，停止移动后淡出；真实鼠标与扩展手型动效不受影响。
 - 鼠标选文：`drag` 使用 `x`、`y` 作为起点，`to_x`、`to_y` 作为终点，真实发送移动、按下、拖动和抬起事件；虚拟指针同步显示拖动过程。

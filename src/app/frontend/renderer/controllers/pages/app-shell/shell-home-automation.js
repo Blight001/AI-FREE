@@ -1,9 +1,9 @@
 'use strict';
 
-const AUTOMATION_ACTIVE_RUNS = new Set(['pending', 'running', 'paused']);
+const AUTOMATION_ACTIVE_RUNS = new Set(['pending', 'running', 'paused', 'cancelling', 'timing_out']);
 const AUTOMATION_RUN_LABELS = Object.freeze({
   pending: '等待执行', running: '执行中', paused: '已暂停', succeeded: '已完成', failed: '失败',
-  cancelled: '已停止', timed_out: '超时',
+  cancelling: '等待当前操作结束后停止', cancelled: '已停止', timing_out: '等待当前操作结束后超时', timed_out: '超时',
 });
 const AUTOMATION_SENSITIVE_KEY = /password|passwd|token|cookie|secret|authorization|api.?key|验证码/i;
 
@@ -47,12 +47,13 @@ class HomeAutomationController {
       'automation-trash-toggle',
       'automation-create', 'automation-editor', 'automation-editor-title', 'automation-editor-name',
       'automation-editor-close', 'automation-editor-export', 'automation-editor-save', 'automation-editor-message',
-      'automation-canvas', 'automation-node-json', 'automation-node-apply', 'automation-node-delete',
+      'automation-canvas', 'automation-mcp-editor', 'automation-node-json', 'automation-node-apply', 'automation-node-delete',
       'automation-connect-mode', 'automation-edge-label', 'automation-canvas-hint', 'automation-start-node',
     ].map((id) => [id, document.getElementById(id)]));
     this.cards = [];
     this.card = null;
     this.cardId = '';
+    this.mcpTools = [];
     this.showHistory = false;
     this.showTrash = false;
     this.busy = false;
@@ -61,6 +62,7 @@ class HomeAutomationController {
       onSelect: (node) => this.selectNode(node),
       onHint: (text) => { this.nodes['automation-canvas-hint'].textContent = text; },
     });
+    this.mcpEditor = new AutomationMcpNodeEditor(this.nodes, () => this.mcpTools);
     this.bindEvents();
   }
 
@@ -80,7 +82,9 @@ class HomeAutomationController {
   async loadConnections() {
     const response = await this.api.getBrowserConnections();
     if (!response?.ok) throw new Error(response?.message || '浏览器列表读取失败');
+    this.mcpTools = Array.isArray(response.mcpTools) ? response.mcpTools.filter((tool) => tool?.name) : [];
     this.renderConnections(response.connections || []);
+    try { this.mcpEditor.parseAndRender(); } catch (error) { this.mcpEditor.showError(error); }
   }
 
   renderConnections(connections) {
@@ -166,7 +170,19 @@ class HomeAutomationController {
     if (run.status === 'paused') row.append(
       this.cardActionButton('继续', 'resume-run', run.id), this.cardActionButton('单步', 'step-run', run.id),
       this.cardActionButton('停止', 'cancel-run', run.id));
-    if (run.status === 'failed' || run.status === 'timed_out') row.append(this.cardActionButton('重试', 'retry-run', run.id));
+    if (run.status === 'failed' && run.retryAvailable === true) {
+      row.append(this.cardActionButton('重试', 'retry-run', run.id));
+    }
+    if (run.requestUnavailable === true && run.status === 'failed') {
+      const note = document.createElement('span');
+      note.textContent = '运行输入未持久化，重跑时请重新提供输入';
+      row.append(note);
+    }
+    if (run.sideEffectsMayHaveOccurred === true) {
+      const note = document.createElement('span');
+      note.textContent = '当前运行可能已产生页面副作用；检查详情后再重新发起';
+      row.append(note);
+    }
     return row;
   }
 
@@ -232,7 +248,7 @@ class HomeAutomationController {
 
   selectNode(node) {
     const editor = this.nodes['automation-node-json'];
-    editor.value = node ? JSON.stringify(node, null, 2) : '';
+    this.mcpEditor.setNode(node);
     editor.disabled = !node;
     this.nodes['automation-node-delete'].disabled = !node;
     this.syncStartNodes();
@@ -249,7 +265,7 @@ class HomeAutomationController {
     this.nodes['automation-editor-title'].textContent = id ? '编辑自动化' : '新建自动化';
     this.nodes['automation-editor-message'].textContent = '';
     this.canvas.setCard(this.card);
-    this.syncStartNodes();
+    this.selectNode(null);
     homeDialogs.open(editor);
   }
 
@@ -271,6 +287,8 @@ class HomeAutomationController {
     const card = this.card;
     const name = this.nodes['automation-editor-name'].value.trim();
     if (!name) throw new Error('请输入流程名称');
+    if (this.canvas.selectedId) this.applySelectedDraft();
+    card.steps.forEach((node) => this.mcpEditor.validateNode(node));
     card.name = name;
     card.flow.start = this.nodes['automation-start-node'].value;
     const result = await this.manage({ action: 'write', id: this.cardId || undefined, cardData: card });
@@ -328,20 +346,26 @@ class HomeAutomationController {
 
   async handleRunAction(action, id) {
     if (action === 'cancel-run') await this.manage({ action: 'cancel_run', run_id: id, reason: '用户停止' });
-    if (action === 'retry-run') await this.manage({ action: 'retry_run', run_id: id });
     if (action === 'pause-run') await this.manage({ action: 'pause_run', run_id: id });
-    if (action === 'resume-run') await this.manage({ action: 'resume_run', run_id: id });
-    if (action === 'step-run') await this.manage({ action: 'step_run', run_id: id });
+    if (['retry-run', 'resume-run', 'step-run'].includes(action)) {
+      const actionName = action.replace('-', '_');
+      await this.manage({ action: actionName, run_id: id, connectionId: this.selectedConnection() });
+    }
     await this.loadRuns();
+  }
+
+  applySelectedDraft() {
+    const node = JSON.parse(this.nodes['automation-node-json'].value);
+    const index = this.card.steps.findIndex((item, stepIndex) => (item.id || `step_${stepIndex + 1}`) === this.canvas.selectedId);
+    if (index < 0) throw new Error('请先选择画布节点');
+    if (node.id !== this.card.steps[index].id) throw new Error('节点 ID 不可在属性编辑器中更改');
+    this.mcpEditor.validateNode(node);
+    this.card.steps[index] = node;
   }
 
   applyNode() {
     try {
-      const node = JSON.parse(this.nodes['automation-node-json'].value);
-      const index = this.card.steps.findIndex((item, stepIndex) => (item.id || `step_${stepIndex + 1}`) === this.canvas.getSelectedId());
-      if (index < 0) throw new Error('请先选择画布节点');
-      if (node.id !== this.card.steps[index].id) throw new Error('节点 ID 不可在属性编辑器中更改');
-      this.card.steps[index] = node;
+      this.applySelectedDraft();
       this.canvas.render();
       this.syncStartNodes();
       this.nodes['automation-editor-message'].textContent = '节点配置已应用';
@@ -370,6 +394,10 @@ class HomeAutomationController {
     this.nodes['automation-editor-save'].addEventListener('click', () => void this.saveEditor().catch((error) => { this.nodes['automation-editor-message'].textContent = error.message; }));
     this.nodes['automation-editor-export'].addEventListener('click', () => createAutomationDownload(this.card.name, this.card));
     this.nodes['automation-node-apply'].addEventListener('click', () => this.applyNode());
+    this.nodes['automation-node-json'].addEventListener('change', () => {
+      try { this.mcpEditor.parseAndRender(); }
+      catch (error) { this.mcpEditor.showError(error); }
+    });
     this.nodes['automation-node-delete'].addEventListener('click', () => this.canvas.removeSelected());
     this.nodes['automation-connect-mode'].addEventListener('click', (event) => this.toggleConnectMode(event));
     this.nodes['automation-start-node'].addEventListener('change', () => { this.card.flow.start = this.nodes['automation-start-node'].value; });

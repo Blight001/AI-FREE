@@ -28,7 +28,7 @@ const domains = {
   },
   'electron-pages': {
     requireOracle: true,
-    operations: { open: 'action', load: 'action', inspect: 'oracle', close: 'action', inspectWindow: 'oracle' },
+    operations: { open: 'action', load: 'action', inspect: 'oracle', checkAiDraft: 'oracle', close: 'action', inspectWindow: 'oracle' },
   },
 };
 for (const contract of Object.values(domains)) {

@@ -43,12 +43,14 @@ function createFixture() {
   });
   vm.runInContext(`
     const state = { loading: true, stopping: false, accountAuthenticated: false };
-    const SEND_BUTTON_ICONS = { send: 'send-icon', stop: 'stop-icon' };
+    const SEND_BUTTON_ICONS = { send: 'send-icon', stop: 'stop-icon', play: 'play-icon' };
     const el = (id) => elements[id] || null;
+    function readChatDraft(input) { return { content: input.value, inlineAttachments: [], pending: false }; }
     function selectedModelIsCustom() { return false; }
     function isQuotaExhausted() { return false; }
     function sendMessage() { calls.push('send'); }
     function stopAIOutput() { calls.push('stop'); }
+    function resumeAIOutput() { calls.push('resume'); }
   `, context);
   vm.runInContext(readController('ai-control-messages.js'), context);
   vm.runInContext(readController('ai-control-bootstrap.js'), context);
@@ -74,4 +76,25 @@ test('生成中无草稿时主按钮停止输出，有草稿时切换为插入�
   fixture.handlers.submit({ preventDefault() {} });
 
   assert.deepEqual(fixture.calls, ['stop', 'send']);
+});
+
+test('停止后空草稿显示播放，输入内容后恢复普通发送', () => {
+  const fixture = createFixture();
+  vm.runInContext('state.loading = false; state.pausedChat = { useCustomApi: false }; syncSendState()', fixture.context);
+  assert.equal(fixture.send.dataset.iconMode, 'play');
+  assert.equal(fixture.send['aria-label'], '继续 AI 输出');
+  assert.equal(fixture.send.disabled, false);
+  fixture.handlers.submit({ preventDefault() {} });
+
+  fixture.input.value = '新的要求';
+  vm.runInContext('syncSendState()', fixture.context);
+  assert.equal(fixture.send.dataset.iconMode, 'send');
+  assert.equal(fixture.send['aria-label'], '发送消息');
+  assert.equal(fixture.send.disabled, false);
+  fixture.handlers.submit({ preventDefault() {} });
+
+  fixture.input.value = '';
+  vm.runInContext('syncSendState()', fixture.context);
+  assert.equal(fixture.send.dataset.iconMode, 'play');
+  assert.deepEqual(fixture.calls, ['resume', 'send']);
 });

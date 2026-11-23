@@ -10,6 +10,7 @@ const {
 const { waitForBrowserCondition } = require('./native-browser-wait');
 const { browserFile, resolvedFileAction } = require('./native-browser-file');
 const { PAGE_TOKEN, bindPage, bindingFailure, boundToolFailure, expectedPageToken, runtimeBindingFailure } = require('./native-browser-page-binding');
+const { AUTOMATION_CARD_READ_ONLY_ACTIONS, sameBrowserInstance } = require('./automation-card-contract');
 const {
   EXTERNAL_OBSERVATIONS, clearObservations, resolveObservedTarget, recoverObservedTarget, rememberObservation,
 } = require('./native-browser-ref-store');
@@ -91,7 +92,7 @@ function isReadOnlyTool(tool, args) {
   if (tool === 'browser_media') return action === 'list';
   if (tool === 'browser_tab') return action === 'list';
   if (tool === 'browser_file') return ['info', 'save_session'].includes(action);
-    if (tool === 'manage_card') return ['rules', 'list', 'get', 'template'].includes(action);
+  if (tool === 'manage_card') return AUTOMATION_CARD_READ_ONLY_ACTIONS.has(action);
   return false;
 }
 
@@ -165,21 +166,28 @@ function publicConnection(state, tab) {
   };
 }
 
+// The grant object lives for one takeover. Reacquiring a released browser creates a new grant.
+class BrowserTakeovers extends Map {
+  constructor(lookup) { super(); this.lookup = lookup; }
+  add(id, connection = this.lookup(id)) {
+    if (connection && !sameBrowserInstance(this.get(id), connection)) this.set(id, connection);
+  }
+}
+
 class NativeBrowserAutomation {
   constructor(options = {}) {
     this.runtime = options.browserRuntimeManager;
     this.getTabs = options.getTabs;
     this.appPointer = options.appPointer;
     this.nativePointer = options.nativePointer;
-    this.executeCardTool = options.executeCardTool;
+    this.executeManageCard = options.executeManageCard;
     this.downloadService = options.browserDownloadService;
-    this.cardService = options.cardService || null;
     this.workspaceDir = options.workspaceDir;
     this.getBrowserRecords = options.getBrowserRecords;
     this.observeTargets = new Map();
     this.observationHistory = new Map();
     this.externalObservations = { observeTargets: new Map(), observationHistory: new Map() };
-    this.takeoverConnections = new Set();
+    this.takeoverConnections = new BrowserTakeovers((id) => this.getConnection(id));
     this.pointerScheduler = createBrowserPointerScheduler();
     this.workflow = new BrowserWorkflow(this);
   }
@@ -190,14 +198,14 @@ class NativeBrowserAutomation {
       state?.bridgeConnected === true && READY_STATUSES.has(text(state.status)) && text(state.profileId)
     )).map((state) => publicConnection(state, findTab(this.getTabs, state.profileId)));
     this.workflow.prune(connections);
-    const onlineIds = new Set(connections.map(({ id }) => id));
+    const online = new Map(connections.map((connection) => [connection.id, connection]));
     for (const store of [this, this.externalObservations]) {
       for (const id of store.observeTargets.keys()) {
-        if (!onlineIds.has(id)) clearObservations(this, id);
+        if (!online.has(id)) clearObservations(this, id);
       }
     }
-    for (const id of this.takeoverConnections) {
-      if (!onlineIds.has(id)) void this.releasePointerSession(id);
+    for (const [id, grant] of this.takeoverConnections) {
+      if (!sameBrowserInstance(grant, online.get(id))) void this.releasePointerSession(id);
     }
     return connections;
   }
@@ -232,8 +240,8 @@ class NativeBrowserAutomation {
     return this.pointerScheduler.release(connectionId);
   }
 
-  browserTab(connection, args) {
-    return executeBrowserTab(this, connection, args, normalizeUrl);
+  browserTab(connection, args, signal = undefined) {
+    return executeBrowserTab(this, connection, args, normalizeUrl, signal);
   }
 
   async browserAction(connection, args, signal = undefined) {
@@ -317,7 +325,7 @@ class NativeBrowserAutomation {
       this.takeoverConnections.delete(connection.id);
       return runtimeUpdateRequired(action);
     }
-    if (result?.takeoverActive === true) this.takeoverConnections.add(connection.id);
+    if (result?.takeoverActive === true) this.takeoverConnections.add(connection.id, connection);
     else this.takeoverConnections.delete(connection.id);
     return result;
   }
@@ -354,7 +362,7 @@ class NativeBrowserAutomation {
     if (tool === 'browser_screenshot') return this.runtimeCommand(connection, 'capture-screenshot', input);
     if (tool === 'browser_action') return this.browserAction(connection, input, signal);
     if (tool === 'browser_wait') return this.browserWait(connection, input, signal);
-    if (tool === 'browser_tab') return this.browserTab(connection, input);
+    if (tool === 'browser_tab') return this.browserTab(connection, input, signal);
     if (tool === 'browser_file') return this.browserFile(connection, input, signal);
     if (tool === 'browser_media') return browserMedia(this, connection, input);
     if (tool === 'browser_control') return this.browserControl(connection, input);
@@ -435,13 +443,9 @@ class NativeBrowserAutomation {
     }
     const basicResult = this.dispatchBasicTool(connection, toolName, input, options.signal);
     if (basicResult) return basicResult;
-    if (toolName === 'manage_card' && this.cardService?.execute) {
-      return this.cardService.execute(input, {
-        timeoutMs: options.timeoutMs, signal: options.signal,
-        dispatch: (nextTool, nextArgs) => this.executeCardTool
-          ? this.executeCardTool(connectionId, nextTool, nextArgs, options)
-          : this.dispatch(connectionId, nextTool, nextArgs, options),
-      });
+    if (toolName === 'manage_card') {
+      if (typeof this.executeManageCard !== 'function') throw new Error('自动化卡片未连接到 AutomationBridge');
+      return this.executeManageCard(connectionId, input, { ...options, takeoverGrant: this.takeoverConnections.get(connectionId) });
     }
     throw new Error(`未知的 Chromium 原生自动化工具: ${text(toolName) || '(空)'}`);
   }

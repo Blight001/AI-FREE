@@ -138,7 +138,14 @@
     };
   }
 
-  function appendToolDetails(detail, tool) {
+  function restoredToolActivity(tool) {
+    if (tool?.name === 'run_command' && tool.status === 'running') {
+      return { ...tool, status: 'error', result: { state: 'termination_unconfirmed' } };
+    }
+    return tool || {};
+  }
+
+  function appendToolDetails(detail, tool, rawOpen) {
     const args = parseToolArguments(tool.arguments);
     const rawCopy = [
       `工具: ${String(tool.name || '')}`,
@@ -156,11 +163,14 @@
       const updateOutput = appendCommandResult(doc, tool);
       const raw = document.createElement('details');
       raw.className = 'ai-chat-tool-raw';
+      raw.open = rawOpen;
       const summary = document.createElement('summary');
-      summary.textContent = '查看原始调用数据';
-      raw.appendChild(summary);
-      appendToolSection(raw, '参数', tool.arguments);
-      appendToolSection(raw, '结果', tool.result);
+      summary.innerHTML = '查看原始调用数据<span class="ai-chat-disclosure" aria-hidden="true">›</span>';
+      const rawBody = document.createElement('div');
+      appendToolSection(rawBody, '参数', tool.arguments);
+      appendToolSection(rawBody, '结果', tool.result);
+      raw.append(summary, rawBody);
+      enableDetailsAnimation(raw, rawBody);
       doc.appendChild(raw);
       return updateOutput;
     } else {
@@ -195,7 +205,7 @@
     return status === 'error' ? '调用失败' : '调用';
   }
 
-  function createToolActivity(tool = {}) {
+  function createToolActivity(tool = {}, onToggle = () => {}) {
     const card = document.createElement('details');
     card.className = `ai-chat-tool ${tool.status || 'running'}`;
     card.dataset.toolId = String(tool.id || '');
@@ -204,7 +214,7 @@
     const detail = document.createElement('div');
     detail.className = 'ai-chat-tool-detail';
     card.append(summary, detail);
-    const disclosure = enableDetailsAnimation(card, detail);
+    const disclosure = enableDetailsAnimation(card, detail, onToggle);
     let updateOutput = null;
     let snapshot = {};
     card.addEventListener('toggle', () => { if (card.open) updateOutput?.(snapshot); });
@@ -220,8 +230,9 @@
       card.className = `ai-chat-tool ${tool.status || 'running'}`;
       snapshot = ['run_command', 'browser_file', 'browser_page_batch'].includes(tool.name) ? parseToolArguments(tool.result) : {};
       updateToolSummary(summary, tool, snapshot);
+      const rawOpen = detail.querySelector('.ai-chat-tool-raw')?.open === true;
       detail.innerHTML = '';
-      updateOutput = appendToolDetails(detail, tool);
+      updateOutput = appendToolDetails(detail, tool, rawOpen);
       updateOutput?.(snapshot);
     };
     update(tool);

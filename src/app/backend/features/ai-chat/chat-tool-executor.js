@@ -8,9 +8,9 @@ const { recoverChatUpload } = require('./chat-upload-recovery');
 const { commandMetadata, executeLocalCommand, isLocalCommand, visibleCommandOutput } = require('./chat-local-command');
 const { createDownloadArtifact, verifyWorkspaceArtifactSync } = require('./ai-workspace-service');
 const { mcpToolResult } = require('../../services/mcp-tool-result');
+const { dispatchAutomationMcpShortcut } = require('../../services/automation-mcp-shortcuts');
 const {
   browserReference,
-  isBrowserOverview,
   normalizeToolError,
   resolveBrowserConnection,
   resolveDispatchTimeout,
@@ -44,9 +44,19 @@ function resolvePluginTarget(args, connections, describeConnections, controlledC
 }
 
 async function dispatchPluginTool(context, toolName, args) {
-  if (isBrowserOverview(toolName, args) && context.bridge?.getBrowserOverview) {
-    return context.waitForAbort(context.bridge.getBrowserOverview(sanitizeBrowserRoutingArgs(args)));
-  }
+  const shortcut = await dispatchAutomationMcpShortcut({
+    toolName, args, signal: context.signal,
+    sanitizeArgs: sanitizeBrowserRoutingArgs,
+    getBrowserOverview: context.bridge?.getBrowserOverview
+      ? (input) => context.waitForAbort(context.bridge.getBrowserOverview(input)) : null,
+    manageCard: context.bridge?.manageCard
+      ? (input, signal) => context.waitForAbort(context.bridge.manageCard('', input, { signal })) : null,
+  });
+  if (shortcut.handled) return shortcut.result;
+  return dispatchRoutedPluginTool(context, toolName, args);
+}
+
+async function dispatchRoutedPluginTool(context, toolName, args) {
   const target = resolvePluginTarget(
     args,
     context.connections,
@@ -100,7 +110,7 @@ function normalizeToolFailure(error, toolName) {
     code: 'BROWSER_TOOL_FAILED',
     message: '浏览器工具执行失败',
     phase: 'tool_dispatch',
-    retryable: true,
+    retryable: toolName !== 'manage_card' && error?.retryable === undefined && error?.recoverable === undefined,
   });
   return {
     success: false,
@@ -126,6 +136,7 @@ function prepareToolResult(toolResult, toolName) {
 
 function prepareLegacyFailure(toolResult, toolName) {
   const failure = String(toolResult?.error || toolResult?.message || `${toolName} 执行失败`);
+  const recoverable = toolResult?.recoverable ?? toolResult?.retryable ?? (toolName !== 'manage_card');
   return {
     failed: true,
     failure,
@@ -133,8 +144,8 @@ function prepareLegacyFailure(toolResult, toolName) {
       ...(toolResult && typeof toolResult === 'object' ? toolResult : {}),
       success: false,
       error: failure,
-      recoverable: toolResult?.recoverable !== false,
-      instruction: toolResult?.recoverable === false
+      recoverable,
+      instruction: !recoverable
         ? '向用户报告此结果，不要自动重试该操作。'
         : '本次工具操作失败。请根据错误调整参数或向用户说明。',
     },
@@ -312,13 +323,16 @@ async function executeSingleTool(context, call) {
     toolResult = await executeChatTool(context, activity, args);
     syncWindowToolControl(context, toolName, args, toolResult);
   } catch (error) {
-    if (context.isStopped(error)) return { stopped: true };
+    if (context.isStopped(error)) {
+      const interrupted = interruptedToolResult(true);
+      publishCompletedActivity(context, activity, interrupted, startedAt, true);
+      return { stopped: true };
+    }
     toolResult = normalizeToolFailure(error, toolName);
   }
   const prepared = prepareToolResult(toolResult, toolName);
   publishCompletedActivity(context, activity, toolResult, startedAt, prepared.failed);
   publishDownloadArtifact(context, activity, args, toolResult);
-  if (context.signal?.aborted) return { stopped: true };
   const safeResult = isLocalCommand(toolName) ? visibleCommandOutput(prepared.result) : prepared.result;
   const serialized = serializeToolResult(safeResult, toolName, activity.id);
   context.modelMessages.push({
@@ -331,14 +345,41 @@ async function executeSingleTool(context, call) {
   return { failure: serialized.failure || prepared.failure };
 }
 
+function interruptedToolResult(started) {
+  return {
+    success: false,
+    state: started ? 'termination_unconfirmed' : 'stopped',
+    actionExecuted: started ? null : false,
+    errorCode: started ? 'AI_TOOL_OUTCOME_UNCONFIRMED' : 'AI_TOOL_NOT_STARTED',
+    error: started ? '工具已中断，执行结果未知。继续前请先核验结果，避免重放。' : '工具因用户停止而未开始。',
+  };
+}
+
+function finishInterruptedTools(context, pendingCalls, pendingImageMessages, interruptedCall) {
+  if (context.saveToolProgress) return;
+  for (const call of pendingCalls) {
+    const result = interruptedToolResult(call === interruptedCall);
+    context.modelMessages.push({ role: 'tool', tool_call_id: call.id,
+      name: call.function?.name, content: JSON.stringify(result) });
+  }
+  context.modelMessages.push(...pendingImageMessages);
+}
+
 async function executeToolCalls(context) {
   let unresolvedToolFailure = '';
   const pendingImageMessages = [];
   const executionContext = { ...context, pendingImageMessages, blockedAfterBatch: false };
-  for (const call of context.toolCalls) {
-    if (context.signal?.aborted) return { stopped: true, unresolvedToolFailure };
+  for (const [index, call] of context.toolCalls.entries()) {
+    if (context.signal?.aborted) {
+      finishInterruptedTools(context, context.toolCalls.slice(index), pendingImageMessages);
+      return { stopped: true, unresolvedToolFailure };
+    }
     const result = await executeSingleTool(executionContext, call);
-    if (result.stopped) return { stopped: true, unresolvedToolFailure };
+    if (result.stopped) {
+      finishInterruptedTools(context, context.toolCalls.slice(index), pendingImageMessages, call);
+      return { stopped: true, unresolvedToolFailure };
+    }
+    context.saveToolProgress?.(context.toolCalls.slice(index + 1));
     if (executionContext.blockedAfterBatch) continue;
     if (result.failure) unresolvedToolFailure = result.failure;
     if (call?.function?.name === PAGE_BATCH_TOOL.name) {
@@ -346,7 +387,7 @@ async function executeToolCalls(context) {
     }
   }
   context.modelMessages.push(...pendingImageMessages);
-  return { stopped: false, unresolvedToolFailure };
+  return { stopped: Boolean(context.signal?.aborted), unresolvedToolFailure };
 }
 
 module.exports = {
