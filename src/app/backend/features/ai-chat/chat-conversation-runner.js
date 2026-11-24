@@ -1,5 +1,6 @@
 'use strict';
 
+const { skipInterruptedManagedTools } = require('./managed-chat-tool-resume');
 const { performance } = require('node:perf_hooks');
 const { sendCustomAIControlMessage } = require('../../services/custom-ai-api');
 const { limitAiControlMessages } = require('../../lib/ai-control-message-window');
@@ -20,6 +21,7 @@ const {
 const { executeToolCalls } = require('./chat-tool-executor');
 const { parseTextMcpCalls } = require('./chat-text-mcp-parser');
 const { normalizeToolCallMessage } = require('../../lib/ai-tool-call-normalizer');
+const { recordModelQuota } = require('./chat-model-quota');
 
 const STREAMED_TOOL_PREFIXES = [
   '<mcp-call', '<mcp_call', '<invoke', '<tool_call', '<xai:function_call',
@@ -152,7 +154,9 @@ async function requestModelRound(state, round) {
   const requestStart = performance.now();
   try {
     state.run?.controller.signal.throwIfAborted();
-    return await waitForChatAbort(state.run, sendModelRound(state, round, messages, transport));
+    const result = await waitForChatAbort(state.run, sendModelRound(state, round, messages, transport));
+    recordModelQuota(state, result);
+    return result;
   } finally {
     writeDebugConsoleOnly('info', '[AIControlTiming]', { round, transport,
       contextMs: Math.round(requestStart - contextStart), modelRequestMs: Math.round(performance.now() - requestStart) });
@@ -278,7 +282,10 @@ function recordToolRound(state, result, toolCalls, round) {
 async function dispatchToolRound(state, toolCalls, round) {
   if (state.saveManagedCheckpoint) saveManagedProgress(state, round, toolCalls);
   const execution = await executeToolCalls({
-    saveToolProgress: state.saveManagedCheckpoint ? (remaining) => saveManagedProgress(state, round, remaining) : null,
+    saveToolProgress: state.saveManagedCheckpoint ? (remaining, inFlight) => saveManagedProgress(state, round, remaining, inFlight) : null,
+    markManagedDispatch: (call, remaining) => {
+      if (state.managedNoReplay?.(call.function?.name)) saveManagedProgress(state, round, remaining, call.id);
+    },
     artifacts: state.artifacts,
     artifactReferences: state.artifactReferences,
     browserTargets: state.browserTargets,
@@ -380,13 +387,13 @@ async function runChatRound(state, round) {
   return { done: false };
 }
 
-function saveManagedProgress(state, round, pending = []) {
+function saveManagedProgress(state, round, pending = [], inFlight = undefined) {
   const messages = structuredClone(state.modelMessages);
-  state.saveManagedCheckpoint({ round: pending.length ? round : round + 1, messages, pending });
+  state.saveManagedCheckpoint({ round: pending.length ? round : round + 1, messages, pending, inFlight });
 }
 
 async function restoreManagedRound(state, checkpoint) {
-  if (!checkpoint?.pending?.length) return false;
+  if (!checkpoint?.pending?.length || skipInterruptedManagedTools(state, checkpoint)) return false;
   const invalid = validateToolRound(state, checkpoint.pending);
   if (invalid) return invalid.result;
   const outcome = await executeToolRound(state, null, checkpoint.pending, checkpoint.round, true);

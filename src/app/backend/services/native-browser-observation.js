@@ -1,5 +1,7 @@
 'use strict';
 
+const AX_COORDINATE_REF = Symbol('ax-coordinate-ref');
+
 function text(value) { return String(value == null ? '' : value).trim(); }
 
 function nonNegativePoint(x, y) {
@@ -51,18 +53,24 @@ function observedMetadata(item, context = {}) {
   return metadata;
 }
 
+function observedMedia(item) {
+  const mediaUrl = text(item.mediaUrl || item.downloadUrl);
+  if (!mediaUrl) return null;
+  return { mediaUrl, downloadUrl: text(item.downloadUrl || mediaUrl), mediaType: text(item.mediaType) };
+}
+
 function observedTarget(item, observationId, context = {}) {
-  const id = text(item?.id);
+  if (!item) return null;
+  const id = text(item.id);
   if (!id) return null;
-  const selector = text(item?.selector);
+  const selector = text(item.selector);
   const point = observedCenter(item);
-  const mediaUrl = text(item?.mediaUrl || item?.downloadUrl);
-  if (!selector && !point && !mediaUrl) return null;
+  const media = observedMedia(item);
+  if (!selector && !point && !media) return null;
+  const axCoordinate = item.accessibilityFallback === true && !selector && !!point;
   return [id, {
-    ...(selector ? { selector } : {}), ...(point || {}), observationId,
-    ...(mediaUrl ? {
-      mediaUrl, downloadUrl: text(item.downloadUrl || mediaUrl), mediaType: text(item.mediaType),
-    } : {}),
+    [AX_COORDINATE_REF]: axCoordinate,
+    ...(selector ? { selector } : {}), ...point, ...media, observationId,
     ...observedMetadata(item, context),
   }];
 }
@@ -390,6 +398,6 @@ function processObservationResult(result, input, observationId) {
   return fallbackRegionElements(diagnosed, options, regions);
 }
 
-module.exports = {
+module.exports = { AX_COORDINATE_REF,
   expiredObservedRefResult, mismatchedObservationResult, observedTarget, processObservationResult,
 };

@@ -98,7 +98,7 @@
     };
   }
 
-  function upsertLocalSession(session) {
+  function upsertLocalSession(session, setCurrent = true) {
     if (!session?.id) return;
     const store = readLocalHistoryStore();
     const next = {
@@ -117,7 +117,7 @@
     store.sessions = store.sessions
       .filter((item) => Array.isArray(item.messages) && item.messages.length)
       .sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0));
-    store.currentId = next.id;
+    if (setCurrent) store.currentId = next.id;
     writeLocalHistoryStore(store);
   }
 

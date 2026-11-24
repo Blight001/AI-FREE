@@ -8,7 +8,7 @@ const { app, BrowserWindow, ipcMain, safeStorage } = require('electron');
 
 const fixture = JSON.parse(process.env.AI_FREE_INTERACTION_FIXTURE || 'null');
 const phase = process.argv[2];
-assert.ok(fixture && ['initial', 'reopen', 'continuation', 'native', 'managed'].includes(phase), 'Start via electron-sidebar.test.js');
+assert.ok(fixture && ['initial', 'reopen', 'continuation', 'scroll', 'pause-thinking', 'native', 'managed', 'native-managed'].includes(phase), 'Start via electron-sidebar.test.js');
 app.setPath('userData', fixture.userData);
 app.setPath('sessionData', fixture.userData);
 app.setPath('desktop', fixture.desktop);
@@ -28,14 +28,14 @@ const { createAiWorkspaceService } = ai('ai-workspace-service');
 const CONNECTION = 'interaction-fixture';
 const RED_PATH = 'source-red/sample.png';
 const PROFILE_PATH = 'settings-profile.json';
-const ARTIFACT = '.ai-chat-message-artifact';
+const ARTIFACT = '.ai-chat-download-card';
 const DOWNLOAD_PROMPT = 'Fetch red fixture';
 const DOWNLOAD_ANSWER = 'The red fixture is ready.';
 const DOWNLOAD_STEP = 'I will fetch the red fixture.';
 
 function createDoubles() {
   const tab = { title: 'A - Source', url: fixture.urls.a, pageToken: '' };
-  const tools = ['browser_tab', 'browser_file'].map((name) => ({ name, description: name,
+  const tools = ['browser_tab', 'browser_file', 'browser_screenshot'].map((name) => ({ name, description: name,
     input_schema: { type: 'object', properties: { action: { type: 'string' }, path: { type: 'string' } } } }));
   const connection = { id: CONNECTION, name: 'Fixture Chromium', tools };
   const queue = [];
@@ -54,10 +54,14 @@ function createDoubles() {
         targetLookups++;
         return tab.pageToken ? { activeTab: { ...tab } } : { activeTab: { title: tab.title, url: tab.url } };
       }
-      assert.equal(tool, 'browser_file');
       if (options.expectedPageToken !== tab.pageToken) {
         return { success: false, actionExecuted: false, errorCode: 'BROWSER_TARGET_CHANGED', error: 'Target document changed' };
       }
+      if (tool === 'browser_screenshot') {
+        const bytes = await fs.readFile(fixture.files.red.path);
+        return { success: true, dataUrl: `data:image/png;base64,${bytes.toString('base64')}` };
+      }
+      assert.equal(tool, 'browser_file');
       if (args.action === 'download') {
         assert.equal(tab.pageToken, 'a-document');
         const bytes = await fs.readFile(fixture.files.red.path);
@@ -80,7 +84,8 @@ function createDoubles() {
       const last = messages.at(-1);
       if (last?.role === 'tool') outcomes.push(JSON.parse(last.content));
       assert.ok(queue.length, 'Model received an unexpected request or attempted to replay a tool');
-      return { ok: true, message: queue.shift() };
+      const { quotaUsed, ...message } = queue.shift();
+      return { ok: true, message, quota_cost_increment: quotaUsed };
     },
   };
   return { tab, bridge, connection, queue, outcomes, uploads, model,
@@ -109,7 +114,10 @@ function wireSidebar({ bridge, model, connection }, window) {
     getSideView: () => window,
     managedChatRepository: createManagedChatRepository({ directory: path.join(fixture.userData, 'test-managed-chat'), safeStorage }),
   };
-  const getModels = () => ({ ok: true, models: [{ id: 'fixture-model', name: 'Fixture model' }], quota: { unlimited: true } });
+  const getModels = () => ({ ok: true, quota: { unlimited: true }, models: [
+    { id: 'fixture-model', name: 'Fixture model' },
+    { id: 'fixture-child-model', name: 'Fixture child model' },
+  ] });
   const managed = registerManagedChatIpc({ ipc, deps, getModels });
   registerAiChatIpc({ ...deps, ipc, getParentChatTools: managed?.getParentTools });
   registerAiHistoryIpc({ ipc, historyRepository, getCredentials });
@@ -158,14 +166,14 @@ function driver(contents) {
   };
 }
 
-async function checkDisclosureRotation(ui, selector, open) {
-  await ui.until(() => ui.evaluate((css, expanded) => {
-    const icon = document.querySelector(css + ' > .ai-chat-disclosure');
+async function checkDisclosureRotation(ui, selector, open, marker = '.ai-chat-disclosure') {
+  await ui.until(() => ui.evaluate((css, expanded, markerSelector) => {
+    const icon = document.querySelector(`${css} > ${markerSelector}`);
     if (!icon) return false;
     const transform = getComputedStyle(icon).transform;
     const matrix = new DOMMatrixReadOnly(transform === 'none' ? undefined : transform);
     return Math.abs(matrix.a - (expanded ? 0 : 1)) < 0.01 && Math.abs(matrix.b - (expanded ? 1 : 0)) < 0.01;
-  }, selector, open), 'fold icon rotation ' + selector);
+  }, selector, open, marker), 'fold icon rotation ' + selector);
 }
 
 async function checkFoldedDownloadProcess(ui) {
@@ -215,9 +223,16 @@ async function initial(ui, doubles, history) {
   await checkFoldedDownloadProcess(ui);
   assert.equal(doubles.modelRequests(), 2);
   assert.equal(doubles.targetLookups(), 1);
-  await ui.visible(ARTIFACT, RED_PATH);
-  await ui.click(`${ARTIFACT} button`, '预览');
+  await ui.visible(`#ai-chat-downloads ${ARTIFACT}`, 'sample.png');
+  assert.ok(await ui.evaluate(() => document.querySelector('#ai-chat-downloads').getBoundingClientRect().bottom
+    <= document.querySelector('#ai-chat-form').getBoundingClientRect().top));
+  await ui.click(`${ARTIFACT} button`, 'sample.png');
   await ui.until(() => ui.evaluate(() => document.querySelector('#ai-chat-workspace-preview-body img')?.naturalWidth === 96), 'decoded PNG preview');
+  await ui.click('#ai-chat-workspace-preview-tools [aria-label="放大图片"]');
+  await ui.visible('#ai-chat-workspace-preview-tools', '125%');
+  assert.ok(await ui.evaluate(() => document.querySelector('#ai-chat-workspace-preview-body img').clientWidth > 96));
+  await ui.click('#ai-chat-workspace-preview-tools [aria-label="恢复适应窗口"]');
+  await ui.visible('#ai-chat-workspace-preview-tools', '100%');
   await ui.click('#ai-chat-workspace-preview-close');
   await ui.until(() => history.sessions().some(({ id }) => {
     const session = history.readSession(id);
@@ -225,6 +240,25 @@ async function initial(ui, doubles, history) {
       message.artifacts?.some((artifact) => artifact.sha256 === fixture.files.red.sha256));
   }), 'persisted title and artifact digest');
   await checkRawToolRotation(ui);
+  await checkInlineScreenshot(ui, doubles);
+}
+
+async function checkInlineScreenshot(ui, doubles) {
+  doubles.queue.push({ role: 'assistant', tool_calls: [{ id: 'live-screenshot', type: 'function',
+    function: { name: 'browser_screenshot', arguments: '{}' } }] });
+  doubles.model.streamAIControlMessage = (key, device, model, messages, options) => {
+    if (!messages.some((message) => message.ai_free_transient_image)) {
+      return doubles.model.sendAIControlMessage(key, device, model, messages, options);
+    }
+    return new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true }));
+  };
+  await ui.send('Capture the page');
+  await ui.until(() => ui.evaluate(() => document.querySelector('.ai-chat-screenshot img')?.naturalWidth === 96), 'automatic screenshot while model is still running');
+  await ui.click('.ai-chat-screenshot');
+  await ui.visible('#ai-chat-workspace-preview-title', '浏览器截图');
+  await ui.click('#ai-chat-workspace-preview-close');
+  await ui.click('#ai-chat-send[aria-label="停止 AI 输出"]');
+  await ui.visible('#ai-chat-send[aria-label="继续 AI 输出"]');
 }
 
 async function continuation(ui, doubles) {
@@ -267,7 +301,8 @@ async function continuation(ui, doubles) {
   await ui.click(stop);
   await ui.visible(play);
   assert.equal(await ui.has('.ai-chat-step-answer', DOWNLOAD_STEP), true);
-  await ui.visible('.ai-chat-process > summary', '用时 3 分钟 57 秒');
+  await ui.visible('.ai-chat-turn-duration', '用时 3 分钟 57 秒');
+  assert.equal(await ui.has(`${secondGroup}[open] > summary`), true);
   await setClock(297000);
   doubles.queue.push({ content: 'Continued from the tool result' });
   const sendModel = doubles.model.sendAIControlMessage;
@@ -297,6 +332,72 @@ async function continuation(ui, doubles) {
   assert.equal(await ui.has('[data-message-kind="user-bubble"]', 'Follow-up message'), true);
 }
 
+async function pauseThinking(ui, doubles) {
+  const thinking = '.ai-chat-thinking > summary';
+  const activity = '.ai-chat-activity > summary';
+  const stop = '#ai-chat-send[aria-label="停止 AI 输出"]';
+  const play = '#ai-chat-send[aria-label="继续 AI 输出"]';
+  const delta = 'Paused thinking remains visible';
+  doubles.model.streamAIControlMessage = (_key, _device, _model, _messages, options, onEvent) => {
+    onEvent({ type: 'reasoning_delta', delta });
+    return new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true }));
+  };
+  await ui.send('Stop while thinking');
+  await ui.visible('.ai-chat-thinking-text', delta);
+  await ui.setDraft('Keep this inserted message');
+  await ui.click('#ai-chat-send[aria-label="插入当前对话"]');
+  await ui.visible('.ai-chat-bubble', 'Keep this inserted message');
+  await ui.click(stop);
+  await ui.visible(play);
+  await ui.visible('.ai-chat-turn-duration', '用时');
+  assert.equal(await ui.has('.ai-chat-thinking-text', delta), true);
+  assert.equal(await ui.has('[data-message-kind="user-bubble"] + [data-message-kind="assistant-turn"] .ai-chat-thinking-text', delta), true);
+  await checkDisclosureRotation(ui, activity, true, '.ai-chat-activity-arrow');
+  await checkDisclosureRotation(ui, thinking, true, '.ai-chat-thinking-mark');
+  await ui.click(thinking);
+  await checkDisclosureRotation(ui, thinking, false, '.ai-chat-thinking-mark');
+  await ui.click(activity);
+  await checkDisclosureRotation(ui, activity, false, '.ai-chat-activity-arrow');
+  doubles.model.streamAIControlMessage = () => ({ ok: true, message: { content: 'Completed after pause' } });
+  await ui.click(play);
+  await ui.visible('.ai-chat-answer', 'Completed after pause');
+  await ui.visible('#ai-chat-send[aria-label="发送消息"]');
+  assert.equal(await ui.has('.ai-chat-thinking-text', delta), false);
+}
+
+async function followCollapsingThinking(ui) {
+  await ui.evaluate(() => {
+    const list = document.querySelector('#ai-chat-message-list');
+    const fixture = document.createElement('div');
+    fixture.id = 'scroll-fixture';
+    fixture.style.height = '1600px';
+    list.append(fixture);
+  });
+  const isFollowing = () => ui.evaluate(() => {
+    const view = document.querySelector('#ai-chat-messages');
+    return view.scrollHeight - view.clientHeight - view.scrollTop <= 4;
+  });
+  await ui.until(isFollowing, 'follow expanded thinking');
+  const scroll = await ui.evaluate(async () => {
+    const view = document.querySelector('#ai-chat-messages');
+    const fixture = document.querySelector('#scroll-fixture');
+    const before = view.scrollTop;
+    fixture.style.height = '100px';
+    const clamped = view.scrollTop;
+    fixture.style.height = '1900px';
+    return { before, clamped };
+  });
+  assert.ok(scroll.clamped < scroll.before);
+  await ui.until(isFollowing, 'follow final reply after thinking collapses');
+  await ui.evaluate(() => { document.querySelector('#ai-chat-messages').scrollTop = 50; });
+  await ui.visible('#ai-chat-jump-bottom');
+  await ui.evaluate(() => { document.querySelector('#scroll-fixture').style.height = '2200px'; });
+  await ui.until(() => ui.evaluate(() => document.querySelector('#ai-chat-messages').scrollTop === 50), 'preserve manual scroll position');
+  await ui.click('#ai-chat-jump-bottom');
+  await ui.until(isFollowing, 'follow again after jumping to bottom');
+  await ui.evaluate(() => { document.querySelector('#scroll-fixture').remove(); });
+}
+
 async function reopen(ui, doubles) {
   await ui.visible('button[aria-label="新建对话"]');
   await ui.click('#ai-chat-history-trigger');
@@ -304,9 +405,9 @@ async function reopen(ui, doubles) {
   await checkHistoryLayout(ui);
   await ui.click('#ai-chat-history-menu button', DOWNLOAD_PROMPT);
   await checkFoldedDownloadProcess(ui);
-  await ui.visible(ARTIFACT, RED_PATH);
+  await ui.visible(ARTIFACT, 'sample.png');
   assert.equal(await ui.evaluate((css) => document.querySelectorAll(css).length, ARTIFACT), 1);
-  await ui.click(`${ARTIFACT} button`, '再次引用');
+  await ui.click(`${ARTIFACT} button[aria-label^="再次引用"]`);
   await ui.visible('.ai-chat-attachment-chip', 'sample.png');
   assert.equal(doubles.modelRequests(), 0);
 
@@ -384,7 +485,7 @@ async function exerciseRealSidebar(ui, history) {
 
   await ui.send(prompt);
   await ui.until(() => ui.has(ARTIFACT, 'sample.png'), 'native download card', 14000);
-  await ui.click(`${ARTIFACT} button`, '预览');
+  await ui.click(`${ARTIFACT} button`, 'sample.png');
   await ui.until(() => ui.evaluate(() => document.querySelector('#ai-chat-workspace-preview-body img')?.naturalWidth === 96),
     'decoded download preview');
   await ui.until(() => history.sessions().some(({ id }) => history.readSession(id)?.messages.some((message) =>
@@ -408,89 +509,196 @@ async function native() {
     const bridge = createNativeBrowserAutomation({ browserRuntimeManager: manager, workspaceDir: fixture.workspace,
       browserDownloadService: createBrowserDownloadService({ sandboxDir: fixture.workspace }) });
     let reloaded = false;
+    const delegated = phase === 'native-managed';
+    const connection = bridge.listConnections()[0];
     const model = {
       async sendAIControlMessage(_key, _device, _model, messages, { tools }) {
+        if (delegated && (!tools.length || tools.some(({ name }) => name === 'chat_session'))) {
+          return delegatedModel(messages, { tools }, { connectionId: connection.id, prompt: 'QA DOWNLOAD RED',
+            expected: 'The fixture download tool completed. Open the PNG card to verify the image and its source.' });
+        }
         const result = await sendCustomAIControlMessage({ enabled: true, baseUrl: fixture.urls.model,
           apiKey: fixture.model.apiKey, model: fixture.model.id }, messages, { tools });
-        if (!reloaded && result.message?.tool_calls?.[0]?.function?.name === 'browser_control') {
+        if (!delegated && !reloaded && result.message?.tool_calls?.[0]?.function?.name === 'browser_control') {
           await manager.reload(profileId, 'chromium');
           reloaded = true;
         }
         return result;
       },
     };
-    const wiring = { bridge, connection: bridge.listConnections()[0], model };
-    await runSidebar(wiring, exerciseRealSidebar);
+    const wiring = { bridge, connection, model };
+    await runSidebar(wiring, delegated ? exerciseNativeDelegation : exerciseRealSidebar);
   } finally {
     await manager.stopAll({ timeoutMs: 5000 });
     host.destroy();
   }
 }
 
-function delegatedModel(messages, options) {
+async function exerciseNativeDelegation(ui) {
+  await ui.send('Ask a child to review');
+  await ui.until(() => ui.has('.ai-chat-answer', 'Parent received the child report'), 'native child result', 18000);
+  const received = await fs.readFile(path.join(fixture.workspace, 'qa-download-red/sample.png'));
+  assert.deepEqual(received, await fs.readFile(fixture.files.red.path));
+  await ui.click('#ai-managed-parent-cards button', 'Model delegated');
+  await ui.visible('#ai-managed-messages .ai-chat-answer', 'The fixture download tool completed.');
+  await ui.visible('#ai-managed-messages .ai-chat-turn-duration, #ai-managed-messages .ai-chat-process', '用时');
+  await ui.click('#ai-managed-messages .ai-chat-process > summary');
+  await ui.click('#ai-managed-messages .ai-chat-activity > summary');
+  await ui.visible('#ai-managed-messages [data-tool-id]');
+  await ui.visible(`#ai-managed-downloads ${ARTIFACT}`, 'sample.png');
+  await ui.click(`#ai-managed-downloads ${ARTIFACT} button`, 'sample.png');
+  await ui.until(() => ui.evaluate(() => document.querySelector('#ai-chat-workspace-preview-body img')?.naturalWidth === 96),
+    'child download preview');
+  await ui.click('#ai-chat-workspace-preview-close');
+  await ui.click('#ai-managed-back');
+  await ui.visible('.ai-chat-answer', 'Parent received the child report');
+}
+
+function delegatedModel(messages, options, { connectionId = CONNECTION, prompt = 'Review', expected = 'Child report' } = {}) {
   if (!options.tools.length) return { ok: true, message: { content: 'Task review' } };
   if (!options.tools.some(({ name }) => name === 'chat_session')) {
-    assert.deepEqual(options.tools.map(({ name }) => name), ['chat_previous_result']);
-    return { ok: true, message: { content: 'Child report' } };
+    const names = options.tools.map(({ name }) => name);
+    assert.ok(names.includes('browser_file'));
+    assert.ok(names.includes('chat_previous_result'));
+    assert.ok(!names.includes('manage_card'));
+    const receipt = messages.find(({ tool_call_id }) => tool_call_id === 'child-download');
+    if (receipt) {
+      assert.equal(JSON.parse(receipt.content).relative_path, RED_PATH);
+      return { ok: true, message: { content: 'Child report' } };
+    }
+    return { ok: true, message: { tool_calls: [{ id: 'child-download', type: 'function',
+      function: { name: 'browser_file', arguments: JSON.stringify({ action: 'download', url: fixture.urls.red }) } }] } };
   }
   const outcomes = messages.filter(({ role }) => role === 'tool').map(({ content }) => JSON.parse(content));
   if (outcomes.length === 3) {
-    assert.equal(outcomes[2].data.runs[0].result, 'Child report');
+    assert.equal(outcomes[2].data.runs[0].result, expected);
     return { ok: true, message: { content: 'Parent received the child report' } };
   }
   const actions = [
     { action: 'create', request_key: 'delegated-create', model_id: 'fixture-model', title: 'Model delegated' },
-    { action: 'send', request_key: 'delegated-send', session_id: outcomes[0]?.data.sessionId, content: 'Review', wait_ms: 0 },
+    { action: 'send', request_key: 'delegated-send', session_id: outcomes[0]?.data.sessionId, content: prompt, browser_connection: connectionId, wait_ms: 0 },
     { action: 'wait', run_ids: [outcomes[1]?.data.runId] },
   ];
   return { ok: true, message: { tool_calls: [{ id: `child-call-${outcomes.length}`, type: 'function',
     function: { name: 'chat_session', arguments: JSON.stringify(actions[outcomes.length]) } }] } };
 }
 
+async function assertChildReadOnly(ui, sessionId, runId) {
+  await ui.visible('#ai-managed-model', '模型：Fixture child model');
+  assert.equal(await ui.evaluate(() => document.querySelector('#ai-managed-chat')
+    .querySelector('form, textarea, input, select, [contenteditable="true"], [aria-haspopup="listbox"]') !== null), false);
+  const attempts = [
+    { action: 'create', model_id: 'fixture-model', request_key: 'sidebar-create' },
+    { action: 'select_model', session_id: sessionId, model_id: 'fixture-model' },
+    { action: 'send', session_id: sessionId, request_key: 'sidebar-send', content: 'Direct send' },
+    { action: 'insert', run_id: runId, request_key: 'sidebar-insert', content: 'Direct insert' },
+    { action: 'stop', run_id: runId },
+    { action: 'resume', run_id: runId },
+  ];
+  for (const args of attempts) {
+    const result = await ui.evaluate((request) => window.aiFree.ai.managedChat({ ...request, wait_ms: 0 }), args);
+    assert.equal(result.error?.code, 'CHAT_SIDEBAR_READ_ONLY', args.action);
+    assert.equal(result.error?.retryable, false, args.action);
+  }
+}
+
+async function checkPointsDisplay(ui, selector, integer, decimal) {
+  await ui.until(() => ui.evaluate((css, display, exact) => {
+    const counter = document.querySelector(css);
+    const icon = counter?.querySelector('svg');
+    return counter?.getClientRects().length && counter.textContent.trim() === display
+      && counter.title === `已消耗 ${exact} 积分` && icon?.getBBox().width > 0;
+  }, selector, integer, decimal), `${selector} displays ${integer} with a ${decimal}-point tooltip and coin icon`);
+}
+
 async function managed(ui, doubles, history, window) {
+  const parentPrompt = 'Prepare the parent conversation';
+  doubles.queue.push({ content: 'Parent conversation is ready.', quotaUsed: 0.5 });
+  await ui.send(parentPrompt);
+  await ui.visible('.ai-chat-answer', 'Parent conversation is ready.');
+  await checkPointsDisplay(ui, '#ai-chat-quota-used', '1', '0.5');
+  const parentId = await ui.evaluate(() => state.currentSession.id);
+  await ui.until(() => history.readSession(parentId)?.messages.some(({ content }) => content === parentPrompt), 'saved parent conversation');
+  assert.equal(await ui.has('button', '任务'), false, 'the sidebar has no global task entry');
   let resumed = false;
   doubles.model.streamAIControlMessage = (_key, _device, _model, messages, options, onEvent) => {
     if (resumed) {
       assert.ok(messages.some(({ content }) => content === 'Add a brief conclusion'));
-      return { ok: true, message: { content: 'Final child result' } };
+      return { ok: true, quota_cost_increment: 0.75, message: { content: 'Final child result' } };
     }
-    onEvent({ type: 'content_delta', delta: 'Live child output' });
+    onEvent({ type: 'reasoning_delta', delta: 'Review the evidence' });
+    onEvent({ type: 'content_delta', delta: 'Live **child output**' });
     return new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true }));
   };
   await ui.setDraft('Keep this parent draft');
-  const parentId = await ui.evaluate(() => state.currentSession.id);
   const contents = window.webContents;
   const parent = history.managed.getParentTools({ sender: contents, senderFrame: contents.mainFrame }, { localInteraction: true, parentSessionId: parentId });
   const execute = (args) => parent.execute('chat_session', args);
   const created = await execute({ action: 'create', model_id: 'fixture-model', request_key: 'create', title: 'Review child' });
   assert.equal(created.ok, true, JSON.stringify(created));
   const sessionId = created.data.sessionId;
+  const selected = await execute({ action: 'select_model', session_id: sessionId, model_id: 'fixture-child-model' });
+  assert.equal(selected.data.modelId, 'fixture-child-model');
   const sent = await execute({ action: 'send', request_key: 'send', session_id: sessionId, content: 'Review draft', wait_ms: 0 });
   assert.equal(sent.ok, true, JSON.stringify(sent));
   await ui.visible('#ai-managed-parent-cards button', 'Review child');
+  assert.ok(await ui.evaluate(() => {
+    const cards = document.querySelector('#ai-managed-parent-cards').getBoundingClientRect();
+    return cards.top >= document.querySelector('#ai-chat-viewport-host').getBoundingClientRect().bottom
+      && cards.bottom <= document.querySelector('#ai-chat-form').getBoundingClientRect().top;
+  }));
   assert.equal(await ui.has('#ai-managed-chat'), false);
   await ui.click('#ai-managed-parent-cards button');
-  await ui.visible('#ai-managed-messages', 'Live child output');
-  await ui.evaluate(() => { document.querySelector('#ai-managed-input').value = 'Add a brief conclusion'; });
-  await ui.click('#ai-managed-send');
+  await ui.visible('#ai-managed-messages .ai-chat-bubble', 'Review draft');
+  await ui.visible('#ai-managed-messages .ai-chat-answer strong', 'child output');
+  await ui.visible('#ai-managed-messages .ai-chat-answer-copy', '复制');
+  assert.ok(await ui.has('#ai-managed-messages .ai-chat-thinking-text', 'Review the evidence'));
+  assert.equal(await ui.evaluate(() => getComputedStyle(document.querySelector('#ai-chat-model-trigger')).visibility), 'hidden');
+  const runId = sent.data.runId;
+  await assertChildReadOnly(ui, sessionId, runId);
+  const inserted = await execute({ action: 'insert', run_id: runId, request_key: 'parent-insert', content: 'Add a brief conclusion' });
+  assert.equal(inserted.ok, true);
   await ui.visible('#ai-managed-messages', 'Add a brief conclusion');
-  await ui.click('#ai-managed-stop');
-  await ui.visible('#ai-managed-resume');
+  const thinkingSummary = '#ai-managed-messages .ai-chat-thinking > summary';
+  await ui.visible(`${thinkingSummary}[aria-expanded="false"]`);
+  await ui.click(thinkingSummary);
+  assert.equal((await execute({ action: 'stop', run_id: runId })).data.status, 'paused');
+  await ui.visible('#ai-managed-status', '已暂停');
+  assert.ok(await ui.has(`${thinkingSummary}[aria-expanded="true"]`));
+  await ui.visible('#ai-managed-messages .ai-chat-turn-duration', '用时');
   resumed = true;
-  await ui.click('#ai-managed-resume');
-  await ui.visible('#ai-managed-messages', 'Final child result');
+  assert.equal((await execute({ action: 'resume', run_id: runId })).data.status, 'completed');
+  await ui.visible('#ai-managed-messages .ai-chat-answer', 'Final child result');
   const result = await execute({ action: 'wait', run_id: sent.data.runId });
   assert.equal(result.data.result, 'Final child result');
+  await checkPointsDisplay(ui, '#ai-managed-quota-used', '1', '0.75');
   await ui.click('#ai-managed-back');
   assert.equal(await ui.evaluate(() => document.querySelector('#ai-chat-input').textContent), 'Keep this parent draft');
+  assert.equal(await ui.evaluate(() => document.querySelector('#ai-chat-model').value), 'fixture-model');
+  assert.equal(await ui.evaluate(() => document.activeElement?.dataset.managedSessionId), sessionId);
   assert.ok(history.sessions().every((session) => session.id !== sessionId));
   await window.loadFile(path.join(appRoot, 'frontend/sidebar/ai-control.html'));
-  await ui.click('#ai-managed-tasks');
-  await ui.visible('#ai-managed-directory button', 'Review child');
-  await ui.click('#ai-managed-directory button', 'Review child');
-  await ui.visible('#ai-managed-messages', 'Final child result');
+  await ui.visible('#ai-chat-new-conversation');
+  await ui.click('#ai-chat-new-conversation');
+  await ui.visible('#ai-chat-history-value', '新对话');
+  assert.equal(await ui.has('#ai-managed-parent-cards button'), false, 'a new conversation has no sibling tasks');
+  await checkPointsDisplay(ui, '#ai-chat-quota-used', '0', '0.0');
+  await ui.click('#ai-chat-history-trigger');
+  const parentTitle = history.readSession(parentId).title;
+  await ui.visible('#ai-chat-history-menu button', parentTitle);
+  await ui.click('#ai-chat-history-menu button', parentTitle);
+  await checkPointsDisplay(ui, '#ai-chat-quota-used', '1', '1.25');
+  await ui.visible('#ai-managed-parent-cards button', 'Review child');
+  await ui.click('#ai-managed-parent-cards button', 'Review child');
+  await ui.visible('#ai-managed-messages .ai-chat-answer', 'Final child result');
+  assert.ok(await ui.evaluate(() => Array.from(document.querySelectorAll('#ai-managed-messages .ai-chat-thinking-text'))
+    .some((element) => element.textContent === 'Review the evidence')));
   await ui.click('#ai-managed-back');
+  await ui.click('#ai-chat-new-conversation');
+  await ui.visible('#ai-chat-history-value', '新对话');
+  assert.equal(await ui.has('#ai-managed-parent-cards button'), false, 'leaving a parent clears its task cards');
   doubles.model.streamAIControlMessage = (_key, _device, _model, messages, options) => delegatedModel(messages, options);
+  doubles.tab.pageToken = 'a-document';
   await ui.send('Ask a child to review');
   await ui.visible('.ai-chat-answer', 'Parent received the child report');
   await ui.visible('#ai-managed-parent-cards button', 'Model delegated');
@@ -505,11 +713,13 @@ async function managed(ui, doubles, history, window) {
 }
 
 async function main() {
-  if (phase === 'native') return native();
+  if (phase === 'native' || phase === 'native-managed') return native();
   const doubles = createDoubles();
   await runSidebar(doubles, async (ui, history, window) => {
     if (phase === 'initial') await initial(ui, doubles, history);
     else if (phase === 'continuation') await continuation(ui, doubles);
+    else if (phase === 'pause-thinking') await pauseThinking(ui, doubles);
+    else if (phase === 'scroll') await followCollapsingThinking(ui);
     else if (phase === 'managed') await managed(ui, doubles, history, window);
     else await reopen(ui, doubles);
     assert.deepEqual(doubles.queue, []);

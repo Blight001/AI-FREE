@@ -52,6 +52,7 @@ function createFixture() {
     function stopAIOutput() { calls.push('stop'); }
     function resumeAIOutput() { calls.push('resume'); }
   `, context);
+  vm.runInContext(readController('ai-control-chat-presentation.js'), context);
   vm.runInContext(readController('ai-control-messages.js'), context);
   vm.runInContext(readController('ai-control-bootstrap.js'), context);
   vm.runInContext('bindChatForm()', context);

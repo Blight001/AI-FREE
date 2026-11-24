@@ -186,6 +186,7 @@ test('新对话空白页不展示快捷任务入口或最近聊天', () => {
   });
   context.document.getElementById = (id) => (id === 'ai-chat-message-list' ? messages : null);
   context.document.createElement = (tagName) => new FakeElement(tagName);
+  runController(context, 'ai-control-chat-presentation.js');
   runController(context, 'ai-control-messages.js');
   vm.runInContext("state.sessionList = [{ id: 'old', title: '已有记录' }]; renderWelcome()", context);
 

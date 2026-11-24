@@ -3,6 +3,8 @@
 const { createHash } = require('node:crypto');
 const { resolveChatAccess, normalizeChatOptions } = require('./chat-request-context');
 const { runChatConversation } = require('./chat-conversation-runner');
+const { buildChatToolContext } = require('./chat-tool-context');
+const { managedBrowserContext, PAGE_TOOLS } = require('./managed-chat-browser');
 
 const previousResultTool = {
   name: 'chat_previous_result',
@@ -24,7 +26,7 @@ function historyMessages(history, record) {
 }
 
 function createManagedChatRunner(deps) {
-  return async ({ session, record, signal, inserted, checkpoint, saveCheckpoint, emit }) => {
+  return async ({ session, record, signal, inserted, checkpoint, saveCheckpoint, emit, onQuotaUsed }) => {
     const access = resolveChatAccess(deps, { modelId: record.modelId });
     if (access.error) return access.error;
     const provider = createHash('sha256').update(JSON.stringify([
@@ -42,13 +44,17 @@ function createManagedChatRunner(deps) {
       },
     };
     const modelMessages = checkpoint?.messages || historyMessages(history, record);
-    const toolContext = {
-      modelMessages,
-      tools: access.customApi?.supportsTools === false ? [] : [previousResultTool],
-    };
+    const browser = managedBrowserContext(deps.browserAutomationBridge, record.browser);
+    if (browser.error) return { ok: false, message: { content: browser.error } };
+    const toolContext = buildChatToolContext({
+      ...browser, scopedBrowser: true, windowTools: { ...windowTools, tools: [previousResultTool] },
+      disableTools: access.customApi?.supportsTools === false, initialMessages: modelMessages,
+    });
+    if (checkpoint?.messages) toolContext.modelMessages = checkpoint.messages;
     const options = normalizeChatOptions({ requestId: record.id, stream: true });
     const request = {
-      ...access, ...options, connections: [], controlledConnectionId: '', windowTools, toolContext, emit,
+      ...access, ...options, ...browser, windowTools, toolContext, emit, onQuotaUsed, workspaceDir: deps.aiSandboxDir,
+      managedNoReplay: record.browser ? (name) => PAGE_TOOLS.has(name) : undefined,
       run: { controller: { signal }, insertedMessages: inserted, stoppedByUser: false },
       managedCheckpoint: checkpoint, saveManagedCheckpoint: (progress) => saveCheckpoint({ ...progress, provider }),
     };

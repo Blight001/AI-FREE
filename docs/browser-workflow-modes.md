@@ -18,6 +18,8 @@ AI 控制页面增加模式、暂停接管、恢复、最近报告、结束流�
 
 浏览器启动、运行时握手和只读操作时，AI 虚拟鼠标默认隐藏。`browser_control action=acquire` 接管所选浏览器后，活动标签显示虚拟鼠标与接管边框。切换或新开标签时，接管标识随活动标签转移。刷新、导航和关闭活动标签后，接管保持到 `action=release` 或运行时断开。页面变化后重新观察，再使用当前页面的引用。原生接管状态中的 `pointerVisible` 表示 Chromium 原生光标层的可见状态。
 
+`browser_observe` 可通过无障碍树发现封闭 Shadow DOM 里的可点击控件。没有 selector 的 `accessibilityFallback` 点击引用使用当前快照的 `clickX` 与 `clickY`。观察更新后，旧引用无法通过语义定位恢复，请用新快照返回的 ref。坐标以顶层网页视口为准。Chromium 的鼠标输入路由会将事件送到该坐标命中的渲染进程，包括独立进程中的跨站 iframe。
+
 ## 文件上传
 
 网页常用透明的 `<input type="file">` 覆盖加号或上传按钮，也可用可点击的 `label` 关联隐藏的文件输入框。使用 `browser_observe` 的 `filter: "file-input"` 查找输入框，再将最新观察得到的 selector/ref 与 AI 工作区文件交给 `browser_file action=upload`；不要先把加号当普通按钮点击。观察和上传共用 Chromium 的命中校验。输入框或其关联标签须可在当前视口命中，文件控件须可用。文件选择仍经过当前页面绑定、工作区文件校验和 Chromium 可信输入。侧栏直接上传工作区文件，支持单个文件及混合批次。`file_selected` 回执表示浏览器处理了文件选择。网页是否接收由页面预览或收件回执验证。

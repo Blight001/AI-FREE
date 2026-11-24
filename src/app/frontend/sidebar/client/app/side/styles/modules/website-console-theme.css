@@ -283,7 +283,6 @@ html.theme-light #ai-chat-input {
   flex-direction: row;
   align-items: center;
   width: auto;
-  max-width: 176px;
   height: 30px;
   padding: 0 5px;
   border-radius: 8px;

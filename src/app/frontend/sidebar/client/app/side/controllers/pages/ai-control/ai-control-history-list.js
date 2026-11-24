@@ -22,10 +22,26 @@
     return setQuotaDisplay(ring, valueEl, widget, `${percent}%`, `${Math.round(percent)}`, title);
   }
 
+  function renderQuotaUsed(id, amount) {
+    const counter = el(id);
+    if (!counter) return;
+    const total = window.AiFreeQuotaDisplay.parseChatQuotaUsed(amount) ?? 0;
+    const exact = formatQuota(total);
+    counter.querySelector('.ai-chat-quota-used-value').textContent = String(Math.round(total));
+    counter.title = `已消耗 ${exact.includes('.') ? exact : `${exact}.0`} 积分`;
+  }
+
+  function renderConversationQuotaUsed() {
+    const own = state.currentSession?.quotaUsed || 0;
+    const children = state.childQuota?.parentId === state.currentSession?.id ? state.childQuota?.used : 0;
+    renderQuotaUsed('ai-chat-quota-used', window.AiFreeQuotaDisplay.addChatQuotaUsed(own, children));
+  }
+
   function renderQuota(quota) {
     try {
       state.quota = firstQuotaValue(window.AiFreeQuotaDisplay?.normalizeAIQuota?.(quota), quota);
       window.renderAccountAiUsage?.(state.quota);
+      renderConversationQuotaUsed();
       const widget = el('ai-chat-quota');
       const ring = el('ai-chat-quota-ring');
       const valueEl = el('ai-chat-quota-value');
@@ -284,6 +300,7 @@
       browserConnectionIds: state.currentSession.browserConnectionIds,
       automationCardId: '',
       messages,
+      quotaUsed: state.currentSession.quotaUsed || 0,
       createdAt: state.currentSession.createdAt || Date.now(),
       updatedAt: Date.now(),
       pinnedAt: Number(state.sessionList.find((item) => item.id === state.currentSession.id)?.pinnedAt) || 0,
@@ -303,13 +320,13 @@
     updateSessionTitleUi();
   }
 
-  async function saveSessionToMain(payload) {
+  async function saveSessionToMain(payload, setCurrent = true) {
     if (!window.aiFree?.ai?.historySave) return null;
     const sessionId = String(payload.id || '');
     const previous = state.historySaveChains.get(sessionId);
     const runSave = async () => {
       try {
-        const result = await window.aiFree.ai.historySave({ session: payload, setCurrent: true });
+        const result = await window.aiFree.ai.historySave({ session: payload, setCurrent });
         if (result?.ok && result.session) return result.session;
         if (result?.ok === false) console.warn('[AI 控制] 主进程保存历史失败:', result.message || result);
       } catch (error) {

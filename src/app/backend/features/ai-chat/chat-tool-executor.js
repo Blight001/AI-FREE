@@ -1,6 +1,8 @@
 'use strict';
 
 const { collectConnectionTools } = require('./chat-tool-context');
+const { interruptedToolResult } = require('./managed-chat-tool-resume');
+const { CHAT_SESSION_TOOL } = require('./managed-chat-contract');
 const { guardedBrowserRoute, recordChatTabResult, requiresChatPageGuard, resolvePageGuard, routeFailure } = require('./chat-browser-target');
 const { PAGE_BATCH_TOOL } = require('../../services/browser-page-batch');
 const { dispatchChatUpload } = require('./chat-browser-upload');
@@ -258,8 +260,13 @@ function compactToolActivityResult(context, result, toolName) {
   return context.compactToolValue(result ?? null);
 }
 
-function appendPendingImage(context, imageMessage) {
-  if (imageMessage) context.pendingImageMessages?.push(imageMessage);
+function publishToolImage(context, activity, imageMessage, failed) {
+  if (!imageMessage) return;
+  context.pendingImageMessages?.push(imageMessage);
+  if (failed || !context.localInteraction || !['browser_screenshot', 'browser_observe', 'browser_action'].includes(activity.name)) return;
+  const dataUrl = imageMessage.content[1]?.image_url?.url;
+  if (!dataUrl || dataUrl.length > 16 * 1024 * 1024 || !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(dataUrl)) return;
+  context.emit({ type: 'screenshot', toolCallId: activity.id, dataUrl });
 }
 
 function executeChatTool(context, activity, args) {
@@ -271,7 +278,10 @@ function executeChatTool(context, activity, args) {
   }
   if (!context.windowTools?.has(activity.name)) return dispatchPluginTool(context, activity.name, args);
   if (isLocalCommand(activity.name)) return executeLocalCommand(context, activity, args);
-  return context.waitForAbort(context.windowTools.execute(activity.name, args, { signal: context.signal }));
+  const options = { signal: context.signal };
+  const browserScope = activity.name === CHAT_SESSION_TOOL && context.localInteraction
+    ? { connections: context.connections } : undefined;
+  return context.waitForAbort(context.windowTools.execute(activity.name, args, { ...options, browserScope }));
 }
 
 function publishCompletedActivity(context, activity, result, startedAt, failed) {
@@ -341,18 +351,8 @@ async function executeSingleTool(context, call) {
     name: toolName,
     content: serialized.content,
   });
-  appendPendingImage(context, serialized.imageMessage);
+  publishToolImage(context, activity, serialized.imageMessage, prepared.failed);
   return { failure: serialized.failure || prepared.failure };
-}
-
-function interruptedToolResult(started) {
-  return {
-    success: false,
-    state: started ? 'termination_unconfirmed' : 'stopped',
-    actionExecuted: started ? null : false,
-    errorCode: started ? 'AI_TOOL_OUTCOME_UNCONFIRMED' : 'AI_TOOL_NOT_STARTED',
-    error: started ? '工具已中断，执行结果未知。继续前请先核验结果，避免重放。' : '工具因用户停止而未开始。',
-  };
 }
 
 function finishInterruptedTools(context, pendingCalls, pendingImageMessages, interruptedCall) {
@@ -365,6 +365,10 @@ function finishInterruptedTools(context, pendingCalls, pendingImageMessages, int
   context.modelMessages.push(...pendingImageMessages);
 }
 
+function batchNeedsReplan(context, call, result) {
+  return call.function?.name === PAGE_BATCH_TOOL.name && Boolean(result.failure || context.hasInsertedMessages?.());
+}
+
 async function executeToolCalls(context) {
   let unresolvedToolFailure = '';
   const pendingImageMessages = [];
@@ -374,6 +378,7 @@ async function executeToolCalls(context) {
       finishInterruptedTools(context, context.toolCalls.slice(index), pendingImageMessages);
       return { stopped: true, unresolvedToolFailure };
     }
+    context.markManagedDispatch?.(call, context.toolCalls.slice(index));
     const result = await executeSingleTool(executionContext, call);
     if (result.stopped) {
       finishInterruptedTools(context, context.toolCalls.slice(index), pendingImageMessages, call);
@@ -382,9 +387,7 @@ async function executeToolCalls(context) {
     context.saveToolProgress?.(context.toolCalls.slice(index + 1));
     if (executionContext.blockedAfterBatch) continue;
     if (result.failure) unresolvedToolFailure = result.failure;
-    if (call?.function?.name === PAGE_BATCH_TOOL.name) {
-      executionContext.blockedAfterBatch = Boolean(result.failure || context.hasInsertedMessages?.());
-    }
+    executionContext.blockedAfterBatch = batchNeedsReplan(context, call, result);
   }
   context.modelMessages.push(...pendingImageMessages);
   return { stopped: Boolean(context.signal?.aborted), unresolvedToolFailure };

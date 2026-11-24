@@ -45,7 +45,7 @@ function fixture(workspaceRead = () => ({ ok: true, file: {} })) {
     },
   });
   const controllerDir = path.join(__dirname, '../../src/app/frontend/sidebar/client/app/side/controllers/pages/ai-control');
-  for (const name of ['ai-control-files.js', 'ai-control-messages.js']) {
+  for (const name of ['ai-control-files.js', 'ai-control-file-preview.js', 'ai-control-chat-presentation.js']) {
     vm.runInContext(fs.readFileSync(path.join(controllerDir, name), 'utf8'), context);
   }
   const run = (code) => vm.runInContext(code, context);
@@ -70,18 +70,18 @@ test('same-name @ choices show their paths and removal drops the selected file f
   });
 });
 
-test('the assistant artifact reattach action validates on click and refuses stale or cross-session results', async () => {
+test('the compact download strip deduplicates receipts and reattaches only verified work files in the same session', async () => {
   const requests = [];
   const { context, run, chips, status } = fixture((input) => new Promise((resolve) => requests.push({ input, resolve })));
   const artifact = {
     path: 'A/same.png', name: 'same.png', size: 10, sha256: 'a'.repeat(64),
     kind: 'image', toolName: 'browser_file', toolCallId: 'download-1',
   };
-  Object.assign(context, { artifact, view: { row: new Element() } });
-  run('renderAssistantArtifacts(view, [artifact, artifact])');
-  const list = context.view.row.children[0];
+  const list = new Element();
+  Object.assign(context, { artifact, list });
+  run('renderChatDownloads(list, [{ artifacts: [artifact] }], [artifact])');
   assert.equal(list.children.length, 1);
-  const button = list.children[0].children[2];
+  const button = list.children[0].children[1];
   button.click();
   assert.equal(requests[0].input.artifact, artifact);
   assert.equal(requests[0].input.validateOnly, true);
@@ -101,4 +101,7 @@ test('the assistant artifact reattach action validates on click and refuses stal
   requests[2].resolve({ ok: true, file: {} });
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(chips.children.length, 0);
+  run('renderChatDownloads(list, [])');
+  assert.equal(list.hidden, true);
+  assert.equal(list.children.length, 0);
 });

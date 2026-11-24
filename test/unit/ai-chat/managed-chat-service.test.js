@@ -50,7 +50,8 @@ test('bounded waits and retries share one child run, including its persisted res
 });
 
 test('pause commits a checkpoint that survives restart and continues on the same run', async () => {
-  const { service, options } = fixture(async ({ signal, checkpoint, saveCheckpoint }) => {
+  const { service, options } = fixture(async ({ signal, checkpoint, saveCheckpoint, onQuotaUsed }) => {
+    onQuotaUsed(checkpoint ? 0.75 : 0.5);
     if (checkpoint) return { ok: true, message: { content: `Resumed ${checkpoint.round}` } };
     saveCheckpoint({ round: 2, messages: [{ role: 'user', content: 'Draft' }] });
     await new Promise((resolve) => signal.addEventListener('abort', resolve, { once: true }));
@@ -66,6 +67,13 @@ test('pause commits a checkpoint that survives restart and continues on the same
   const resumed = await restarted.execute(caller, { action: 'resume', run_id: sent.data.runId });
   assert.equal(resumed.data.runId, sent.data.runId);
   assert.equal(resumed.data.result, 'Resumed 2');
+  const sidebar = { actor: 'sidebar' };
+  const all = await restarted.execute(sidebar, { action: 'list' });
+  assert.equal(all.data.sessions[0].quotaUsed, 1.25);
+  const detail = await restarted.execute(sidebar, { action: 'status', session_id: sessionId });
+  assert.equal(detail.data.quotaUsed, 1.25);
+  const external = await restarted.execute(caller, { action: 'status', session_id: sessionId });
+  assert.equal(Object.hasOwn(external.data, 'quotaUsed'), false);
 });
 
 test('a parent can launch two children before waiting and receives one ordered set of final results', async () => {

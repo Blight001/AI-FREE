@@ -1,4 +1,3 @@
-  let workspacePreviewRequestId = 0;
   const draftFileArtifacts = new Map();
   let workspaceDraftSessionId;
 
@@ -142,95 +141,6 @@
       if (imported.length) setStatus(`已上传并附加 ${imported.length} 个文件`, 'success');
     } catch (error) {
       setStatus(error?.message || String(error), 'warning');
-    }
-  }
-
-  function workspaceTextPreview(file) {
-    const content = document.createElement('pre');
-    let text = String(file.content || '');
-    if (file.mimeType === 'application/json') {
-      try { text = JSON.stringify(JSON.parse(text), null, 2); } catch (_) {}
-    }
-    content.textContent = `${text}${file.truncated ? '\n\n…预览已截断' : ''}`;
-    return content;
-  }
-
-  function workspacePreviewContent(file) {
-    if (file.kind === 'image' && file.dataUrl) {
-      const image = document.createElement('img');
-      image.src = file.dataUrl;
-      image.alt = file.name;
-      return image;
-    }
-    if (file.kind === 'video' && file.dataUrl) {
-      const video = document.createElement('video');
-      video.src = file.dataUrl;
-      video.controls = true;
-      video.preload = 'metadata';
-      return video;
-    }
-    if (file.kind === 'text') return workspaceTextPreview(file);
-    const message = document.createElement('p');
-    message.textContent = file.previewTooLarge
-      ? '文件体积超过应用内预览上限，仍可附加给 AI 或通过 run_command 处理。'
-      : '该文件暂不支持直接预览，但可以附加给 AI，并通过 run_command 处理。';
-    return message;
-  }
-
-  function renderWorkspacePreview(file) {
-    const preview = el('ai-chat-workspace-preview');
-    const body = el('ai-chat-workspace-preview-body');
-    if (!preview || !body) return;
-    body.replaceChildren(workspacePreviewContent(file));
-    el('ai-chat-workspace-preview-title').textContent = file.name || '文件预览';
-    el('ai-chat-workspace-preview-meta').textContent = `${file.path || ''} · ${formatWorkspaceFileSize(file.size)}`;
-    preview.hidden = false;
-    el('ai-chat-workspace-preview-close')?.focus();
-  }
-
-  function closeWorkspacePreview() {
-    workspacePreviewRequestId += 1;
-    const preview = el('ai-chat-workspace-preview');
-    if (!preview || preview.hidden) return;
-    preview.querySelector('video')?.pause();
-    const body = el('ai-chat-workspace-preview-body');
-    if (body) body.innerHTML = '';
-    preview.hidden = true;
-  }
-
-  function startWorkspacePreview() {
-    const requestId = ++workspacePreviewRequestId;
-    const preview = el('ai-chat-workspace-preview');
-    const body = el('ai-chat-workspace-preview-body');
-    if (preview) preview.hidden = false;
-    if (body) body.textContent = '正在读取预览…';
-    const title = el('ai-chat-workspace-preview-title');
-    const meta = el('ai-chat-workspace-preview-meta');
-    if (title) title.textContent = '文件预览';
-    if (meta) meta.textContent = '';
-    el('ai-chat-workspace-preview-close')?.focus();
-    return { requestId, body };
-  }
-
-  function readWorkspacePreview(filePath, artifact, validateOnly = false) {
-    const input = artifact ? { path: filePath, artifact, validateOnly } : { path: filePath };
-    return window.aiFree?.ai?.workspaceRead?.(input);
-  }
-
-  function assertWorkspacePreviewResult(result) {
-    if (!result?.ok) throw new Error(result?.message || '文件预览失败');
-    return result.file || {};
-  }
-
-  async function previewWorkspaceFile(filePath, artifact) {
-    const { requestId, body } = startWorkspacePreview();
-    try {
-      const file = assertWorkspacePreviewResult(await readWorkspacePreview(filePath, artifact));
-      if (requestId !== workspacePreviewRequestId) return;
-      renderWorkspacePreview(file);
-    } catch (error) {
-      if (requestId !== workspacePreviewRequestId) return;
-      if (body) body.textContent = error?.message || String(error);
     }
   }
 

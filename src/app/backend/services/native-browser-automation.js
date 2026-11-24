@@ -5,7 +5,7 @@ const { setTimeout: delay } = require('node:timers/promises');
 const { createBrowserOverview } = require('./browser-overview-service');
 const { NATIVE_BROWSER_TOOL_DEFINITIONS } = require('./native-browser-tool-definitions');
 const {
-  expiredObservedRefResult, mismatchedObservationResult, observedTarget, processObservationResult,
+  expiredObservedRefResult, mismatchedObservationResult, processObservationResult,
 } = require('./native-browser-observation');
 const { waitForBrowserCondition } = require('./native-browser-wait');
 const { browserFile, resolvedFileAction } = require('./native-browser-file');
@@ -376,22 +376,17 @@ class NativeBrowserAutomation {
 
   recoverObservedTarget(connection, input) { return recoverObservedTarget(this, connection, input); }
 
-  async browserObserve(connection, input) {
-    if (NATIVE_SURFACES.has(input.surface)) {
-      return this.nativePointer?.observe(connection.profileId, input.surface) || appPointerUnavailable();
-    }
+  async browserObserve(connection, input, recordRefs = true) {
     if (input.surface && input.surface !== 'page') {
-      return this.appPointer?.observe(connection.profileId, input.surface) || appPointerUnavailable();
+      const pointer = NATIVE_SURFACES.has(input.surface) ? this.nativePointer : this.appPointer;
+      return pointer?.observe(connection.profileId, input.surface) || appPointerUnavailable();
     }
     const result = await this.runtimeCommand(connection, 'observe-page', input);
     if (result?.success === false || result?.ok === false) return result;
     if (requestsAccessibility(input) && !result.accessibilityTree) return accessibilityUnavailable(result);
     const observationId = `obs-${randomUUID()}`;
     const decorated = processObservationResult(result, input, observationId);
-    const targets = new Map(decorated.items
-      .map((item) => observedTarget(item, observationId, { url: decorated.url })).filter(Boolean));
-    for (const target of targets.values()) target[PAGE_TOKEN] = expectedPageToken(connection);
-    rememberObservation(this, connection, observationId, targets);
+    if (recordRefs) rememberObservation(this, connection, observationId, decorated);
     return attachScreenshot(this, connection, decorated, input);
   }
 

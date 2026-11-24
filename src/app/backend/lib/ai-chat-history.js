@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const path = require('path');
 const { app } = require('electron');
 const { AppError } = require('../../contracts/ipc-result');
+const { parseChatQuotaUsed } = require('../../shared/quota-display');
 const { readJsonFileSafe, writeJsonFileSafe } = require('../utils/json-store');
 const { normalizeFileArtifacts } = require('../features/ai-chat/workspace-file-artifacts');
 
@@ -214,6 +215,7 @@ function normalizeSession(raw = {}, context = DEFAULT_HISTORY_CONTEXT) {
     browserConnectionIds,
     automationCardId: String(raw.automationCardId || '').trim(),
     messages,
+    quotaUsed: parseChatQuotaUsed(raw.quotaUsed) ?? 0,
     preview: String(raw.preview || previewFromMessages(messages) || '').slice(0, 80),
     createdAt: Number(raw.createdAt) || now,
     updatedAt: Number(raw.updatedAt) || now,
@@ -279,6 +281,7 @@ function saveSession(credentials, rawSession, options = {}, context = DEFAULT_HI
   const index = store.sessions.findIndex((item) => String(item.id) === session.id);
   if (index >= 0) {
     session.pinnedAt = normalizePinnedAt(store.sessions[index].pinnedAt);
+    session.quotaUsed = Math.max(session.quotaUsed, parseChatQuotaUsed(store.sessions[index].quotaUsed) ?? 0);
     store.sessions[index] = session;
   } else store.sessions.unshift(session);
 
@@ -432,5 +435,7 @@ module.exports = {
   createSession,
   setCurrent,
   normalizeSession,
+  sanitizeMessage,
+  sanitizeToolEvent,
   provisionalTitleFromText,
 };

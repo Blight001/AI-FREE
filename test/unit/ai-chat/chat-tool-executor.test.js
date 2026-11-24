@@ -346,11 +346,14 @@ test('工具参数 JSON 错误时返回格式诊断且不执行工具', async ()
 test('截图结果转为模型可读取的临时 image_url 消息且不把 dataUrl 塞进 tool 文本', async () => {
   const modelMessages = [];
   const toolEvents = [];
+  const events = [];
   await executeToolCalls({
     compactToolValue: (value) => value,
     connections: [{ id: 'one' }],
+    browserTargets: new Map([['one', { pageToken: 'current-document' }]]),
     describeConnections: () => 'one',
-    emit() {},
+    emit: (event) => events.push(event),
+    localInteraction: true,
     findConnectionByRef: () => ({ id: 'one' }),
     isStopped: () => false,
     modelMessages,
@@ -374,4 +377,7 @@ test('截图结果转为模型可读取的临时 image_url 消息且不把 dataU
   assert.equal(modelMessages[1].ai_free_transient_image, true);
   assert.equal(toolEvents[0].result.image_attached, true);
   assert.equal(Object.prototype.hasOwnProperty.call(toolEvents[0].result, 'dataUrl'), false);
+  assert.deepEqual(events.find(({ type }) => type === 'screenshot'), {
+    type: 'screenshot', toolCallId: 'shot', dataUrl: 'data:image/png;base64,SCREENSHOT',
+  });
 });

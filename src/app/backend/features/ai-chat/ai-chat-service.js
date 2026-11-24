@@ -8,6 +8,7 @@ const { combineToolSets } = require('../../services/combine-tool-sets');
 const { createChatRunRegistry } = require('./chat-run-registry');
 const { prepareChatContinuation, prepareChatRequest } = require('./chat-request-context');
 const { runChatConversation } = require('./chat-conversation-runner');
+const { addChatQuotaUsed } = require('../../../shared/quota-display');
 const { isChatStopped } = require('./chat-execution-state');
 const { enrichBrowserConnectionNames } = require('./connection-names');
 
@@ -100,6 +101,7 @@ function createAiChatService(deps = {}) {
       const getWindowTools = () => combineToolSets(getAiBrowserWindowTools(), deps.getParentChatTools?.(_event, input));
       let activeRun = null;
       let activeRunKey = '';
+      let quotaUsed = 0;
       try {
         const request = input.resumeRequestId
           ? prepareChatContinuation(deps, _event, input, chatRuns)
@@ -107,16 +109,19 @@ function createAiChatService(deps = {}) {
         activeRunKey = request.runKey || '';
         activeRun = request.run || null;
         if (request.error) return request.error;
+        // A resumed invocation reports only the new charges from this invocation.
+        request.onQuotaUsed = (amount) => { quotaUsed = addChatQuotaUsed(quotaUsed, amount); };
         const result = await runChatConversation(request);
+        const settled = { ...result, quotaUsed };
         if (result.stopped && chatRuns.saveContinuation(_event, activeRunKey, activeRun)) {
-          return { ...result, resumable: true };
+          return { ...settled, resumable: true };
         }
-        return result;
+        return settled;
       } catch (error) {
         if (isChatStopped(activeRun, error)) {
-          return { ok: true, stopped: true, messages: [], message: { role: 'assistant', content: '' } };
+          return { ok: true, stopped: true, quotaUsed, messages: [], message: { role: 'assistant', content: '' } };
         }
-        return { ok: false, message: error?.message || String(error) };
+        return { ok: false, quotaUsed, message: error?.message || String(error) };
       } finally {
         chatRuns.finish(activeRunKey, activeRun);
       }

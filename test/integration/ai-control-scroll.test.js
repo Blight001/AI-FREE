@@ -15,14 +15,14 @@ function fixture() {
   viewport.focus = () => { document.activeElement = viewport; };
   const window = new EventTarget();
   let resize;
-  const nodes = { 'ai-chat-messages': viewport, 'ai-chat-message-list': {}, 'ai-chat-jump-bottom': button };
-  const context = vm.createContext({ window, document, AbortController, el: (id) => nodes[id], ResizeObserver: class {
+  const surface = { viewport, messages: {}, button };
+  const context = vm.createContext({ window, document, AbortController, surface, ResizeObserver: class {
     constructor(callback) { resize = callback; }
     observe() {}
     disconnect() {}
   } });
   vm.runInContext(fs.readFileSync(source, 'utf8'), context);
-  vm.runInContext('bindAiChatScroll()', context);
+  vm.runInContext('bindChatScroll(surface)', context);
   return { viewport, button, document, grow: (height) => { viewport.scrollHeight = height; resize(); } };
 }
 
@@ -57,4 +57,16 @@ test('向上的滚轮先暂停跟随，回到底部按钮恢复跟随并转移�
   assert.equal(viewport.scrollTop, 500);
   assert.equal(button.hidden, true);
   assert.equal(document.activeElement, viewport);
+});
+
+test('思考收起引起的延迟滚动事件不会取消最新回复跟随', () => {
+  const { viewport, button, grow } = fixture();
+  // Chromium 收缩时先钳制 scrollTop，消息随后在下一次 scroll 回调前增长。
+  viewport.scrollHeight = 300;
+  viewport.scrollTop = 100;
+  viewport.scrollHeight = 800;
+  viewport.dispatchEvent(new Event('scroll'));
+  grow(800);
+  assert.equal(viewport.scrollTop, 600);
+  assert.equal(button.hidden, true);
 });

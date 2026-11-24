@@ -18,6 +18,7 @@ test('AI 控制页装配上传、工作文件和 @ 引用资源', () => {
   }
   for (const relativePath of [
     'client/app/side/controllers/pages/ai-control/ai-control-files.js',
+    'client/app/side/controllers/pages/ai-control/ai-control-file-preview.js',
     'client/app/side/controllers/pages/ai-control/ai-control-draft.js',
     'client/app/side/controllers/pages/ai-control/ai-control-inline-files.js',
     'client/app/side/styles/modules/ai-control-files.css',
@@ -42,7 +43,6 @@ test('AI 控制页装配上传、工作文件和 @ 引用资源', () => {
     sidebarRoot, 'client/app/side/controllers/pages/ai-control/ai-control-files.js',
   ), 'utf8');
   assert.match(fileScript, /ai-chat-workspace-file-preview/);
-  assert.match(fileScript, /document\.createElement\('video'\)/);
 });
 
 test('AI 控制与个人中心装配网站控制台统一主题', () => {
@@ -55,7 +55,7 @@ test('AI 控制与个人中心装配网站控制台统一主题', () => {
   const aiCss = fs.readFileSync(path.join(sidebarRoot, 'client/app/side/styles/modules/ai-control.css'), 'utf8');
   const themeCss = fs.readFileSync(path.join(sidebarRoot, themeAsset), 'utf8');
   assert.doesNotMatch(aiCss, /\.ai-chat-composer button\s*\{/);
-  assert.match(aiCss, /#ai-chat-send\s*\{/);
+  assert.match(aiCss, /\.ai-chat-send-button\s*\{/);
   assert.match(themeCss, /font-family:\s*var\(--app-ui-font, Inter, "Segoe UI", "Microsoft YaHei", sans-serif\)/);
   assert.match(themeCss, /\.ai-model-inline-select \.ai-select-trigger\s*\{[^}]*display:\s*flex/s);
 });

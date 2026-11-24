@@ -180,10 +180,10 @@ function buildChatToolContext(options = {}) {
   }
   const tools = [...selectedWindowTools(windowTools, initialMessages),
     ...collectConnectionTools(connections, windowTools, options.localInteraction)];
-  if (!tools.some((tool) => tool.name === 'manage_card')) {
+  if (!options.scopedBrowser && !tools.some((tool) => tool.name === 'manage_card')) {
     tools.push(withBrowserRouteParam(MANAGE_CARD_TOOL_DEFINITION));
   }
-  if (!connections.length && options.localInteraction) tools.push(withBrowserRouteParam(browserControlDefinition(false)));
+  if (!options.scopedBrowser && !connections.length && options.localInteraction) tools.push(withBrowserRouteParam(browserControlDefinition(false)));
   const cardContext = createCardCatalogContext(automationCards);
   const mcpContext = createMcpContext(tools, connections, resolver, controlledConnectionId, initialMessages);
   const localBoundary = options.localInteraction ? {

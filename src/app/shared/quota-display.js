@@ -173,6 +173,19 @@ function quotaDisplaySaveTrafficBaseline(total, values, options) {
   quotaDisplayWriteState(state, options);
 }
 
-const quotaDisplayApi = { normalizeAIQuota, normalizeTrafficQuota, recordAIResetAfterRedeem, recordTrafficResetAfterRedeem };
+function parseChatQuotaUsed(value) {
+  if (typeof value !== 'number' && (typeof value !== 'string' || !value.trim())) return null;
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount >= 0 ? amount : null;
+}
+
+function addChatQuotaUsed(total, amount) {
+  return (parseChatQuotaUsed(total) ?? 0) + (parseChatQuotaUsed(amount) ?? 0);
+}
+
+const quotaDisplayApi = {
+  addChatQuotaUsed, parseChatQuotaUsed,
+  normalizeAIQuota, normalizeTrafficQuota, recordAIResetAfterRedeem, recordTrafficResetAfterRedeem,
+};
 if (typeof module === 'object' && module.exports) module.exports = quotaDisplayApi;
 if (typeof globalThis !== 'undefined') globalThis.AiFreeQuotaDisplay = quotaDisplayApi;

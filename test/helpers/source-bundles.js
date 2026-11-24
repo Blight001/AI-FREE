@@ -21,6 +21,7 @@ function readAiControlSource() {
     `${base}/ai-control/ai-control-history-session.js`,
     `${base}/ai-control/ai-control-markdown.js`,
     `${base}/ai-control/ai-control-tool-display.js`,
+    `${base}/ai-control/ai-control-chat-presentation.js`,
     `${base}/ai-control/ai-control-messages.js`,
     `${base}/ai-control/ai-control-data-loaders.js`,
     `${base}/ai-control/ai-control-composer.js`,

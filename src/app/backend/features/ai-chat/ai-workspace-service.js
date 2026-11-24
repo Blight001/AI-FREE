@@ -13,15 +13,20 @@ const MAX_PASTED_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_PREVIEW_BYTES = 256 * 1024;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 64 * 1024 * 1024;
+const MAX_AUDIO_BYTES = 24 * 1024 * 1024;
 const MAX_ATTACHMENT_TEXT_CHARS = 256 * 1024;
 const MAX_ATTACHMENT_FILE_CHARS = 64 * 1024;
 const IMAGE_MIME = Object.freeze({
-  '.gif': 'image/gif', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+  '.avif': 'image/avif', '.bmp': 'image/bmp', '.gif': 'image/gif', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
   '.png': 'image/png', '.webp': 'image/webp',
 });
 const VIDEO_MIME = Object.freeze({
   '.m4v': 'video/mp4', '.mp4': 'video/mp4', '.ogv': 'video/ogg',
   '.webm': 'video/webm',
+});
+const AUDIO_MIME = Object.freeze({
+  '.m4a': 'audio/mp4', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.opus': 'audio/ogg',
+  '.wav': 'audio/wav', '.flac': 'audio/flac',
 });
 const TEXT_EXTENSIONS = new Set([
   '.bat', '.c', '.cc', '.cfg', '.cmd', '.conf', '.cpp', '.css', '.csv', '.env',
@@ -80,6 +85,7 @@ function fileKind(filePath) {
   const extension = path.extname(filePath).toLowerCase();
   if (IMAGE_MIME[extension]) return { kind: 'image', mimeType: IMAGE_MIME[extension] };
   if (VIDEO_MIME[extension]) return { kind: 'video', mimeType: VIDEO_MIME[extension] };
+  if (AUDIO_MIME[extension]) return { kind: 'audio', mimeType: AUDIO_MIME[extension] };
   if (TEXT_EXTENSIONS.has(extension)) {
     const mimeType = extension === '.json' || extension === '.jsonl' ? 'application/json' : 'text/plain';
     return { kind: 'text', mimeType };
@@ -110,7 +116,7 @@ function looksLikeText(buffer) {
   return replacements + controls <= Math.max(2, Math.floor(sample.length * 0.01));
 }
 
-const MEDIA_PREVIEW_BYTES = Object.freeze({ image: MAX_IMAGE_BYTES, video: MAX_VIDEO_BYTES });
+const MEDIA_PREVIEW_BYTES = Object.freeze({ image: MAX_IMAGE_BYTES, video: MAX_VIDEO_BYTES, audio: MAX_AUDIO_BYTES });
 
 function previewBytes(kind, size) {
   const maxMediaBytes = MEDIA_PREVIEW_BYTES[kind];

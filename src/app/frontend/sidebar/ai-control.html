@@ -27,6 +27,12 @@
   <link rel="stylesheet" href="./client/app/side/styles/modules/website-console-theme.css" />
 </head>
 <body>
+  <svg style="display: none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="ai-chat-points-icon" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/>
+      <path d="m12 7 5 5-5 5-5-5z" fill="currentColor"/>
+    </symbol>
+  </svg>
   <div class="control-shell">
     <div class="main-wrapper">
 
@@ -45,12 +51,20 @@
               <span aria-hidden="true">+</span>
             </button>
           </div>
-          <button type="button" class="ai-managed-trigger" id="ai-managed-tasks" title="任务运行">任务</button>
         </header>
-        <div id="ai-managed-parent-cards" class="ai-managed-cards" aria-label="子任务" hidden></div>
-        <div class="ai-chat-body">
-          <div id="ai-chat-messages" class="ai-chat-messages" tabindex="0" aria-label="对话消息">
-            <div id="ai-chat-message-list" class="ai-chat-message-list" role="log" aria-live="polite">
+        <template id="ai-chat-viewport-template">
+          <div class="ai-chat-body">
+            <div class="ai-chat-messages" tabindex="0">
+              <div class="ai-chat-message-list" role="log" aria-live="polite">
+              </div>
+            </div>
+            <button class="ai-chat-jump-bottom" type="button" aria-label="回到底部" title="回到底部" hidden>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14m-7-7 7 7 7-7"/></svg>
+            </button>
+          </div>
+        </template>
+        <div id="ai-chat-viewport-host" class="ai-chat-viewport-host">
+          <template id="ai-chat-welcome-template">
               <div class="ai-chat-welcome">
                 <div class="ai-chat-welcome-hero">
                   <span class="ai-chat-welcome-logo"><img class="ai-chat-welcome-icon" data-app-logo alt="" aria-hidden="true"></span>
@@ -58,12 +72,10 @@
                   <p>直接描述你的目标即可。</p>
                 </div>
               </div>
-            </div>
-          </div>
-          <button id="ai-chat-jump-bottom" type="button" aria-label="回到底部" title="回到底部" aria-controls="ai-chat-messages" hidden>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14m-7-7 7 7 7-7"/></svg>
-          </button>
+          </template>
         </div>
+        <div id="ai-managed-parent-cards" class="ai-managed-cards" aria-label="子任务" hidden></div>
+        <div id="ai-chat-downloads" class="ai-chat-downloads" role="group" aria-label="下载文件" hidden></div>
         <form id="ai-chat-form" class="ai-chat-composer">
           <div id="ai-chat-attachment-chips" class="ai-chat-attachment-chips" hidden></div>
           <div id="ai-chat-workspace-panel" class="ai-chat-workspace-panel" hidden>
@@ -81,7 +93,7 @@
             <div id="ai-chat-workspace-files" class="ai-chat-workspace-files"></div>
           </div>
           <div id="ai-chat-mention-menu" class="ai-chat-mention-menu" role="listbox" hidden></div>
-          <div id="ai-chat-input" contenteditable="true" role="textbox" aria-multiline="true"
+          <div id="ai-chat-input" class="ai-chat-text-input" contenteditable="true" role="textbox" aria-multiline="true"
                aria-label="输入消息" aria-placeholder="输入消息，@ 引用工具或文件，Enter 发送" data-empty></div>
           <div class="ai-chat-footer-bar">
             <div class="ai-chat-footer-left">
@@ -94,6 +106,10 @@
                   <span id="ai-chat-quota-value" class="ai-chat-quota-value">--</span>
                 </div>
               </div>
+              <span id="ai-chat-quota-used" class="ai-chat-quota-used" aria-live="polite" title="已消耗 0.0 积分">
+                <svg aria-hidden="true"><use href="#ai-chat-points-icon"/></svg>
+                <span class="ai-chat-quota-used-value">0</span>
+              </span>
               <div class="ai-chat-select-field ai-chat-model-field">
                 <div class="ai-select ai-select-sm ai-select-dropup ai-model-inline-select" data-ai-select="model">
                   <select id="ai-chat-model" class="ai-select-native" disabled tabindex="-1" aria-hidden="true">
@@ -106,27 +122,25 @@
                   <ul class="ai-select-menu" role="listbox" hidden></ul>
                 </div>
               </div>
-              <button id="ai-chat-send" type="submit" disabled aria-label="发送消息"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"></path><path d="M22 2 11 13"></path></svg></button>
+              <button id="ai-chat-send" class="ai-chat-send-button" type="submit" disabled aria-label="发送消息"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"></path><path d="M22 2 11 13"></path></svg></button>
             </div>
           </div>
         </form>
         <section id="ai-managed-chat" class="ai-managed-chat" aria-label="子对话" hidden>
           <header>
             <button id="ai-managed-back" type="button" aria-label="返回">← 返回</button>
-            <strong id="ai-managed-title">任务运行</strong>
+            <strong id="ai-managed-title">子对话</strong>
             <span id="ai-managed-status" aria-live="polite"></span>
           </header>
-          <div id="ai-managed-directory" class="ai-managed-cards" aria-label="任务运行" hidden></div>
-          <div id="ai-managed-messages" class="ai-managed-messages" tabindex="0" aria-label="子对话消息" hidden></div>
-          <form id="ai-managed-composer" class="ai-managed-composer" hidden>
-            <textarea id="ai-managed-input" rows="2" maxlength="16384" aria-label="给子对话发送消息"></textarea>
-            <div class="ai-managed-actions">
-              <select id="ai-managed-model" aria-label="子对话模型"></select>
-              <button type="submit" id="ai-managed-send">发送</button>
-              <button type="button" id="ai-managed-stop">停止</button>
-              <button type="button" id="ai-managed-resume">继续</button>
-            </div>
-          </form>
+          <div id="ai-managed-viewport-host" class="ai-chat-viewport-host"></div>
+          <div id="ai-managed-downloads" class="ai-chat-downloads" role="group" aria-label="下载文件" hidden></div>
+          <footer class="ai-chat-footer-bar ai-managed-footer">
+            <span id="ai-managed-quota-used" class="ai-chat-quota-used" aria-live="polite" title="已消耗 0.0 积分">
+              <svg aria-hidden="true"><use href="#ai-chat-points-icon"/></svg>
+              <span class="ai-chat-quota-used-value">0</span>
+            </span>
+            <span id="ai-managed-model" class="ai-managed-model"></span>
+          </footer>
         </section>
         <section id="ai-chat-workspace-preview" class="ai-chat-workspace-preview" role="dialog" aria-modal="true" aria-labelledby="ai-chat-workspace-preview-title" hidden>
           <button class="ai-chat-workspace-preview-backdrop" type="button" data-workspace-preview-close aria-label="关闭文件预览"></button>
@@ -138,6 +152,7 @@
               </div>
               <button id="ai-chat-workspace-preview-close" class="ai-chat-workspace-preview-close" type="button" aria-label="关闭文件预览" title="关闭">×</button>
             </header>
+            <div id="ai-chat-workspace-preview-tools" class="ai-chat-workspace-preview-tools" role="group" aria-label="图片缩放" hidden></div>
             <div id="ai-chat-workspace-preview-body" class="ai-chat-workspace-preview-body"></div>
           </div>
         </section>
@@ -164,10 +179,12 @@
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-tool-card.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-tool-display.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-messages.js"></script>
+  <script src="./client/app/side/controllers/pages/ai-control/ai-control-chat-presentation.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-data-loaders.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-draft.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-inline-files.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-files.js"></script>
+  <script src="./client/app/side/controllers/pages/ai-control/ai-control-file-preview.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-composer.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-managed-chat.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-bootstrap.js"></script>

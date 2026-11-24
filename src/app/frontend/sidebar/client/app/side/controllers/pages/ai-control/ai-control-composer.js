@@ -181,25 +181,10 @@
     run.streamView = createAssistantView({ pending: true });
   }
 
-  const chatStreamHandlers = {
-    round_start: (run, event) => {
-      if (run.resumeRequestId && !run.responseStarted) run.streamView?.resume(event.round);
-      run.responseStarted = true;
-      run.streamView?.addReasoning('', event.round);
-    },
-    reasoning_delta: (run, event) => run.streamView?.addReasoning(event.delta, event.round),
-    content_delta: (run, event) => run.streamView?.addContent(event.delta, event.round),
-    content_replace: (run, event) => run.streamView?.replaceContent(event.content, event.round),
-    tool_start: (run, event) => run.streamView?.upsertTool(event.tool || {}, event.round),
-    tool_result: (run, event) => run.streamView?.upsertTool(event.tool || {}, event.round),
-    tool_progress: (run, event) => run.streamView?.upsertTool(event.tool || {}, event.round),
-    artifacts: (run, event) => renderAssistantArtifacts(run.streamView, event.artifacts),
-    user_inserted: (run) => handleInsertedStreamMessage(run),
-  };
 
   function handleChatStreamEvent(run, event) {
     if (!event || event.requestId !== run.requestId) return;
-    chatStreamHandlers[event.type]?.(run, event);
+    applyChatPresentationEvent(run, event);
   }
 
   function subscribeChatStream(run) {
@@ -270,14 +255,15 @@
   }
 
   function applyStoppedChatResult(run, result, replyText, durationMs) {
-    if (replyText) run.streamView?.setContent(replyText);
-    run.streamView?.finalize({ durationMs });
-    if (run.insertedDuringRun) renderConversation();
+    if (replyText) run.streamView?.setContent(replyText, { foldTools: false });
+    renderConversationDownloads(state.messages);
+    run.streamView?.finalize({ durationMs, paused: true });
+    syncPausedChatRows(run.streamView?.row);
     if (!result.resumable) return;
     state.pausedChat = {
       requestId: run.requestId, modelId: run.modelId, useCustomApi: run.useCustomApi,
       content: run.content, wasFirstExchange: run.wasFirstExchange,
-      streamView: run.insertedDuringRun ? null : run.streamView,
+      streamView: run.streamView,
       insertedDuringRun: run.insertedDuringRun, durationMs,
     };
   }
@@ -291,8 +277,6 @@
     applyReturnedMessages(run, result);
     const replyText = String(result.message?.content || '').trim();
     applyFinalAssistantMetadata(result, durationMs);
-    state.lastQuotaCost = result.quota_cost ?? result.quota_cost_increment ?? null;
-    renderQuota(run.useCustomApi ? state.quota : (result.quota || state.quota));
     updateCurrentSessionAfterChat(run);
     state.pausedChat = null;
     if (result.stopped) {
@@ -301,9 +285,12 @@
       return;
     }
     run.streamView?.setContent(replyText || '模型未返回内容');
-    renderAssistantArtifacts(run.streamView, result.message?.artifacts);
+    renderConversationDownloads(state.messages);
     run.streamView?.finalize({ durationMs });
-    if (run.insertedDuringRun) renderConversation();
+    if (run.insertedDuringRun) {
+      renderConversation();
+      renderChatScreenshot(el('ai-chat-message-list')?.querySelector('.assistant:last-child .ai-chat-assistant-stack'), run.screenshot);
+    }
     await persistCurrentSession();
     if (run.wasFirstExchange) void maybeGenerateTitle(run.modelId);
   }
@@ -312,12 +299,24 @@
     const message = error?.message || String(error);
     const failureContent = `请求失败：${message}`;
     const durationMs = measureChatRun(run);
-    run.messages.push({ role: 'assistant', content: failureContent, turn_duration_ms: durationMs });
+    run.messages.push({ role: 'assistant', content: failureContent, turn_duration_ms: durationMs, artifacts: run.downloads });
     run.streamView?.setContent(failureContent);
     run.streamView?.finalize({ durationMs });
     updateCurrentSessionAfterChat(run);
     await persistCurrentSession();
     setStatus(message);
+  }
+
+  function applyChatRequestQuota(run, result) {
+    const amount = result?.quotaUsed;
+    if (amount > 0 && state.currentSession) {
+      state.currentSession.quotaUsed = window.AiFreeQuotaDisplay.addChatQuotaUsed(state.currentSession.quotaUsed, amount);
+      // Resumed failures do not append a new error turn, so save their charges here.
+      if (run.resumeRequestId && !result.ok) void persistCurrentSession();
+    }
+    if (!result?.ok && !(amount > 0)) return;
+    state.lastQuotaCost = amount > 0 ? amount : null;
+    renderQuota(run.useCustomApi ? state.quota : (result.quota || state.quota));
   }
 
   async function requestChatResult(run) {
@@ -329,6 +328,7 @@
     submittedChatRequestId = run.requestId;
     if (state.stopping) void requestChatStop(run.requestId);
     const result = await pending;
+    applyChatRequestQuota(run, result);
     if (result?.ok) return result;
     handleChatBusinessFailure(result);
     if (result?.errorCode === 'AI_CONTINUATION_UNAVAILABLE') state.pausedChat = null;
@@ -343,7 +343,7 @@
     submittedChatRequestId = '';
     syncSendState();
     updateSessionTitleUi();
-    run.input?.focus();
+    run.input?.focus({ preventScroll: true });
   }
 
   async function performChatRun(run) {
@@ -359,7 +359,7 @@
           state.pausedChat = null;
           run.streamView?.setContent(`请求失败：${error?.message || String(error)}`);
         }
-        run.streamView?.finalize({ durationMs: run.responseStarted ? measureChatRun(run) : run.durationMs });
+        run.streamView?.finalize({ durationMs: run.responseStarted ? measureChatRun(run) : run.durationMs, paused: !run.responseStarted });
         setStatus(error?.message || String(error));
       } else await handleChatSendError(run, error);
     } finally {

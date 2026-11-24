@@ -8,7 +8,7 @@ const { MAX_ALLOWED_BYTES } = require('../../services/browser-download-service')
 
 const MAX_ARTIFACTS = 16;
 const DOWNLOAD_TOOLS = new Set(['browser_file', 'browser_media']);
-const ARTIFACT_KINDS = new Set(['image', 'video', 'text', 'binary']);
+const ARTIFACT_KINDS = new Set(['image', 'video', 'audio', 'text', 'binary']);
 
 function normalizeArtifactPath(value) {
   if (typeof value !== 'string' || !value || value.length > 4096 || value.includes(':')) return '';

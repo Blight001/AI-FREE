@@ -124,3 +124,82 @@ test('a restored tool round preserves completed receipts and retries only the pe
   assert.equal(final.message.content, 'Completed safely');
   assert.deepEqual(calls, ['first', 'second', 'second']);
 });
+
+const fixtureConnection = { id: 'fixture-browser', name: 'Browser fixture', browserProcessId: 11, connectedAt: 20,
+  tools: ['browser_tab', 'browser_action', 'browser_control', 'manage_card', 'chat_session'].map((name) => ({ name,
+    input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['overview', 'acquire'] } } } })) };
+
+test('only the parent entry can grant a browser and only one child controls a connection at a time', async () => {
+  const { parent, external, card } = makeToolEntries({ run: ({ signal }) => new Promise((resolve) => {
+    signal.addEventListener('abort', () => resolve({ stopped: true }), { once: true });
+  }) });
+  const target = { browser_connection: fixtureConnection.name, wait_ms: 0 };
+  const parentCall = (args) => parent.execute('chat_session', args, {
+    browserScope: { connections: [fixtureConnection] },
+  });
+  const [first, second] = await Promise.all([parentCall(create('first')), parentCall(create('second'))]);
+  const externalSession = await external.callTool('chat_session', create('outside'));
+  const outside = await external.callTool('chat_session', { ...send(externalSession.data.sessionId), ...target });
+  assert.equal(outside.error.code, 'CHAT_BROWSER_FORBIDDEN');
+  const cardCall = (args) => card.execute('', 'chat_session', args, { managedChatActor: 'card:fixture' });
+  const cardSession = await cardCall(create('card-scope'));
+  assert.equal((await cardCall({ ...send(cardSession.data.sessionId), ...target })).error.code, 'CHAT_BROWSER_FORBIDDEN');
+  assert.equal((await parentCall({ ...send(first.data.sessionId), ...target, browser_connection: 'unrelated' })).error.code,
+    'CHAT_BROWSER_NOT_FOUND');
+  const started = await parentCall({ ...send(first.data.sessionId), ...target });
+  assert.equal(started.data.status, 'running');
+  assert.equal((await parentCall({ ...send(second.data.sessionId), ...target })).error.code, 'CHAT_BROWSER_BUSY');
+  const text = await parentCall({ ...send(second.data.sessionId), wait_ms: 0 });
+  assert.equal(text.data.status, 'running');
+  assert.equal((await parentCall({ action: 'stop', run_id: started.data.runId })).data.status, 'needs_review');
+  assert.equal((await parentCall({ action: 'stop', run_id: text.data.runId })).data.status, 'needs_review');
+});
+
+test('a delegated browser rejects other connections, global discovery and a restarted instance', async () => {
+  const { managedBrowserContext } = require('../../src/app/backend/features/ai-chat/managed-chat-browser');
+  const calls = [];
+  let connection = fixtureConnection;
+  const scope = managedBrowserContext({ getConnection: () => connection, dispatch: (...args) => { calls.push(args); } },
+    fixtureConnection);
+  assert.deepEqual(scope.connections[0].tools.map(({ name }) => name), ['browser_tab', 'browser_action', 'browser_control']);
+  assert.equal(scope.bridge.dispatch('unrelated', 'browser_action', {}).errorCode, 'BROWSER_TARGET_CHANGED');
+  assert.equal(scope.bridge.dispatch(connection.id, 'browser_control', { action: 'overview' }).errorCode, 'CHAT_BROWSER_FORBIDDEN');
+  scope.bridge.dispatch(connection.id, 'browser_action', { action: 'click' });
+  connection = { ...connection, browserProcessId: 12 };
+  assert.equal(scope.bridge.dispatch(connection.id, 'browser_action', {}).errorCode, 'BROWSER_TARGET_CHANGED');
+  assert.equal(calls.length, 1);
+});
+
+test('resuming a delegated browser reports an unconfirmed action and never replays pending writes', async () => {
+  const controller = new AbortController();
+  const calls = [];
+  const toolCall = (id) => ({ id, type: 'function', function: { name: 'browser_action', arguments: JSON.stringify({ id }) } });
+  let checkpoint;
+  const run = (controller, messages) => runChatConversation({
+    connections: [], modelId: 'fixture',
+    windowTools: { has: () => true, execute(_name, { id }) {
+      calls.push(id);
+      if (id === 'second') controller.abort();
+      return { success: true, content: id };
+    } },
+    httpClient: { sendAIControlMessage: async (_key, _device, _model, messages) => {
+      const receipts = messages.filter(({ role }) => role === 'tool').map(({ content }) => JSON.parse(content));
+      if (!receipts.length) return { ok: true, message: { tool_calls: ['first', 'second', 'third'].map(toolCall) } };
+      assert.equal(receipts[0].content, 'first');
+      assert.equal(receipts[1].errorCode, 'AI_TOOL_OUTCOME_UNCONFIRMED');
+      assert.equal(receipts[2].errorCode, 'AI_TOOL_NOT_STARTED');
+      return { ok: true, message: { content: 'Inspect before continuing' } };
+    } },
+    emit() {}, saveManagedCheckpoint(value) { checkpoint = value; },
+    managedCheckpoint: messages ? checkpoint : undefined,
+    managedNoReplay: (name) => name === 'browser_action',
+    toolContext: { modelMessages: messages || [{ role: 'user', content: 'Execute the fixture workflow' }],
+      tools: [{ name: 'browser_action', input_schema: { type: 'object' } }] },
+    run: { controller, insertedMessages: [] },
+  });
+  assert.equal((await run(controller)).stopped, true);
+  assert.equal(checkpoint.inFlight, 'second');
+  assert.deepEqual(checkpoint.pending.map(({ id }) => id), ['second', 'third']);
+  assert.equal((await run(new AbortController(), checkpoint.messages)).message.content, 'Inspect before continuing');
+  assert.deepEqual(calls, ['first', 'second']);
+});

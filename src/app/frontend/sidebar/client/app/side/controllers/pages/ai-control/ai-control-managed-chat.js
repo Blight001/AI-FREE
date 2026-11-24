@@ -2,7 +2,10 @@
     idle: '待发送', running: '运行中', stopping: '正在停止', paused: '已暂停',
     completed: '已完成', failed: '失败', needs_review: '需核验',
   };
-  const managedChatUi = { view: '', session: null, focus: null, parentPosition: null, timer: null, parentDirty: false, revision: 0 };
+  const managedChatUi = {
+    view: '', modelId: '', revision: 0, messages: null, resetScroll: null, rows: new Map(),
+    parentId: null, parentRevision: 0, parentPosition: null, parentDirty: false, timer: null,
+  };
 
   async function managedChatCall(action, args = {}) {
     const result = await window.aiFree.ai.managedChat({ action, ...args });
@@ -14,7 +17,7 @@
     if (managedChatUi.view) el('ai-managed-status').textContent = error.message;
   }
 
-  function drawManagedCards(container, sessions, empty = '') {
+  function drawManagedCards(container, sessions) {
     const active = document.activeElement?.dataset?.managedSessionId;
     const buttons = sessions.map((session) => {
       const button = document.createElement('button');
@@ -25,150 +28,158 @@
       button.addEventListener('click', () => void openManagedView(session.sessionId).catch(managedChatError));
       return button;
     });
-    container.replaceChildren(...(buttons.length ? buttons : empty ? [empty] : []));
-    container.hidden = !buttons.length && !empty;
+    container.replaceChildren(...buttons);
+    container.hidden = !buttons.length;
     if (active) buttons.find((button) => button.dataset.managedSessionId === active)?.focus();
   }
 
   async function refreshManagedParent() {
     const target = el('ai-managed-parent-cards');
     if (!target || !window.aiFree?.ai?.managedChat) return;
-    const parentId = state.currentSession?.id;
-    if (!parentId) return drawManagedCards(target, []);
-    try {
-      const data = await managedChatCall('list', { parent_id: parentId });
-      if (state.currentSession?.id === parentId) drawManagedCards(target, data.sessions);
-    } catch {
-      if (state.currentSession?.id === parentId) drawManagedCards(target, []);
+    const parentId = state.currentSession?.id || null;
+    const revision = ++managedChatUi.parentRevision;
+    if (managedChatUi.parentId !== parentId) {
+      managedChatUi.parentId = parentId;
+      drawManagedCards(target, []);
     }
+    if (!parentId) return;
+    let sessions = [];
+    try {
+      ({ sessions } = await managedChatCall('list', { parent_id: parentId }));
+    } catch {
+      // Match the existing empty card state when the child list is unavailable.
+    }
+    if (state.currentSession?.id !== parentId || revision !== managedChatUi.parentRevision) return;
+    const add = window.AiFreeQuotaDisplay.addChatQuotaUsed;
+    state.childQuota = { parentId, used: sessions.reduce((total, session) => add(total, session.quotaUsed), 0) };
+    renderConversationQuotaUsed();
+    drawManagedCards(target, sessions);
   }
 
   function markManagedPane(open) {
     const pane = el('ai-managed-chat');
     pane.hidden = !open;
+    pane.parentElement.classList.toggle('is-managed-view', open);
     for (const node of pane.parentElement.children) {
-      if (node !== pane) node.inert = open;
+      if (node !== pane && node.id !== 'ai-chat-workspace-preview') node.inert = open;
     }
   }
 
-  function createManagedMessage(message) {
-    const article = document.createElement('article');
-    article.className = 'ai-managed-message';
-    const author = document.createElement('strong');
-    author.textContent = message.role === 'user' ? '你' : 'AI';
-    const body = document.createElement('div');
-    if (message.role === 'assistant') renderMarkdownInto(body, message.content);
-    else body.textContent = message.content;
-    article.append(author, body);
-    return article;
+  function advanceManagedStream(entry, events) {
+    for (const event of events) {
+      if (event.seq < entry.sequence) continue;
+      if (event.delta !== undefined) {
+        const delta = event.delta.slice(event.seq === entry.sequence ? entry.offset : 0);
+        if (delta) applyChatPresentationEvent(entry, { ...event, delta });
+        entry.offset = event.delta.length;
+      } else if (event.seq > entry.sequence) {
+        applyChatPresentationEvent(entry, event);
+      }
+      entry.sequence = event.seq;
+    }
   }
 
-  function renderManagedMessages(messages) {
-    const container = el('ai-managed-messages');
-    const signature = JSON.stringify(messages);
-    if (container.managedSignature === signature) return;
-    const follow = container.scrollHeight - container.scrollTop - container.clientHeight < 36;
-    container.replaceChildren(...messages.map(createManagedMessage));
-    container.managedSignature = signature;
-    if (follow) container.scrollTop = container.scrollHeight;
+  function managedMessageEntry(message, oldEntry, attempt, paused) {
+    if (oldEntry && oldEntry.revision === message.revision && oldEntry.attempt === attempt) return oldEntry;
+    const container = managedChatUi.messages;
+    const rendered = renderChatMessage(message, { editable: false, canReference: false, paused }, container);
+    const row = rendered?.row || rendered;
+    if (!row) return null;
+    if (oldEntry) {
+      if (paused) preservePausedDisclosures(row, oldEntry.row);
+      container.insertBefore(row, oldEntry.row);
+      oldEntry.row.remove();
+    }
+    return { row, streamView: rendered, revision: message.revision, attempt, sequence: 0, offset: 0, canReference: false };
+  }
+
+  function renderManagedMessages(data) {
+    const { messages, rows } = managedChatUi;
+    const visible = new Set(data.messages.map(({ id }) => id));
+    for (const [id, entry] of rows) {
+      if (visible.has(id)) continue;
+      entry.row.remove();
+      rows.delete(id);
+    }
+    let cursor = messages.firstChild;
+    for (const message of data.messages) {
+      const paused = data.status === 'paused' && message.id === `${data.runId}:assistant`;
+      const attempt = message.pending ? data.attempt : undefined;
+      const entry = managedMessageEntry(message, rows.get(message.id), attempt, paused);
+      if (!entry) continue;
+      rows.set(message.id, entry);
+      if (entry.row !== cursor && cursor?.parentNode === messages) messages.insertBefore(entry.row, cursor);
+      cursor = entry.row.nextSibling;
+      if (message.pending) advanceManagedStream(entry, data.events);
+    }
+    const lastAssistant = rows.get(`${data.runId}:assistant`);
+    renderChatScreenshot(lastAssistant?.streamView?.stack, data.screenshot);
+    const live = data.events?.findLast((event) => event.type === 'artifacts')?.artifacts;
+    renderChatDownloads(el('ai-managed-downloads'), data.messages, live, false);
+  }
+
+  function renderManagedModel() {
+    if (!managedChatUi.view) return;
+    const { modelId } = managedChatUi;
+    const options = el('ai-chat-model')?.options || [];
+    const name = modelId && (Array.from(options).find((option) => option.value === modelId)?.textContent || modelId);
+    el('ai-managed-model').textContent = name ? `模型：${name}` : '';
   }
 
   function renderManagedSession(data) {
-    managedChatUi.session = data;
+    managedChatUi.modelId = data.modelId;
     el('ai-managed-title').textContent = data.title;
+    renderQuotaUsed('ai-managed-quota-used', data.quotaUsed);
     el('ai-managed-status').textContent = managedStatusNames[data.status] || data.status;
-    renderManagedMessages(data.messages);
-    const running = data.status === 'running';
-    const locked = data.status === 'stopping' || data.status === 'paused';
-    const model = el('ai-managed-model');
-    model.value = data.modelId;
-    model.disabled = running || locked;
-    el('ai-managed-input').disabled = locked;
-    el('ai-managed-send').disabled = locked;
-    el('ai-managed-send').textContent = running ? '插话' : '发送';
-    el('ai-managed-stop').hidden = !running;
-    el('ai-managed-resume').hidden = data.status !== 'paused';
+    renderManagedModel();
+    renderManagedMessages(data);
   }
 
   async function refreshManagedView() {
     const view = managedChatUi.view;
     const revision = ++managedChatUi.revision;
     if (!view) return;
-    if (view === 'directory') {
-      const { sessions } = await managedChatCall('list');
-      if (managedChatUi.revision === revision) drawManagedCards(el('ai-managed-directory'), sessions, '暂无任务');
-      return;
-    }
     const data = await managedChatCall('status', { session_id: view });
     if (managedChatUi.revision === revision) renderManagedSession(data);
   }
 
   async function openManagedView(view) {
-    if (!managedChatUi.view) {
-      managedChatUi.focus = document.activeElement;
-      managedChatUi.parentPosition = { id: state.currentSession?.id, top: el('ai-chat-messages').scrollTop };
-    }
+    managedChatUi.parentPosition = { id: state.currentSession?.id, top: el('ai-chat-messages').scrollTop };
     managedChatUi.view = view;
-    managedChatUi.session = null;
-    const directory = view === 'directory';
+    managedChatUi.modelId = '';
     markManagedPane(true);
-    el('ai-managed-title').textContent = directory ? '任务运行' : '子对话';
+    el('ai-managed-title').textContent = '子对话';
     el('ai-managed-status').textContent = '';
-    el('ai-managed-directory').hidden = !directory;
-    el('ai-managed-messages').hidden = directory;
-    el('ai-managed-composer').hidden = directory;
-    el('ai-managed-input').value = '';
+    renderQuotaUsed('ai-managed-quota-used', 0);
+    renderManagedModel();
     el('ai-managed-back').focus();
-    renderManagedMessages([]);
+    managedChatUi.messages.replaceChildren();
+    renderChatDownloads(el('ai-managed-downloads'), []);
+    managedChatUi.rows.clear();
     await refreshManagedView();
-    if (!directory) {
-      const { models } = await managedChatCall('models');
-      if (managedChatUi.view !== view) return;
-      const model = el('ai-managed-model');
-      model.replaceChildren(...models.map(({ id, name }) => new Option(name || id, id)));
-      model.value = managedChatUi.session?.modelId || '';
-    }
+    if (managedChatUi.view === view) managedChatUi.resetScroll();
   }
 
   function closeManagedView() {
-    const focus = managedChatUi.focus;
+    const sessionId = managedChatUi.view;
     managedChatUi.revision++;
     managedChatUi.view = '';
-    managedChatUi.session = null;
+    managedChatUi.modelId = '';
+    closeWorkspacePreview();
     markManagedPane(false);
+    managedChatUi.messages.replaceChildren();
+    managedChatUi.rows.clear();
     const position = managedChatUi.parentPosition;
     if (position && position.id === state.currentSession?.id) el('ai-chat-messages').scrollTop = position.top;
-    const focusTarget = focus?.isConnected ? focus : el('ai-managed-tasks');
-    focusTarget.focus({ preventScroll: true });
+    const cards = el('ai-managed-parent-cards');
+    const card = cards.querySelector(`[data-managed-session-id="${CSS.escape(sessionId)}"]`);
+    (card || el('ai-chat-input')).focus({ preventScroll: true });
     managedChatUi.parentPosition = null;
-    managedChatUi.focus = null;
-  }
-
-  async function operateManagedChild(action) {
-    const session = managedChatUi.session;
-    if (!session) return;
-    const input = el('ai-managed-input');
-    const args = { wait_ms: 0 };
-    if (action === 'send') {
-      if (!input.value.trim()) return;
-      args.content = input.value;
-      args.request_key = crypto.randomUUID();
-      if (session.status === 'running') {
-        action = 'insert';
-        args.run_id = session.runId;
-      } else args.session_id = session.sessionId;
-    } else if (action === 'select_model') {
-      args.session_id = session.sessionId;
-      args.model_id = el('ai-managed-model').value;
-    } else args.run_id = session.runId;
-    await managedChatCall(action, args);
-    if (managedChatUi.view === session.sessionId && args.content === input.value) input.value = '';
-    await refreshManagedView();
   }
 
   function scheduleManagedRefresh(event) {
     if (event.parentId && event.parentId === state.currentSession?.id) managedChatUi.parentDirty = true;
-    if (!managedChatUi.parentDirty && managedChatUi.view !== event.sessionId && managedChatUi.view !== 'directory') return;
+    if (!managedChatUi.parentDirty && managedChatUi.view !== event.sessionId) return;
     if (managedChatUi.timer) return;
     managedChatUi.timer = window.setTimeout(() => {
       managedChatUi.timer = null;
@@ -179,20 +190,15 @@
   }
 
   function bindManagedChat() {
-    const tasks = el('ai-managed-tasks');
-    if (!tasks || !window.aiFree?.ai?.managedChat) return;
-    tasks.addEventListener('click', () => void openManagedView('directory').catch(managedChatError));
+    const pane = el('ai-managed-chat');
+    if (!pane || !window.aiFree?.ai?.managedChat) return;
+    const surface = mountChatViewport(el('ai-managed-viewport-host'), 'ai-managed-messages', 'ai-managed-message-list', '子对话消息');
+    managedChatUi.messages = surface.messages;
+    managedChatUi.resetScroll = bindChatScroll(surface);
     el('ai-managed-back').addEventListener('click', closeManagedView);
-    el('ai-managed-chat').addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') closeManagedView();
+    pane.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !event.defaultPrevented) closeManagedView();
     });
-    el('ai-managed-composer').addEventListener('submit', (event) => {
-      event.preventDefault();
-      void operateManagedChild('send').catch(managedChatError);
-    });
-    el('ai-managed-stop').addEventListener('click', () => void operateManagedChild('stop').catch(managedChatError));
-    el('ai-managed-resume').addEventListener('click', () => void operateManagedChild('resume').catch(managedChatError));
-    el('ai-managed-model').addEventListener('change', () => void operateManagedChild('select_model').catch(managedChatError));
     const offChange = window.aiFree.ai.onManagedChatChanged?.(scheduleManagedRefresh);
     const offAccount = window.aiFree.account?.onSessionUpdated?.(() => {
       if (managedChatUi.view) closeManagedView();

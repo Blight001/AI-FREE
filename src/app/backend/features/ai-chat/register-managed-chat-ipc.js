@@ -22,7 +22,8 @@ function managedToolSet(service, fixedActor = '', parentId = '') {
     has: (name) => name === CHAT_SESSION_TOOL,
     async execute(_name, args, options = /** @type {any} */ ({})) {
       const actor = fixedActor || options.managedChatActor || 'local';
-      const response = await service.execute({ actor, parentId }, args, options.signal);
+      const browserScope = parentId ? options.browserScope : undefined;
+      const response = await service.execute({ actor, parentId, browserScope }, args, options.signal);
       if (actor.startsWith('card:') && response.ok && ['send', 'wait', 'resume'].includes(args.action)) {
         const runs = response.data.runs || [response.data];
         if (runs.some((item) => item.status !== 'completed')) {
@@ -48,7 +49,7 @@ function registerManagedChatIpc({ ipc, deps, getModels }) {
     },
   });
   const dispose = ipc.handle('ai-control-managed-chat', (event, input) => {
-    if (!sidebarMainFrame(event, getSidebar())) return fail(new AppError('FORBIDDEN', '仅 AI 控制侧栏可以管理子会话'));
+    if (!sidebarMainFrame(event, getSidebar())) return fail(new AppError('FORBIDDEN', '仅 AI 控制侧栏可以读取子会话展示数据'));
     return service.execute({ actor: 'sidebar' }, input);
   });
   return {

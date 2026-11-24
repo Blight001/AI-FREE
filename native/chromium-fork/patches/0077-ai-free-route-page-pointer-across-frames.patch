@@ -1,0 +1,68 @@
+diff --git a/chrome/browser/ui/views/frame/ai_free_automation_pointer.cc b/chrome/browser/ui/views/frame/ai_free_automation_pointer.cc
+--- a/chrome/browser/ui/views/frame/ai_free_automation_pointer.cc
++++ b/chrome/browser/ui/views/frame/ai_free_automation_pointer.cc
+@@ -19,13 +19,16 @@
+ #include "chrome/browser/ui/views/frame/browser_view.h"
+ #include "chrome/browser/ui/views/frame/ai_free_takeover_guard.h"
+ #include "chrome/browser/ui/views/frame/contents_web_view.h"
++#include "components/input/render_widget_host_input_event_router.h"
++#include "content/browser/renderer_host/render_widget_host_impl.h"
++#include "content/browser/renderer_host/render_widget_host_view_base.h"
+ #include "content/public/browser/render_frame_host.h"
+-#include "content/public/browser/render_widget_host.h"
+ #include "content/public/browser/web_contents.h"
+ #include "third_party/blink/public/common/input/web_input_event.h"
+ #include "third_party/blink/public/common/input/web_mouse_event.h"
+ #include "ui/events/event_utils.h"
+ #include "ui/gfx/geometry/rect.h"
++#include "ui/latency/latency_info.h"
+ #include "ui/views/view.h"
+ #include "ui/views/view_observer.h"
+ 
+@@ -205,9 +208,10 @@
+         web_view, browser_view, web_view->GetLocalBounds()));
+   }
+ 
+-  content::RenderWidgetHost* Widget() const {
++  content::RenderWidgetHostImpl* Widget() const {
+     content::RenderFrameHost* frame = web_contents()->GetPrimaryMainFrame();
+-    return frame ? frame->GetRenderWidgetHost() : nullptr;
++    return frame ? content::RenderWidgetHostImpl::From(frame->GetRenderWidgetHost())
++                 : nullptr;
+   }
+ 
+   BrowserView* CurrentBrowserView() const {
+@@ -216,7 +220,7 @@
+   }
+ 
+   void Dispatch(blink::WebInputEvent::Type type, int clicks) {
+-    content::RenderWidgetHost* widget = Widget();
++    auto* widget = Widget();
+     if (!widget || !widget->GetView()) {
+       return Finish(false);
+     }
+@@ -230,8 +234,13 @@
+       modifiers |= right_button_ ? blink::WebInputEvent::kRightButtonDown
+                                  : blink::WebInputEvent::kLeftButtonDown;
+     }
+-    widget->ForwardMouseEvent(
+-        MouseEvent(type, button, modifiers, clicks, position_, bounds));
++    const auto event = MouseEvent(type, button, modifiers, clicks, position_, bounds);
++    // Hit-test across renderer widgets, including out-of-process subframes.
++    if (auto* router = widget->GetInputEventRouter()) {
++      router->RouteMouseEvent(widget->GetView(), &event, ui::LatencyInfo());
++    } else {
++      widget->ForwardMouseEvent(event);
++    }
+   }
+ 
+   void Tick() {
+@@ -253,7 +262,7 @@
+       overlay_->SetPointer(position_, false);
+       Dispatch(blink::WebInputEvent::Type::kMouseMove, 0);
+       if (linear >= 1.0f) {
+-        content::RenderWidgetHost* widget = Widget();
++        auto* widget = Widget();
+         if (widget) {
+           widget->Focus();
+         }

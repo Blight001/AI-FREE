@@ -25,6 +25,7 @@ const state = {
   workspaceFiles: [],
   generatingTitle: false,
   quota: null,
+  childQuota: null,
   lastQuotaCost: null,
   customApiHasKey: false,
   customApiSaving: false,

@@ -1,10 +1,11 @@
 'use strict';
 
 const { observedRef } = require('./native-browser-file');
-const { observedTarget } = require('./native-browser-observation');
+const { AX_COORDINATE_REF, observedTarget } = require('./native-browser-observation');
 const { PAGE_TOKEN, expectedPageToken } = require('./native-browser-page-binding');
 
 const EXTERNAL_OBSERVATIONS = Symbol('external-mcp-observations');
+const CLICK_ACTIONS = /^(click|double_click|right_click)$/;
 const OBSERVATION_HISTORY_LIMIT = 3;
 const OBSERVATION_HISTORY_TTL_MS = 30000;
 
@@ -54,7 +55,7 @@ function clearObservations(owner, connectionId) {
 function resolveCoordinateObservation(owner, connection, args) {
   const observationId = text(args.observation_id ?? args.observationId);
   if (!observationId || text(args.selector) || !nonNegativePoint(args.x, args.y)) return args;
-  if (!/^(click|double_click|right_click)$/.test(text(args.action))) return args;
+  if (!CLICK_ACTIONS.test(text(args.action))) return args;
   const token = expectedPageToken(connection);
   const snapshot = observationStore(owner, connection).observationHistory.get(connection.id)?.at(-1);
   if (token && snapshot?.observationId === observationId && matchesPage(snapshot, token)
@@ -76,13 +77,19 @@ function resolveObservedTarget(owner, connection, args) {
   }
   if (!observation) return { ...input, observedRefExpired: true };
   const historical = findHistoricTarget(store, connection.id, observation, ref);
-  return matchesPage(historical, token)
-    ? { ...input, observedRefRecoveryCandidate: historical }
-    : { ...input, observationMismatch: true };
+  if (!matchesPage(historical, token)) return { ...input, observationMismatch: true };
+  if (historical[AX_COORDINATE_REF]) return unstableRef(input);
+  return { ...input, observedRefRecoveryCandidate: historical };
 }
 
 function mergeObservedTarget(target, args) {
-  const resolved = { ...target, ...args };
+  const { [AX_COORDINATE_REF]: axCoordinate, ...metadata } = target;
+  const resolved = { ...metadata, ...args };
+  if (axCoordinate && CLICK_ACTIONS.test(text(args.action))) {
+    // AX-only targets have no DOM locator. Keep the ref's viewport point for the click.
+    resolved.observedRole = '';
+    resolved.observedLabel = '';
+  }
   if (!text(args.selector) && target.selector) resolved.selector = target.selector;
   const explicitPoint = nonNegativePoint(args.x, args.y);
   if (explicitPoint) Object.assign(resolved, explicitPoint);
@@ -109,23 +116,29 @@ function pruneObservationHistory(owner, connectionId) {
   else owner.observationHistory.delete(connectionId);
 }
 
-function rememberObservation(owner, connection, observationId, targets) {
+function rememberObservation(owner, connection, observationId, observation) {
+  const token = expectedPageToken(connection);
+  const targets = new Map(observation.items
+    .map((item) => observedTarget(item, observationId, { url: observation.url })).filter(Boolean));
+  for (const target of targets.values()) target[PAGE_TOKEN] = token;
   const store = observationStore(owner, connection);
   store.observeTargets.set(connection.id, targets);
   const history = store.observationHistory.get(connection.id) || [];
-  history.push({ observationId, createdAt: Date.now(), targets, [PAGE_TOKEN]: expectedPageToken(connection) });
+  history.push({ observationId, createdAt: Date.now(), targets, [PAGE_TOKEN]: token });
   store.observationHistory.set(connection.id, history.slice(-OBSERVATION_HISTORY_LIMIT));
+}
+
+function unstableRef(input) {
+  return {
+    ...input, observedRefExpired: true, observedRefRecoveryCandidate: null,
+    observedRefRecoveryReason: 'LOCATOR_NOT_STABLE',
+    observedRefRecoveryError: '旧 ref 没有唯一且稳定的 selector，无法安全恢复；请重新执行 browser_observe。',
+  };
 }
 
 async function recoverObservedTarget(owner, connection, input) {
   const previous = input.observedRefRecoveryCandidate;
-  if (!recoverableLocator(previous)) {
-    return {
-      ...input, observedRefExpired: true, observedRefRecoveryCandidate: null,
-      observedRefRecoveryReason: 'LOCATOR_NOT_STABLE',
-      observedRefRecoveryError: '旧 ref 没有唯一且稳定的 selector，无法安全恢复；请重新执行 browser_observe。',
-    };
-  }
+  if (!recoverableLocator(previous)) return unstableRef(input);
   const current = await owner.runtimeCommand(connection, 'observe-page', {
     limit: 1000, includeText: true, includeMedia: true, showHighlights: false,
   });

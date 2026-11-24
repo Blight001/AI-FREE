@@ -82,6 +82,7 @@ function createComposerFixture(chatResult) {
     function showChatBusinessError() {}
     function setStatus(value) { state.status = value; }
     function renderConversation() {}
+    function syncPausedChatRows() {}
     function maybeGenerateTitle() {}
   `, context);
   vm.runInContext(fs.readFileSync(composerPath, 'utf8'), context, { filename: composerPath });

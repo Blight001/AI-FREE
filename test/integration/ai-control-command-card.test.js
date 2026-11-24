@@ -141,6 +141,7 @@ function assistantFixture(options = { pending: true }) {
     options,
   });
   loadController(context, 'ai-control-tool-card.js');
+  loadController(context, 'ai-control-chat-presentation.js');
   loadController(context, 'ai-control-tool-display.js');
   const view = vm.runInContext('createAssistantView(options)', context);
   const stack = container.querySelector('.ai-chat-assistant-stack');
@@ -216,18 +217,18 @@ test('a completed staged reply folds its opening and progress as one ordered pro
 });
 
 test('a paused turn shows its elapsed time and keeps the disclosure preference through continuation', () => {
-  const { view, stack, tool } = assistantFixture();
+  const { view, stack, groups, tool } = assistantFixture();
   view.addContent('开场说明', 0);
   tool('first', 'success', 0);
   view.addContent('未完成', 1);
-  view.finalize({ durationMs: 237000 });
-  const pausedProcess = stack.querySelector('.ai-chat-process');
-  assert.equal(pausedProcess.open, false);
-  assert.match(pausedProcess.querySelector(':scope > summary').textContent, /用时 3 分钟 57 秒/);
-  clickDisclosure(pausedProcess);
+  view.finalize({ durationMs: 237000, paused: true });
+  assert.equal(stack.querySelector('.ai-chat-process'), null);
+  assert.equal(groups()[0].open, false);
+  assert.match(stack.querySelector('.ai-chat-turn-duration').textContent, /用时 3 分钟 57 秒/);
+  clickDisclosure(groups()[0]);
 
   view.resume(1);
-  assert.equal(stack.querySelector('.ai-chat-process'), null);
+  assert.equal(stack.querySelector('.ai-chat-turn-duration'), null);
   view.addContent('续写完成', 1);
   view.finalize({ durationMs: 241000 });
   const completedProcess = stack.querySelector('.ai-chat-process');

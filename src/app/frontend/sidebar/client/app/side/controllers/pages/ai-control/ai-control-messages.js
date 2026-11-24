@@ -144,7 +144,7 @@
     );
   }
 
-  function attachUserBubbleActions(row, content, messageIndex) {
+  function attachUserBubbleActions(row, content, messageIndex, editable) {
     if (!row) return;
     row.dataset.messageIndex = String(messageIndex);
     row.dataset.content = String(content || '');
@@ -175,11 +175,8 @@
     };
 
     // 从左到右：复制、撤回、删除
-    actions.append(
-      makeBtn('copy', '复制', '❐'),
-      makeBtn('recall', '撤回', '↩'),
-      makeBtn('delete', '删除', '✕'),
-    );
+    actions.append(makeBtn('copy', '复制', '❐'));
+    if (editable) actions.append(makeBtn('recall', '撤回', '↩'), makeBtn('delete', '删除', '✕'));
 
     const bubble = row.querySelector('.ai-chat-bubble');
     if (bubble) {
@@ -197,47 +194,6 @@
       || (Array.isArray(options.artifacts) && options.artifacts.length > 0);
   }
 
-  function artifactAction(label, action) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'ai-chat-workspace-file-attach';
-    button.textContent = label;
-    button.addEventListener('click', action);
-    return button;
-  }
-
-  function workspaceArtifactRow(artifact) {
-    const row = document.createElement('div');
-    row.className = 'ai-chat-workspace-file ai-chat-message-artifact';
-    const info = document.createElement('div');
-    info.className = 'ai-chat-workspace-file-info';
-    const name = document.createElement('strong');
-    name.textContent = artifact.name || artifact.path;
-    const detail = document.createElement('span');
-    detail.textContent = `${artifact.path} · ${formatWorkspaceFileSize(artifact.size)} · ${artifact.toolName === 'browser_media' ? '页面媒体' : '浏览器下载'}`;
-    detail.title = detail.textContent;
-    info.append(name, detail);
-    row.append(info,
-      artifactAction('预览', () => void previewWorkspaceFile(artifact.path, artifact)),
-      artifactAction('再次引用', (event) => void attachWorkspaceArtifact(artifact, event.currentTarget)));
-    return row;
-  }
-
-  // Shared by the live assistant view and the restored history view.
-  function renderAssistantArtifacts(view, artifacts) {
-    if (!view?.row || !Array.isArray(artifacts)) return;
-    const list = view.row.querySelector('.ai-chat-message-artifacts') || document.createElement('div');
-    list.className = 'ai-chat-message-artifacts';
-    const unique = new Map();
-    for (const artifact of artifacts.slice(0, 16)) {
-      if (typeof artifact?.path !== 'string' || !artifact.sha256 || !artifact.toolCallId) continue;
-      unique.set(JSON.stringify([artifact.toolCallId, artifact.path]), artifact);
-    }
-    if (!unique.size) { list.remove(); return; }
-    list.replaceChildren(...Array.from(unique.values(), workspaceArtifactRow));
-    if (!list.parentNode) view.row.appendChild(list);
-  }
-
   function appendUserMessageFiles(bubble, attachmentPaths) {
     if (!Array.isArray(attachmentPaths) || !attachmentPaths.length) return;
     const files = document.createElement('div');
@@ -251,16 +207,11 @@
     bubble.appendChild(files);
   }
 
-  function appendMessage(role, content, options = {}) {
-    const container = el('ai-chat-message-list');
+  function appendMessage(role, content, options = {}, container = el('ai-chat-message-list')) {
     if (!container) return null;
     if (role === 'tool' || role === 'system') return null;
     if (role === 'assistant' && !hasAssistantMessageContent(content, options)) return null;
-    if (role === 'assistant') {
-      const view = createAssistantView({ ...options, content });
-      renderAssistantArtifacts(view, options.artifacts);
-      return view;
-    }
+    if (role === 'assistant') return createAssistantView({ ...options, content }, container);
     const welcome = container.querySelector('.ai-chat-welcome');
     if (welcome) welcome.remove();
     const row = document.createElement('article');
@@ -275,7 +226,7 @@
       const messageIndex = Number.isInteger(options.messageIndex)
         ? options.messageIndex
         : currentMessages().length - 1;
-      attachUserBubbleActions(row, content, messageIndex);
+      attachUserBubbleActions(row, content, messageIndex, options.editable !== false);
     }
     container.appendChild(row);
     return row;
@@ -318,6 +269,7 @@
 
   function renderWelcome() {
     if (typeof syncWorkspaceDraftSession === 'function') syncWorkspaceDraftSession();
+    renderConversationDownloads([]);
     const container = el('ai-chat-message-list');
     if (!container) return;
     container.innerHTML = '';
@@ -328,12 +280,27 @@
     updateSessionTitleUi();
   }
 
+  function syncPausedChatRows(assistantRow) {
+    const container = el('ai-chat-message-list');
+    if (!container) return;
+    const userRows = [...container.querySelectorAll(':scope > [data-message-kind="user-bubble"]')];
+    let position = 0;
+    currentMessages().forEach(({ role }, index) => {
+      if (role === 'user' && userRows[position]) userRows[position++].dataset.messageIndex = String(index);
+    });
+    const lastUser = userRows.at(-1);
+    if (lastUser && assistantRow && (assistantRow.compareDocumentPosition(lastUser) & Node.DOCUMENT_POSITION_FOLLOWING)) {
+      lastUser.after(assistantRow);
+    }
+  }
+
   function renderConversation() {
     if (typeof syncWorkspaceDraftSession === 'function') syncWorkspaceDraftSession();
     const container = el('ai-chat-message-list');
     if (!container) return;
     container.innerHTML = '';
     const messages = currentMessages();
+    renderConversationDownloads(messages);
     const visible = messages
       .map((message, index) => ({ message, index }))
       .filter(({ message }) => isRenderableConversationMessage(message));
@@ -341,17 +308,7 @@
       renderWelcome();
       return;
     }
-    visible.forEach(({ message, index }) => {
-      appendMessage(message.role, message.content, {
-        messageIndex: index,
-        reasoning: message.reasoning,
-        toolEvents: message.tool_events,
-        traceEvents: message.trace_events,
-        durationMs: message.turn_duration_ms,
-        attachmentPaths: message.attachmentPaths,
-        artifacts: message.artifacts,
-      });
-    });
+    visible.forEach(({ message, index }) => renderChatMessage(message, { messageIndex: index }, container));
     updateSessionTitleUi();
   }
 
@@ -361,16 +318,6 @@
     const draft = readChatDraft(input);
     if (draft.pending || (state.loading && draft.inlineAttachments.length)) return false;
     return Boolean(draft.content.trim()) || (!state.loading && hasAttachments);
-  }
-
-  function resolveChatButtonMode(hasContent) {
-    if (!state.loading) {
-      if (!hasContent && state.pausedChat) return { icon: 'play', label: '继续 AI 输出', stop: false, insert: false };
-      return { icon: 'send', label: '发送消息', stop: false, insert: false };
-    }
-    if (state.stopping) return { icon: 'stop', label: '正在停止', stop: true, insert: false };
-    if (hasContent) return { icon: 'send', label: '插入当前对话', stop: false, insert: true };
-    return { icon: 'stop', label: '停止 AI 输出', stop: true, insert: false };
   }
 
   function syncSendState() {
@@ -388,13 +335,6 @@
         : quotaExhausted || (mode.icon === 'play'
           ? readChatDraft(input).pending
           : modelUnavailable || !hasContent);
-      if (send.dataset.iconMode !== mode.icon) {
-        send.innerHTML = SEND_BUTTON_ICONS[mode.icon];
-        send.dataset.iconMode = mode.icon;
-      }
-      send.title = mode.label;
-      send.setAttribute('aria-label', mode.label);
-      send.classList.toggle('is-stop', mode.stop);
-      send.classList.toggle('is-insert', mode.insert);
+      renderChatSendButton(send, mode);
     }
   }

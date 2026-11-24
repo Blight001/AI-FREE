@@ -1,6 +1,8 @@
   function applySession(session) {
     state.pausedChat = null;
     state.currentSession = session || null;
+    state.childQuota = null;
+    renderConversationQuotaUsed();
     if (typeof refreshManagedParent === 'function') void refreshManagedParent();
     state.modelSelectionFromHistory = Boolean(session);
     state.messages = Array.isArray(session?.messages) ? [...session.messages] : [];
@@ -165,15 +167,23 @@
     });
   }
 
-  async function applyGeneratedSessionTitle(session, result) {
+  async function applyGeneratedSessionTitle(sessionId, result) {
     if (result?.quota) renderQuota(result.quota);
-    if (!result?.ok) return;
-    const title = sanitizeGeneratedTitle(result.message?.content);
-    if (!title || state.currentSession?.id !== session.id) return;
-    state.currentSession.title = title;
-    state.currentSession.titleGenerated = true;
-    updateSessionTitleUi();
-    await persistCurrentSession({ title, titleGenerated: true });
+    const isCurrent = state.currentSession?.id === sessionId;
+    const session = isCurrent ? state.currentSession : getLocalSession(sessionId);
+    if (!session) return;
+    const title = result?.ok && !session.titleGenerated ? sanitizeGeneratedTitle(result.message?.content) : '';
+    if (!title && !(result?.quotaUsed > 0)) return;
+    session.quotaUsed = window.AiFreeQuotaDisplay.addChatQuotaUsed(session.quotaUsed, result.quotaUsed);
+    if (title) Object.assign(session, { title, titleGenerated: true });
+    if (isCurrent) {
+      renderConversationQuotaUsed();
+      await persistCurrentSession();
+    } else {
+      upsertLocalSession(session, false);
+      await saveSessionToMain(session, false);
+      await refreshHistoryList();
+    }
   }
 
   function renameSessionById(sessionId) {
@@ -231,6 +241,7 @@
     };
     state.messages = [];
     state.lastQuotaCost = null;
+    state.childQuota = null;
     renderQuota(state.quota);
     setStatus('');
     updateSessionTitleUi();
@@ -262,12 +273,13 @@
     if (!canGenerateSessionTitle(session, modelId)) return;
     const messages = findTitleMessages();
     if (!messages.user || !messages.assistant) return;
-    await ensureProvisionalSessionTitle(session, messages.user);
-
+    const scope = historyLocalScope();
     state.generatingTitle = true;
     try {
+      await ensureProvisionalSessionTitle(session, messages.user);
+      if (historyLocalScope() !== scope) return;
       const result = await requestGeneratedSessionTitle(modelId, messages);
-      await applyGeneratedSessionTitle(session, result);
+      if (historyLocalScope() === scope) await applyGeneratedSessionTitle(session.id, result);
     } catch (error) {
       console.warn('[AI 控制] 标题生成失败:', error?.message || error);
     } finally {

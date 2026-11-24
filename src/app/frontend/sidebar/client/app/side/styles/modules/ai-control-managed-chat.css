@@ -12,8 +12,10 @@
 
 html.theme-light .ai-managed-chat { background: #f4f7fb; }
 
-.ai-managed-chat > header,
-.ai-managed-actions {
+.ai-control-panel.is-managed-view > :not(.ai-managed-chat, .ai-chat-workspace-preview) { visibility: hidden; }
+.ai-managed-chat > .ai-chat-viewport-host { padding-inline: 10px; }
+
+.ai-managed-chat > header {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -21,11 +23,7 @@ html.theme-light .ai-managed-chat { background: #f4f7fb; }
   padding: 10px 12px;
 }
 
-.ai-managed-chat button,
-.ai-managed-trigger,
-.ai-managed-card,
-.ai-managed-chat select,
-.ai-managed-chat textarea {
+#ai-managed-back {
   font: inherit;
   color: inherit;
   border: 1px solid color-mix(in srgb, currentColor 24%, transparent);
@@ -34,7 +32,26 @@ html.theme-light .ai-managed-chat { background: #f4f7fb; }
   padding: 4px 8px;
 }
 
-.ai-managed-chat option { color: #233451; background: #f4f7fb; }
+.ai-managed-card {
+  font: inherit;
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, .72);
+  border-radius: 3px;
+  background: transparent;
+  padding: 4px 8px;
+}
+
+html.theme-light .ai-managed-card {
+  border-color: rgba(77, 63, 174, .7);
+}
+
+.ai-managed-card:hover {
+  background: rgba(255, 255, 255, .08);
+}
+
+html.theme-light .ai-managed-card:hover {
+  background: rgba(124, 108, 255, .1);
+}
 
 .ai-managed-cards:not([hidden]) {
   display: flex;
@@ -45,24 +62,10 @@ html.theme-light .ai-managed-chat { background: #f4f7fb; }
   padding: 4px 12px;
 }
 
-#ai-managed-directory { max-height: none; align-content: flex-start; }
-
-.ai-managed-messages {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  padding: 12px;
-  overflow-wrap: anywhere;
+.ai-managed-footer {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  padding: 6px 12px 8px;
+  font-size: 12px;
 }
-
-.ai-managed-message {
-  margin: 0 0 12px;
-  padding: 8px 10px;
-  border-inline-start: 2px solid currentColor;
-}
-
-.ai-managed-message > strong { font-size: .82em; opacity: .8; }
-.ai-managed-composer { padding: 4px 12px 8px; }
-.ai-managed-composer textarea { box-sizing: border-box; width: 100%; resize: vertical; }
-.ai-managed-actions { padding: 4px 0 0; }
-.ai-managed-actions select { flex: 1; min-width: 80px; max-width: 100%; }
+.ai-managed-model { min-width: 0; overflow-wrap: anywhere; }

@@ -54,6 +54,7 @@
       state.modelSelectionFromHistory ? state.currentSession?.modelId : '',
       state.lastChosenModelId,
     ]);
+    renderManagedModel();
   }
 
   function selectHasModelOptions(select) {

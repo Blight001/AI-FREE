@@ -4,6 +4,7 @@ const { pathToFileURL } = require('node:url');
 const { bindDomain } = require('./domains');
 const { pageProbes } = require('./page-probes');
 const { exerciseAiDraft } = require('./electron-ai-draft');
+const { checkAiLayout } = require('./electron-ai-layout');
 
 function electronPageFixture(BrowserWindow, layout) {
   let window;
@@ -45,6 +46,7 @@ function electronPageFixture(BrowserWindow, layout) {
         throw new Error('PAGE_PROBE_MISMATCH');
       }
       try {
+        await checkAiLayout(target);
         await exerciseAiDraft(target.webContents);
       } catch (error) {
         console.error('AI draft interaction failed:', error);

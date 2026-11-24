@@ -81,6 +81,27 @@ test('内置模型正常返回完整消息链并发布流式完成事件', async
   assert.equal(fixture.sent.at(-1).payload.type, 'done');
 });
 
+test('工具回合后模型失败时仍保留本次请求已确认的扣费', async () => {
+  let round = 0;
+  const client = { sendAIControlMessage: async () => [
+    { ok: true, quota_cost: 0.25, message: { role: 'assistant', tool_calls: [{ id: 'one',
+      function: { name: 'lookup', arguments: '{}' } }] } },
+    { ok: true, quota_cost: 0.5, quota_cost_increment: 0.25, message: { role: 'assistant', tool_calls: [{ id: 'two',
+      function: { name: 'lookup', arguments: '{}' } }] } },
+    { ok: false, message: '服务暂不可用' },
+  ][round++] };
+  const service = createService(client, { getParentChatTools: () => ({
+    tools: [{ name: 'lookup', input_schema: { type: 'object' } }],
+    has: (name) => name === 'lookup', execute: () => ({ ok: true }),
+  }) });
+  const result = await service.chat(eventFixture().event, {
+    modelId: 'builtin', messages: [{ role: 'user', content: '查询' }],
+  });
+  assert.equal(round, 3);
+  assert.equal(result.ok, false);
+  assert.equal(result.quotaUsed, 0.5);
+});
+
 test('长对话只压缩模型请求副本，返回的持久化历史保持完整', async () => {
   let sentMessages = [];
   const client = {
@@ -193,14 +214,14 @@ test('continuation resumes the interrupted round with completed tool results and
     sendAIControlMessage: async () => assert.fail('Expected the stream transport'),
     async streamAIControlMessage(_key, _device, _model, messages, { signal }, onEvent) {
       seen.push(structuredClone(messages));
-      if (seen.length === 1) return { ok: true, message: { tool_calls: [{ id: 'one',
+      if (seen.length === 1) return { ok: true, quota_cost_increment: 0.125, message: { tool_calls: [{ id: 'one',
         function: { name: 'fixture_read', arguments: '{}' } }] } };
       if (seen.length === 2) {
         onEvent({ type: 'content_delta', delta: 'partial' });
         modelWaiting();
         return new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
       }
-      return { ok: true, message: { content: 'Resumed' } };
+      return { ok: true, quota_cost_increment: 0.25, message: { content: 'Resumed' } };
     },
   }, { browserAutomationBridge: bridge });
   const pending = service.chat(event, {
@@ -210,10 +231,12 @@ test('continuation resumes the interrupted round with completed tool results and
   await service.stop(event, { requestId: 'original' });
   const stopped = await pending;
   assert.equal(stopped.resumable, true);
+  assert.equal(stopped.quotaUsed, 0.125);
   const resume = { stream: true, requestId: 'next', resumeRequestId: 'original' };
   assert.equal((await service.chat(eventFixture(13).event, resume)).ok, false);
   const resumed = await service.chat(event, resume);
   assert.equal(resumed.message.content, 'Resumed');
+  assert.equal(resumed.quotaUsed, 0.25);
   assert.equal(toolCalls, 1);
   assert.equal(JSON.parse(seen[1].at(-1).content).value, 42);
   assert.deepEqual(seen[2], seen[1]);

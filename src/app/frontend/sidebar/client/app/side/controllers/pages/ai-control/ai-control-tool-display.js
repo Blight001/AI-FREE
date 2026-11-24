@@ -1,15 +1,3 @@
-  function formatTurnDuration(durationMs) {
-    const seconds = Math.floor(durationMs / 1000);
-    if (!seconds) return '用时不到 1 秒';
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor(seconds / 60) % 60;
-    const parts = [];
-    if (hours) parts.push(hours + ' 小时');
-    if (minutes) parts.push(minutes + ' 分钟');
-    if (seconds % 60) parts.push(seconds % 60 + ' 秒');
-    return '用时 ' + parts.join(' ');
-  }
-
   function createActivityDisclosure(className, bodyClassName, open, durationLabel = '') {
     const element = document.createElement('details');
     element.className = className;
@@ -129,7 +117,9 @@
       setOpen(!targetOpen);
       onToggle(targetOpen);
     });
-    return { setOpen, isOpen: () => targetOpen, wasToggled: () => manuallyToggled };
+    const disclosure = { setOpen, isOpen: () => targetOpen, wasToggled: () => manuallyToggled };
+    chatDisclosures.set(details, disclosure);
+    return disclosure;
   }
 
   class AssistantView {
@@ -148,9 +138,12 @@
       this.thinkingViews = new Map();
       this.toolViews = new Map();
       this.startActivityGroup();
-      this.hydrate({ traceEvents: options.traceEvents || [], reasoning: options.reasoning, toolEvents: options.toolEvents || [] });
-      if (options.content) this.addContent(options.content, Number.MAX_SAFE_INTEGER);
-      if (!options.pending) this.finalize({ durationMs: options.durationMs });
+      this.hydrate(options);
+      if (options.content) {
+        if (options.paused) this.setContent(options.content, { foldTools: false });
+        else this.addContent(options.content, Number.MAX_SAFE_INTEGER);
+      }
+      if (!options.pending) this.finalize(options);
     }
 
     startActivityGroup() {
@@ -192,8 +185,8 @@
       if (!activity.wasToggled() && !activity.openedTools.size) activity.setOpen(false);
     }
 
-    updateAnswer(value) {
-      if (String(value || '').trim()) this.foldCurrentTools();
+    updateAnswer(value, foldTools = true) {
+      if (foldTools && value.trim()) this.foldCurrentTools();
       renderMarkdownInto(this.ensureAnswer(), value);
       this.answerCopy.dataset.copyText = String(value || '');
     }
@@ -218,12 +211,12 @@
       activity.element.classList.toggle('is-running', Boolean(runningTool || activeThinking));
     }
 
-    finishThinking(round) {
+    finishThinking(round, { collapse = true } = {}) {
       const view = this.thinkingViews.get(Number(round));
       if (!view || view.finished) return;
       view.element.classList.remove('is-streaming');
       view.label.textContent = '深度思考';
-      view.setOpen(false);
+      if (collapse) view.setOpen(false);
       view.finished = true;
       this.syncActivityGroup(view.activity);
     }
@@ -297,9 +290,9 @@
       this.updateAnswer(this.content);
     }
 
-    setContent(value) {
+    setContent(value, { foldTools = true } = {}) {
       this.content = String(value || '');
-      this.updateAnswer(this.content);
+      this.updateAnswer(this.content, foldTools);
     }
 
     replaceContent(value, round = 0) {
@@ -345,26 +338,27 @@
       this.syncActivityGroup(view.activity);
     }
 
-    hydrateTraceEvents(traceEvents) {
+    hydrateTraceEvents(traceEvents, keepLastThinkingOpen) {
       traceEvents.forEach((event, index) => {
         const parsedRound = Number(event?.round);
         const round = Number.isFinite(parsedRound) ? parsedRound : index;
         if (event?.type === 'reasoning') {
           this.addReasoning(event.content, round);
-          this.finishThinking(round);
+          if (!keepLastThinkingOpen || index < traceEvents.length - 1) this.finishThinking(round);
         } else if (event?.type === 'tool') this.upsertTool(restoredToolActivity(event.tool), round);
         else if (event?.type === 'step') this.appendStep(event.content);
       });
     }
 
-    hydrate({ traceEvents = [], reasoning = '', toolEvents = [] } = {}) {
+    hydrate({ traceEvents = [], reasoning = '', toolEvents = [], paused = false, content = '' } = {}) {
+      const keepLastThinkingOpen = paused && !content;
       if (traceEvents.length) {
-        this.hydrateTraceEvents(traceEvents);
+        this.hydrateTraceEvents(traceEvents, keepLastThinkingOpen);
         return;
       }
       if (reasoning) {
         this.addReasoning(reasoning, 0);
-        this.finishThinking(0);
+        if (!keepLastThinkingOpen) this.finishThinking(0);
       }
       toolEvents.forEach((tool, index) => this.upsertTool(restoredToolActivity(tool), index + 1));
     }
@@ -407,11 +401,11 @@
       this.stack.prepend(this.durationLabel);
     }
 
-    finalize({ durationMs } = {}) {
-      this.foldCurrentTools();
+    finalize({ durationMs, paused = false } = {}) {
+      if (!paused) this.foldCurrentTools();
       this.row.classList.remove('pending');
       this.thinkingViews.forEach((view, round) => {
-        if (view.content) this.finishThinking(round);
+        if (view.content) this.finishThinking(round, { collapse: !paused });
         else this.discardEmptyThinking(round);
       });
       this.answer?.classList.remove('is-streaming');
@@ -419,13 +413,12 @@
       const durationLabel = Number.isSafeInteger(durationMs) && durationMs >= 0 ? formatTurnDuration(durationMs) : '';
       if (this.process) {
         if (durationLabel) this.process.label.textContent = durationLabel;
-      } else if (!this.compactStagedReply(durationLabel) && durationLabel) {
+      } else if ((paused || !this.compactStagedReply(durationLabel)) && durationLabel) {
         this.showTurnDuration(durationLabel);
       }
     }
   }
 
-  function createAssistantView(options = {}) {
-    const container = el('ai-chat-message-list');
+  function createAssistantView(options = {}, container = el('ai-chat-message-list')) {
     return container ? new AssistantView(container, options) : null;
   }

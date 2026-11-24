@@ -37,7 +37,7 @@ function promoteLightEvidence(before, failed) {
   before.screenshot = { width: before.lightEvidence.width, height: before.lightEvidence.height, kind: before.lightEvidence.kind };
 }
 
-async function snapshot(host, connection, probes, debug, options = {}) {
+async function snapshot(host, connection, probes, debug, options = {}, recordRefs = true) {
   const pageDiagnostics = await capturePageDiagnostics(host, connection);
   const state = await host.runtimeCommand(connection, 'inspect-page-state', { probes });
   if (state.success === false) throw Object.assign(new Error(state.error || '页面状态读取失败'), { errorCode: state.errorCode });
@@ -45,7 +45,7 @@ async function snapshot(host, connection, probes, debug, options = {}) {
     ...options, limit: debug ? 300 : 50, mark: false,
     include_accessibility_tree: debug || options.include_accessibility_tree === true,
     include_screenshot: debug || options.include_screenshot === true,
-  });
+  }, recordRefs);
   if (observed.success === false) throw Object.assign(new Error(observed.error || '页面观察失败'), { errorCode: observed.errorCode });
   return { ...observed, ...state, pageDiagnostics, capturedAt: Date.now() };
 }
@@ -119,7 +119,8 @@ async function finalSnapshot(host, connection, config, session, after, args) {
 
 async function prepareStep(host, connection, session, tool, args, config) {
   const resolved = tool === 'browser_action' ? await refreshTarget(host, connection, args) : { input: args };
-  const before = await snapshot(host, connection, config.probes, session.mode === 'debug');
+  // Pre-action diagnostics must not expire the caller's observation before dispatch.
+  const before = await snapshot(host, connection, config.probes, session.mode === 'debug', undefined, false);
   await cacheLightEvidence(host, connection, before, session.mode === 'debug');
   requireIdentity(before, config, session);
   if (resolved.failure) return { before, result: resolved.failure, executed: false };

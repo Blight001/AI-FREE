@@ -38,6 +38,15 @@ test('历史创建保持内存空会话，首次消息保存后可读取、重�
   assert.equal(data.repository.deleteSession(credentials, created.session.id).sessions.length, 0);
 });
 
+test('历史用量兼容旧记录并在旧客户端保存时保留累计值', () => {
+  const { repository } = fixture();
+  const oldSession = { id: 'old', messages: [{ role: 'user', content: '你好' }] };
+  assert.equal(repository.saveSession({}, oldSession).session.quotaUsed, 0);
+  assert.equal(repository.saveSession({}, { ...oldSession, quotaUsed: 2.5 }).session.quotaUsed, 2.5);
+  repository.saveSession({}, oldSession);
+  assert.equal(repository.getSession({}, 'old').session.quotaUsed, 2.5);
+});
+
 test('置顶和取消置顶不会改动聊天内容、更新时间，也不会被消息存档覆盖', () => {
   const { repository } = fixture();
   const messages = [{ role: 'user', content: '第一条消息' }];

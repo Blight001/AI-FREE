@@ -13,7 +13,7 @@ const { resolveTabBrowserProfile } = require('../../../src/app/backend/utils/bro
 const { MAX_MESSAGE_BYTES, PROTOCOL_VERSION } = require('../../../src/app/backend/browser-runtime/chromium-command-client');
 const { createCardLoginFixture, verifyAutomationCard } = require('../../helpers/flows/chromium-automation-card');
 const { acceptPageBinding } = require('../../helpers/flows/chromium-page-binding-cases');
-const { acceptMcpFileParity, acceptMcpSessionParity, serveMcpFileFixture } = require('../../helpers/flows/chromium-mcp-file-parity');
+const { acceptMcpFileParity, acceptMcpSessionParity, entryTools, serveMcpFileFixture } = require('../../helpers/flows/chromium-mcp-file-parity');
 const { verifySidebarReload, verifyTakeoverPointer } = require('../../helpers/flows/chromium-takeover-pointer');
 const { acceptChromiumRobustness } = require('../../helpers/flows/chromium-runtime-robustness');
 const { verifyBrowserHistoryDeletion } = require('../../helpers/flows/chromium-browser-deletion');
@@ -189,12 +189,20 @@ function createTestServer(loginFixture) {
         </script>`);
       return;
     }
+    if (url.pathname === '/cross-site-closed-shadow') {
+      response.end(`<!doctype html><title>Cross-site input</title>
+        <output id="frame-state">Loading</output>
+        <iframe style="position:fixed;left:100px;top:80px;width:800px;height:480px;border:0"
+          onload="document.getElementById('frame-state').textContent = 'Loaded'"
+          src="http://localhost:${server.address().port}/coordinate-input?entry=${Number(url.searchParams.get('entry'))}"></iframe>`);
+      return;
+    }
     if (url.pathname === '/coordinate-input') {
       response.end(`<!doctype html><meta charset="utf-8"><title>COORDINATE_INPUT_READY</title>
         <button style="position:fixed;left:0;top:0">错误按钮</button>
         <button id="publish" style="position:fixed;left:200px;top:150px;width:240px;height:80px"><span>发布</span></button>
         <xhs-publish-btn id="closed-publish" style="position:fixed;left:500px;top:150px;width:180px;height:80px">
-          <template shadowrootmode="closed">
+          <template id="closed-publish-template">
             <style>button{width:180px;height:80px;border:0;border-radius:20px;background:#ff2442;color:white}</style>
             <button type="button" aria-disabled="false">封闭发布</button>
           </template>
@@ -206,8 +214,13 @@ function createTestServer(loginFixture) {
           document.querySelector('#publish').addEventListener('click', (event) => {
             fetch('/input-result?profile=coordinate&trusted=' + event.isTrusted).catch(() => {});
           });
-          document.querySelector('#closed-publish').addEventListener('click', (event) => {
-            fetch('/input-result?profile=closed-shadow&trusted=' + event.isTrusted).catch(() => {});
+          const root = document.querySelector('#closed-publish').attachShadow({ mode: 'closed' });
+          root.append(document.querySelector('#closed-publish-template').content.cloneNode(true));
+          root.querySelector('button').addEventListener('click', (event) => {
+            const receipt = new URLSearchParams(location.search);
+            receipt.set('profile', 'closed-shadow');
+            receipt.set('trusted', event.isTrusted);
+            fetch('/input-result?' + receipt).catch(() => {});
           });
         </script>`);
       return;
@@ -324,6 +337,69 @@ async function waitForRequest(predicate, timeoutMs = 5000) {
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   throw new Error('等待输入事件结果超时');
+}
+
+async function verifyClosedShadowMcp(profileId, origin) {
+  const workspace = path.join(runtimeRoot, 'closed-shadow-workspace');
+  const entries = entryTools(manager, workspace);
+  for (const [index, call] of entries.entries()) {
+    const url = `${origin}/coordinate-input?entry=${index}`;
+    await manager.navigate(profileId, 'chromium', url);
+    assert.equal((await call('browser_control', { action: 'acquire' })).takeoverActive, true);
+    try {
+      const seen = await call('browser_observe', { keyword: '封闭发布', mark: false });
+      const button = seen.items.find((item) => item.accessibilityFallback && item.text === '封闭发布');
+      assert.ok(button, 'Closed-root button must be returned by browser_observe');
+      assert.equal(button.selector, undefined);
+      const click = await call('browser_action', {
+        action: 'click', ref: button.id, observation_id: seen.observationId,
+      });
+      assert.equal(click.success, true, JSON.stringify(click));
+      assert.equal(click.targetMode, 'viewport-coordinate');
+      const receipt = await waitForRequest((item) => item.path === '/input-result' &&
+        item.profile === 'closed-shadow' && new URLSearchParams(item.query).get('entry') === String(index));
+      assert.equal(new URLSearchParams(receipt.query).get('trusted'), 'true');
+      const previous = await call('browser_observe', { keyword: '封闭发布', mark: false });
+      const previousButton = previous.items.find((item) => item.accessibilityFallback && item.text === '封闭发布');
+      assert.ok(previousButton);
+      await call('browser_observe', { keyword: '发布', mark: false });
+      const stale = await call('browser_action', {
+        action: 'click', ref: previousButton.id, observation_id: previous.observationId,
+      });
+      assert.equal(stale.errorCode, 'OBSERVED_REF_EXPIRED', JSON.stringify(stale));
+      assert.equal(stale.actionExecuted, false);
+    } finally {
+      await call('browser_control', { action: 'release' });
+    }
+  }
+  console.log('[phase3-acceptance] external MCP and sidebar clicked the closed-root internal button by ref');
+}
+
+async function verifyCrossSiteClosedShadow(origin) {
+  const profileId = 'phase3_cross_site';
+  const url = `${origin}/cross-site-closed-shadow`;
+  const { state } = await launchProfile(profileId, url, { extraArgs: ['--site-per-process', '--no-proxy-server'] });
+  const entries = entryTools(manager, path.join(runtimeRoot, 'cross-site-workspace'));
+  for (const [index, call] of entries.entries()) {
+    const entry = index + 10;
+    await manager.navigate(profileId, 'chromium', `${url}?entry=${entry}`);
+    assert.equal((await call('browser_control', { action: 'acquire' })).takeoverActive, true);
+    try {
+      const loaded = await call('browser_wait', { condition: 'text_contains', selector: '#frame-state', value: 'Loaded' });
+      assert.equal(loaded.success, true, JSON.stringify(loaded));
+      await waitForRequest((item) => item.path === '/coordinate-input' &&
+        new URLSearchParams(item.query).get('entry') === String(entry));
+      const click = await call('browser_action', { action: 'click', x: 690, y: 270, after: 'none' });
+      assert.equal(click.success, true, JSON.stringify(click));
+      const receipt = await waitForRequest((item) => item.path === '/input-result' &&
+        item.profile === 'closed-shadow' && new URLSearchParams(item.query).get('entry') === String(entry));
+      assert.equal(new URLSearchParams(receipt.query).get('trusted'), 'true');
+    } finally {
+      await call('browser_control', { action: 'release' });
+    }
+  }
+  await stopAndAssertReleased(profileId, state.pid);
+  console.log('[phase3-acceptance] both MCP entries clicked inside the cross-site frame');
 }
 
 async function launchProfile(profileId, targetUrl, options = {}) {
@@ -641,6 +717,11 @@ app.whenReady().then(async () => {
     return shutdown(0);
   }
 
+  if (process.argv.includes('--cross-site-click-only')) {
+    await verifyCrossSiteClosedShadow(origin);
+    return shutdown(0);
+  }
+
   if (process.argv.includes('--page-binding-only')) {
     const profileId = 'phase3_binding';
     const url = `${origin}/file-input?profile=b`;
@@ -661,6 +742,7 @@ app.whenReady().then(async () => {
     await acceptChromiumRobustness({ manager, origin, stopAndAssertReleased });
   }
   await verifyDefaultBrowserIdentity(origin);
+  await verifyCrossSiteClosedShadow(origin);
   const a = await launchProfile('phase3_a', `${origin}/page?profile=a`);
   await verifyBrowserColorScheme('phase3_a', origin);
   await verifyTakeoverPointer({ manager, pid: a.state.pid, profileId: 'phase3_a', url: `${origin}/page?profile=a` });
@@ -669,6 +751,7 @@ app.whenReady().then(async () => {
     await stopAndAssertReleased('phase3_a', a.state.pid);
     return shutdown(0);
   }
+  await verifyClosedShadowMcp('phase3_a', origin);
   await manager.hide('phase3_a', 'chromium');
   const b = await launchProfile(
     'phase3_b',
@@ -778,7 +861,8 @@ app.whenReady().then(async () => {
   );
   assert.equal(closedShadowClicked.result.targetMode, 'viewport-coordinate');
   const closedShadowRequest = await waitForRequest(
-    (item) => item.path === '/input-result' && item.profile === 'closed-shadow',
+    (item) => item.path === '/input-result' && item.profile === 'closed-shadow' &&
+      !new URLSearchParams(item.query).has('entry'),
   );
   assert.equal(new URLSearchParams(closedShadowRequest.query || '').get('trusted'), 'true');
   const coordinateObserved = await manager.dispatchAutomationByProcessId(b.state.pid, 'observe-page', {
