@@ -281,6 +281,8 @@ class AutomationRunManager {
     return publicRun(run);
   }
 
+  hasActiveRuns() { return this.runs.some((run) => ACTIVE.has(run.status)); }
+
   list(query = {}) {
     let items = [...this.runs];
     if (query.card_id) items = items.filter((run) => run.cardId === String(query.card_id));

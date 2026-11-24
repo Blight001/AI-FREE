@@ -99,6 +99,8 @@ class McpMouseDebugSession {
     }
   }
 
+  isBusy() { return Boolean(this.active || this.transition || this.stopping); }
+
   stop() {
     if (this.stopping) return this.stopping;
     this.stopping = this.deactivate().finally(() => { this.stopping = null; });

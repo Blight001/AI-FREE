@@ -1,4 +1,6 @@
 const { registerHomeConsoleIpc } = require('../features/window/register-home-console-ipc');
+const { createMcpBenchmarkController } = require('../features/browser/mcp-benchmark-controller');
+const { createMcpDevRestartController } = require('../features/browser/mcp-dev-restart-controller');
 const { registerMcpDebugPanelIpc } = require('../features/browser/register-mcp-debug-panel-ipc');
 const { registerMcpCatalogIpc } = require('../features/browser/register-mcp-catalog-ipc');
 const { createAiSupportService } = require('../features/ai-chat/ai-support-service');
@@ -111,6 +113,16 @@ function createAndRegisterAccountServices(deps, ipc) {
   return accountService;
 }
 
+function createMcpRestartService(deps, app, aiChatService, managedChat, benchmark) {
+  if (!deps.isDevMode) return null;
+  const restart = createMcpDevRestartController({ app: deps.app, fs: deps.fs, path: require('node:path'),
+    isDevMode: true, isBusy: () => aiChatService.hasActiveRuns() || managedChat?.hasActiveRuns() === true
+      || Boolean(benchmark?.active) || deps.browserAutomationBridge?.hasActiveOperations?.() === true,
+    logger: deps.logger });
+  app?.once?.('before-quit', () => restart.dispose());
+  return restart;
+}
+
 function createAndRegisterAiServices(deps, ipc) {
   const aiSupport = createAiSupportService({
     readStoreConfigSafe: deps.readStoreConfigSafe,
@@ -129,6 +141,8 @@ function createAndRegisterAiServices(deps, ipc) {
   registerAiSupportIpc({ ipc, service: aiSupport });
   const managedChat = deps.managedChatRepository ? registerManagedChatIpc({ ipc, deps, getModels: aiSupport.getModels }) : null;
   if (managedChat) deps.app?.once?.('before-quit', managedChat.dispose);
+  const benchmark = deps.isDevMode && deps.app?.getPath ? createMcpBenchmarkController(deps) : null;
+  if (benchmark) deps.app.once('before-quit', () => benchmark.dispose());
   const aiChatService = registerAiChatIpc({
     getParentChatTools: managedChat?.getParentTools,
     ...deps,
@@ -138,13 +152,14 @@ function createAndRegisterAiServices(deps, ipc) {
     licenseCache: deps.licenseCache,
     logger: deps.logger,
   });
+  const mcpDevRestart = createMcpRestartService(deps, deps.app, aiChatService, managedChat, benchmark);
   const getWindowTools = () => combineToolSets(aiChatService.getWindowTools(), managedChat?.getExternalTools());
   deps.browserAutomationBridge?.configureExternalMcp?.({
     getConnections: () => aiSupport.getBrowserConnections().connections,
     getWindowTools,
   });
   registerMcpCatalogIpc(ipc, { ...deps, getWindowTools });
-  const disposeMcpDebug = registerMcpDebugPanelIpc(ipc, { ...deps, getWindowTools });
+  const disposeMcpDebug = registerMcpDebugPanelIpc(ipc, { ...deps, getWindowTools, benchmark, mcpDevRestart });
   deps.app?.once('will-quit', disposeMcpDebug);
   if (deps.aiServerDeviceService) {
     registerAiServerDeviceIpc({ ipc, service: deps.aiServerDeviceService, getMainWindow: deps.getMainWindow });

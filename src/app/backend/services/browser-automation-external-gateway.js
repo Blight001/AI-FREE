@@ -17,62 +17,12 @@ const {
 const EXTERNAL_MCP_PREFIX = '/mcp/v1/';
 const EXTERNAL_MCP_ENDPOINT = '/mcp/v1';
 const EXTERNAL_MCP_TOKEN_HEADER = 'x-ai-free-mcp-token';
-const MCP_PROTOCOL_VERSION = '2025-06-18';
-const MAX_BODY_BYTES = 1024 * 1024;
+const { MCP_PROTOCOL_VERSION, jsonResponse, mcpResponse, runWhileConnected, mcpError, readJson } = require('./external-mcp-http');
 
 function constantTimeEquals(actual, expected) {
   const left = Buffer.from(String(actual || ''), 'utf8');
   const right = Buffer.from(String(expected || ''), 'utf8');
   return left.length > 0 && left.length === right.length && crypto.timingSafeEqual(left, right);
-}
-
-function jsonResponse(res, statusCode, payload) {
-  const body = Buffer.from(JSON.stringify(payload), 'utf8');
-  res.writeHead(statusCode, {
-    'Content-Type': 'application/json; charset=utf-8',
-    'Content-Length': body.length,
-    'Cache-Control': 'no-store',
-  });
-  res.end(body);
-}
-
-function mcpResponse(res, payload, statusCode = 200) {
-  const body = Buffer.from(JSON.stringify(payload), 'utf8');
-  res.writeHead(statusCode, {
-    'Content-Type': 'application/json; charset=utf-8',
-    'Content-Length': body.length,
-    'Cache-Control': 'no-store',
-    'MCP-Protocol-Version': MCP_PROTOCOL_VERSION,
-  });
-  res.end(body);
-}
-
-async function runWhileConnected(res, operation) {
-  const controller = new AbortController();
-  const disconnect = () => controller.abort();
-  res.once('close', disconnect);
-  try {
-    if (res.destroyed) disconnect();
-    return await operation(controller.signal);
-  } finally {
-    res.off('close', disconnect);
-  }
-}
-
-function mcpError(id, code, message, data = undefined) {
-  return { jsonrpc: '2.0', id, error: { code, message, ...(data === undefined ? {} : { data }) } };
-}
-
-async function readJson(req) {
-  const chunks = [];
-  let size = 0;
-  for await (const chunk of req) {
-    size += chunk.length;
-    if (size > MAX_BODY_BYTES) throw new Error('请求内容过大');
-    chunks.push(chunk);
-  }
-  if (!chunks.length) return {};
-  return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
 
 function normalizeSchema(tool = {}) {
@@ -145,6 +95,7 @@ function addOverviewTool(tools, tool) {
 class BrowserAutomationExternalGateway {
   constructor(options = {}) {
     this.options = options;
+    this.activeCalls = 0;
     this.logger = options.logger || console;
     const descriptorPath = String(options.descriptorPath || '').trim();
     this.descriptorPath = descriptorPath ? path.resolve(descriptorPath) : '';
@@ -279,6 +230,12 @@ class BrowserAutomationExternalGateway {
 
   async callTool(name, rawArgs = {}, signal = undefined, managedChatActor = undefined) {
     this.assertAccess();
+    this.activeCalls += 1;
+    try { return await this.executeTool(name, rawArgs, signal, managedChatActor); }
+    finally { this.activeCalls -= 1; }
+  }
+
+  async executeTool(name, rawArgs, signal, managedChatActor) {
     signal?.throwIfAborted();
     const toolName = String(name || '').trim();
     const args = rawArgs && typeof rawArgs === 'object' && !Array.isArray(rawArgs) ? { ...rawArgs } : {};

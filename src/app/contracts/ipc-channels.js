@@ -12,6 +12,7 @@ const INVOKE_CHANNELS = [
   { channel: 'account-get-session', kind: 'invoke', domain: 'account', registrar: 'src/app/backend/features/account/register-account-ipc.js' },
   { channel: 'account-open-vip-shop', kind: 'invoke', domain: 'account', registrar: 'src/app/backend/features/account/register-vip-shop-ipc.js' },
   { channel: 'account-logout', kind: 'invoke', domain: 'account', registrar: 'src/app/backend/features/account/register-account-ipc.js' },
+  { channel: 'ai-control-benchmark-decline', kind: 'invoke', domain: 'ai', registrar: 'src/app/backend/features/ai-chat/register-chat-ipc.js', requestSchema: 'ai.benchmark-decline', resultEnvelope: true },
   { channel: 'ai-control-chat', kind: 'invoke', domain: 'ai', registrar: 'src/app/backend/features/ai-chat/register-chat-ipc.js', requestSchema: 'ai.chat' },
   { channel: 'ai-control-chat-insert', kind: 'invoke', domain: 'ai', registrar: 'src/app/backend/features/ai-chat/register-chat-ipc.js', requestSchema: 'ai.chat-insert' },
   { channel: 'ai-control-managed-chat', kind: 'invoke', domain: 'ai', registrar: 'src/app/backend/features/ai-chat/register-managed-chat-ipc.js', requestSchema: 'ai.managed-chat', resultEnvelope: true },
@@ -27,7 +28,7 @@ const INVOKE_CHANNELS = [
   { channel: 'ai-control-manage-automation-card', kind: 'invoke', domain: 'ai', registrar: 'src/app/backend/features/ai-chat/register-support-ipc.js', requestSchema: 'ai.automation-card-operation' },
   { channel: 'ai-control-history-create', kind: 'invoke', domain: 'ai', registrar: 'src/app/backend/features/ai-chat/register-history-ipc.js', requestSchema: 'ai.history-create' },
   { channel: 'ai-control-history-delete', kind: 'invoke', domain: 'ai', registrar: 'src/app/backend/features/ai-chat/register-history-ipc.js', requestSchema: 'ai.history-id' },
-  { channel: 'ai-control-history-get', kind: 'invoke', domain: 'ai', registrar: 'src/app/backend/features/ai-chat/register-history-ipc.js', requestSchema: 'ai.history-id' },
+  { channel: 'ai-control-history-get', kind: 'invoke', domain: 'ai', registrar: 'src/app/backend/features/ai-chat/register-history-ipc.js', requestSchema: 'ai.history-get' },
   { channel: 'ai-control-history-list', kind: 'invoke', domain: 'ai', registrar: 'src/app/backend/features/ai-chat/register-history-ipc.js' },
   { channel: 'ai-control-history-pin', kind: 'invoke', domain: 'ai', registrar: 'src/app/backend/features/ai-chat/register-history-ipc.js', requestSchema: 'ai.history-pin', resultEnvelope: true },
   { channel: 'ai-control-history-rename', kind: 'invoke', domain: 'ai', registrar: 'src/app/backend/features/ai-chat/register-history-ipc.js', requestSchema: 'ai.history-rename' },
@@ -178,6 +179,7 @@ const EVENT_CHANNELS = [
 ];
 
 const PUSH_CHANNELS = [
+  { channel: 'ai-control-benchmark-notice', kind: 'push', domain: 'ai' },
   // 下面一组经间接写法发送（sendToSide?.() 可选链 / 三元选择通道名 / 捕获的
   // webContents 变量），静态扫描不易命中，由 preload 白名单告警核实后登记。
   { channel: 'provider-account-open-editor', kind: 'push', domain: 'account' },

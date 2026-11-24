@@ -4,6 +4,14 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { createNativeBrowserAutomation } = require('../../../src/app/backend/services/native-browser-automation');
 
+test('plain browser actions bypass diagnostic workflow overhead while explicit workflow options retain it', () => {
+  const { requestsWorkflowAction } = require('../../../src/app/backend/services/browser-workflow-tool-definition');
+  assert.equal(requestsWorkflowAction({ action: 'click', x: 10, y: 12 }), false);
+  assert.equal(requestsWorkflowAction({ action: 'drag', x: 10, y: 12, to_x: 80, to_y: 12 }), false);
+  assert.equal(requestsWorkflowAction({ action: 'click', selector: '#save', expect: [] }), true);
+  assert.equal(requestsWorkflowAction({ action: 'click', locator: { test_id: 'save' } }), true);
+});
+
 test('releasing takeover waits for a sent click and drops the next queued click', async () => {
   const { service, calls, setAutomationHandler } = fixture();
   const id = 'native:profile-a';
@@ -25,6 +33,17 @@ test('releasing takeover waits for a sent click and drops the next queued click'
   assert.equal((await next).errorCode, 'BROWSER_TAKEOVER_REQUIRED');
   assert.equal((await release).takeoverActive, false);
   assert.deepEqual(calls.map(([, , command]) => command), ['perform-action', 'automation-takeover']);
+});
+
+test('plain drag dispatches once without diagnostic stability polling', async () => {
+  const { service, calls, setAutomationHandler } = fixture();
+  setAutomationHandler(async (_pid, command, payload) => ({ result: { success: true, command, payload, ...(command === 'automation-takeover' && { takeoverActive: payload.action === 'acquire' }) } }));
+  const id = 'native:profile-a';
+  assert.equal((await service.dispatch(id, 'browser_control', { action: 'acquire' })).success, true);
+  calls.length = 0;
+  const result = await service.dispatch(id, 'browser_action', { action: 'drag', x: 12, y: 16, to_x: 120, to_y: 16 });
+  assert.equal(result.success, true);
+  assert.deepEqual(calls.filter((entry) => entry[0] === 'automation').map((entry) => entry[2]), ['perform-action']);
 });
 
 test('only the locally authorized chat can route input to an app surface', async () => {
@@ -381,6 +400,41 @@ test('observed refs click the validated exposed point instead of re-querying a g
     action: 'click', ref: 'e1', observation_id: observed.observationId,
     selector: 'button', x: 126, y: 46,
   }]);
+});
+
+test('drag can resolve its destination from a ref in the same observation', async () => {
+  const { calls, service, setAutomationHandler } = fixture();
+  setAutomationHandler(async (_pid, command) => ({ result: command === 'observe-page' ? {
+    success: true, items: [
+      { id: 'item', selector: '#item', x: 10, y: 20, width: 40, height: 20 },
+      { id: 'destination', selector: '#destination', x: 180, y: 80, width: 60, height: 30 },
+    ],
+  } : { success: true } }));
+  const observed = await service.dispatch('native:profile-a', 'browser_observe', {});
+  const result = await service.dispatch('native:profile-a', 'browser_action', {
+    action: 'drag', ref: 'item', to_ref: 'destination', observation_id: observed.observationId,
+  });
+  assert.equal(result.success, true);
+  assert.deepEqual(calls.find((entry) => entry[2] === 'perform-action'), [
+    'automation', 42, 'perform-action', {
+      action: 'drag', ref: 'item', to_ref: 'destination', observation_id: observed.observationId,
+      selector: '#item', x: 30, y: 30, to_x: 210, to_y: 95,
+    },
+  ]);
+});
+
+test('drag rejects an endpoint ref from a different observation without dispatching', async () => {
+  const { calls, service, setAutomationHandler } = fixture();
+  setAutomationHandler(async (_pid, command) => ({ result: command === 'observe-page' ? {
+    success: true, items: [{ id: 'destination', selector: '#destination', x: 20, y: 20, width: 30, height: 20 }],
+  } : { success: true } }));
+  await service.dispatch('native:profile-a', 'browser_observe', {});
+  const result = await service.dispatch('native:profile-a', 'browser_action', {
+    action: 'drag', x: 5, y: 5, to_ref: 'destination', observation_id: 'stale-observation',
+  });
+  assert.equal(result.errorCode, 'DRAG_TARGET_INVALID');
+  assert.equal(result.actionExecuted, false);
+  assert.equal(calls.some((entry) => entry[2] === 'perform-action'), false);
 });
 
 test('observed refs reject an explicitly stale observation snapshot', async () => {

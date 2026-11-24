@@ -7,6 +7,7 @@ const {
   isCustomAiModelId,
 } = require('../../utils/ai-control-settings');
 const { normalizeAccountSession } = require('../../utils/account-session');
+const { managedBrowserContext } = require('./managed-chat-browser');
 const { enrichBrowserConnectionNames } = require('./connection-names');
 const { listAutomationCards } = require('./automation-card-service');
 const { buildChatToolContext } = require('./chat-tool-context');
@@ -144,7 +145,8 @@ function createChatEmitter(event, options) {
   };
 }
 
-function prepareChatRequest(deps, event, input, chatRuns, getWindowTools) {
+function prepareChatRequest(deps, event, input, chatRuns, getWindowTools, grant = null) {
+  if (grant) return prepareScopedBenchmarkChat(deps, event, input, chatRuns, grant);
   const access = resolveChatAccess(deps, input);
   if (access.error) return access;
   const options = normalizeChatOptions(input);
@@ -182,6 +184,25 @@ function prepareChatRequest(deps, event, input, chatRuns, getWindowTools) {
     toolContext,
     windowTools,
   };
+}
+
+function prepareScopedBenchmarkChat(deps, event, input, chatRuns, grant) {
+  const access = resolveChatAccess(deps, input);
+  if (access.error) return access;
+  const options = normalizeChatOptions(input);
+  if (options.disableTools || (access.useCustomApi && !access.customApi.supportsTools)) {
+    return { error: { ok: false, message: '当前模型未启用 MCP 工具' } };
+  }
+  const scoped = managedBrowserContext(deps.browserAutomationBridge, grant);
+  if (scoped.error) return { error: { ok: false, message: scoped.error } };
+  const initialMessages = buildInlineAttachmentMessages(deps.aiSandboxDir, options.initialMessages);
+  const toolContext = buildChatToolContext({ scopedBrowser: true, connections: scoped.connections,
+    controlledConnectionId: scoped.controlledConnectionId, initialMessages, localInteraction: true });
+  const started = options.useStream && options.requestId ? chatRuns.begin(event, options.requestId) : {};
+  return { ...access, ...options, runKey: started.key, run: started.run, bridge: scoped.bridge,
+    workspaceDir: deps.aiSandboxDir, connections: scoped.connections,
+    controlledConnectionId: scoped.controlledConnectionId, emit: createChatEmitter(event, options),
+    toolContext, windowTools: null };
 }
 
 function prepareChatContinuation(deps, event, input, chatRuns) {

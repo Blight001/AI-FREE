@@ -78,6 +78,8 @@ contextBridge.exposeInMainWorld('aiFree', Object.freeze({
     emitBrowserSelectionChanged: sendChannel('ai-control-browser-selection-changed'),
     onBrowserSelectionChanged: subscribeChannel('ai-control-browser-selection-changed'),
     onServerDeviceStatus: subscribeChannel('ai-server-device-status'),
+    onBenchmarkNotice: subscribeChannel('ai-control-benchmark-notice'),
+    declineBenchmark: invokeChannel('ai-control-benchmark-decline'),
     onChatEvent: subscribeChannel('ai-control-chat-event'),
   }),
   account: Object.freeze({

@@ -2,12 +2,11 @@
  * AI 对话历史本地存储（按登录账号隔离）
  */
 const crypto = require('crypto');
-const path = require('path');
-const { app } = require('electron');
 const { AppError } = require('../../contracts/ipc-result');
 const { parseChatQuotaUsed } = require('../../shared/quota-display');
-const { readJsonFileSafe, writeJsonFileSafe } = require('../utils/json-store');
 const { normalizeFileArtifacts } = require('../features/ai-chat/workspace-file-artifacts');
+const { createAiChatHistoryFileStore } = require('./ai-chat-history-file-store');
+const { createAiChatHistoryMemoryStore } = require('./ai-chat-history-memory-store');
 
 function accountScope(credentials = {}) {
   const key = String(credentials.key || credentials.credential || '').trim();
@@ -17,47 +16,10 @@ function accountScope(credentials = {}) {
   return crypto.createHash('sha256').update(seed).digest('hex').slice(0, 20);
 }
 
-function historyFilePath(scope) {
-  let base = '';
-  try {
-    base = app?.getPath ? app.getPath('userData') : '';
-  } catch (_) {
-    base = '';
-  }
-  if (!base) base = path.join(__dirname, '../../../../');
-  return path.join(base, 'ai-chat-history', `${scope || 'anonymous'}.json`);
-}
-
-function emptyStore() {
-  return { version: 1, sessions: [], currentId: '' };
-}
-
-function readStore(scope) {
-  const data = readJsonFileSafe(historyFilePath(scope), {
-    fallback: emptyStore(),
-    logPrefix: 'AIHistory',
-  });
-  if (!data || typeof data !== 'object') return emptyStore();
-  const sessions = Array.isArray(data.sessions) ? data.sessions : [];
-  return {
-    version: 1,
-    sessions,
-    currentId: String(data.currentId || ''),
-  };
-}
-
-function writeStore(scope, store) {
-  return writeJsonFileSafe(historyFilePath(scope), store, {
-    logPrefix: 'AIHistory',
-  });
-}
-
 const DEFAULT_HISTORY_CONTEXT = Object.freeze({
   accountScope,
   now: () => Date.now(),
   randomUUID: () => crypto.randomUUID(),
-  readStore,
-  writeStore,
 });
 
 function normalizeHistoryContext(options = {}) {
@@ -65,8 +27,6 @@ function normalizeHistoryContext(options = {}) {
     accountScope: options.accountScope || DEFAULT_HISTORY_CONTEXT.accountScope,
     now: options.now || DEFAULT_HISTORY_CONTEXT.now,
     randomUUID: options.randomUUID || DEFAULT_HISTORY_CONTEXT.randomUUID,
-    readStore: options.readStore || DEFAULT_HISTORY_CONTEXT.readStore,
-    writeStore: options.writeStore || DEFAULT_HISTORY_CONTEXT.writeStore,
   };
 }
 
@@ -240,169 +200,198 @@ function sessionSummary(session) {
   };
 }
 
-function listSessions(credentials, context = DEFAULT_HISTORY_CONTEXT) {
-  const scope = context.accountScope(credentials);
-  const store = context.readStore(scope);
-  const sessions = store.sessions
-    .map((item) => normalizeSession(item, context))
-    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
-    .map(sessionSummary);
+function normalizedMessageCount(value, fallback) {
+  return Number.isSafeInteger(value) && value >= 0 ? value : fallback;
+}
+
+function normalizeSessionSummary(raw = {}, context = DEFAULT_HISTORY_CONTEXT) {
+  const messages = Array.isArray(raw.messages) ? raw.messages : [];
+  const messageCount = normalizedMessageCount(raw.messageCount, messages.length);
+  const browserConnectionIds = normalizeBrowserConnectionIds(raw);
   return {
-    ok: true,
-    sessions,
-    currentId: store.currentId || (sessions[0]?.id || ''),
+    id: String(raw.id || '').trim(),
+    title: String(raw.title || '').trim().slice(0, 40) || '新对话',
+    titleGenerated: raw.titleGenerated === true,
+    modelId: String(raw.modelId || '').trim(),
+    browserConnectionId: browserConnectionIds[0] || '',
+    browserConnectionIds,
+    automationCardId: String(raw.automationCardId || '').trim(),
+    preview: String(raw.preview || previewFromMessages(messages) || '').slice(0, 80),
+    messageCount,
+    createdAt: Number(raw.createdAt) || context.now(),
+    updatedAt: Number(raw.updatedAt) || context.now(),
+    pinnedAt: normalizePinnedAt(raw.pinnedAt),
   };
 }
 
-function getSession(credentials, sessionId, context = DEFAULT_HISTORY_CONTEXT) {
+function sortedIndexEntries(index, context) {
+  return index.sessions.map((item) => normalizeSessionSummary(item, context))
+    .filter((item) => item.id)
+    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+}
+
+function replaceIndexEntry(index, entry) {
+  const sessions = index.sessions.filter((item) => String(item.id) !== String(entry.id));
+  sessions.push(entry);
+  index.sessions = sessions.sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0));
+}
+
+function removeIndexEntry(index, id) {
+  index.sessions = index.sessions.filter((item) => String(item.id) !== String(id));
+  if (index.currentId === id) index.currentId = String(index.sessions[0]?.id || '');
+}
+
+function listSessions(credentials, context, storage) {
+  const index = storage.readIndex(context.accountScope(credentials));
+  const sessions = sortedIndexEntries(index, context);
+  return { ok: true, sessions, currentId: index.currentId || sessions[0]?.id || '' };
+}
+
+function getSession(credentials, sessionId, options, context, storage) {
   const scope = context.accountScope(credentials);
-  const store = context.readStore(scope);
   const id = String(sessionId || '').trim();
-  const found = store.sessions.find((item) => String(item.id) === id);
-  if (!found) return { ok: false, message: '对话不存在' };
-  const session = normalizeSession(found, context);
-  store.currentId = session.id;
-  context.writeStore(scope, store);
+  const index = storage.readIndex(scope);
+  if (!index.sessions.some((item) => String(item.id) === id)) return { ok: false, message: '对话不存在' };
+  const raw = storage.readSession(scope, id);
+  if (!raw) return { ok: false, message: '对话不存在' };
+  const session = normalizeSession(raw, context);
+  if (options?.setCurrent !== false) {
+    index.currentId = session.id;
+    storage.writeIndex(scope, index);
+  }
   return { ok: true, session };
 }
 
-function saveSession(credentials, rawSession, options = {}, context = DEFAULT_HISTORY_CONTEXT) {
+function saveSession(credentials, rawSession, options, context, storage) {
   const scope = context.accountScope(credentials);
-  const store = context.readStore(scope);
+  const index = storage.readIndex(scope);
   const session = normalizeSession(rawSession, context);
   session.preview = previewFromMessages(session.messages) || session.preview || '';
   session.updatedAt = context.now();
-
-  // 无消息的空会话不落盘；已有会话被删空时，同时移除旧记录。
-  if (!session.messages.length && options.allowEmpty !== true) {
-    return removeEmptySession(scope, store, session, context);
+  const existingEntry = index.sessions.find((item) => String(item.id) === session.id);
+  if (!session.messages.length && options?.allowEmpty !== true) {
+    return removeEmptySession(scope, index, session, existingEntry, storage);
   }
-
-  const index = store.sessions.findIndex((item) => String(item.id) === session.id);
-  if (index >= 0) {
-    session.pinnedAt = normalizePinnedAt(store.sessions[index].pinnedAt);
-    session.quotaUsed = Math.max(session.quotaUsed, parseChatQuotaUsed(store.sessions[index].quotaUsed) ?? 0);
-    store.sessions[index] = session;
-  } else store.sessions.unshift(session);
-
-  store.sessions.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-  // 清理无消息的脏数据
-  store.sessions = store.sessions.filter((item) => {
-    const msgs = Array.isArray(item.messages) ? item.messages : [];
-    return msgs.length > 0 || String(item.id) === session.id;
-  });
-  if (options.setCurrent !== false) store.currentId = session.id;
-  const written = context.writeStore(scope, store);
-  if (!written) {
-    return { ok: false, message: '对话历史写入本地失败', session, summary: sessionSummary(session) };
+  const existing = existingEntry ? storage.readSession(scope, session.id) : null;
+  if (existing) {
+    session.pinnedAt = normalizePinnedAt(existing.pinnedAt);
+    session.quotaUsed = Math.max(session.quotaUsed, parseChatQuotaUsed(existing.quotaUsed) ?? 0);
   }
+  if (!storage.writeSession(scope, session)) return historyWriteFailure(session);
+  replaceIndexEntry(index, storage.indexEntry(scope, sessionSummary(session)));
+  if (options?.setCurrent !== false) index.currentId = session.id;
+  if (!storage.writeIndex(scope, index)) return historyWriteFailure(session);
   return { ok: true, session, summary: sessionSummary(session) };
 }
 
-function removeEmptySession(scope, store, session, context) {
-  const existingIndex = store.sessions.findIndex((item) => String(item.id) === session.id);
-  if (existingIndex < 0) return { ok: true, session, summary: sessionSummary(session), skipped: true };
-  store.sessions.splice(existingIndex, 1);
-  if (store.currentId === session.id) store.currentId = store.sessions[0]?.id || '';
-  const written = context.writeStore(scope, store);
-  if (!written) {
-    return { ok: false, message: '对话历史写入本地失败', session, summary: sessionSummary(session) };
-  }
-  return { ok: true, session, summary: sessionSummary(session), removed: true, currentId: store.currentId };
+function historyWriteFailure(session) {
+  return { ok: false, message: '对话历史写入本地失败', session, summary: sessionSummary(session) };
 }
 
-function deleteSession(credentials, sessionId, context = DEFAULT_HISTORY_CONTEXT) {
+function removeEmptySession(scope, index, session, existingEntry, storage) {
+  if (!existingEntry) return { ok: true, session, summary: sessionSummary(session), skipped: true };
+  if (!storage.deleteSession(scope, session.id)) return historyWriteFailure(session);
+  removeIndexEntry(index, session.id);
+  if (!storage.writeIndex(scope, index)) return historyWriteFailure(session);
+  return { ok: true, session, summary: sessionSummary(session), removed: true, currentId: index.currentId };
+}
+
+function deleteSession(credentials, sessionId, context, storage) {
   const scope = context.accountScope(credentials);
-  const store = context.readStore(scope);
   const id = String(sessionId || '').trim();
-  const before = store.sessions.length;
-  store.sessions = store.sessions.filter((item) => String(item.id) !== id);
-  if (store.sessions.length === before) {
-    return { ok: false, message: '对话不存在' };
-  }
-  if (store.currentId === id) {
-    store.currentId = store.sessions[0]?.id || '';
-  }
-  const written = context.writeStore(scope, store);
-  if (!written) {
-    return { ok: false, message: '对话历史写入本地失败' };
-  }
-  return {
-    ok: true,
-    currentId: store.currentId,
-    sessions: store.sessions
-      .map((item) => normalizeSession(item, context))
-      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
-      .map(sessionSummary),
-  };
+  const index = storage.readIndex(scope);
+  if (!index.sessions.some((item) => String(item.id) === id)) return { ok: false, message: '对话不存在' };
+  if (!storage.deleteSession(scope, id)) return { ok: false, message: '对话历史删除失败' };
+  removeIndexEntry(index, id);
+  if (!storage.writeIndex(scope, index)) return { ok: false, message: '对话历史索引更新失败' };
+  return { ok: true, currentId: index.currentId, sessions: sortedIndexEntries(index, context) };
 }
 
-function renameSession(credentials, sessionId, rawTitle, context = DEFAULT_HISTORY_CONTEXT) {
+function renameSession(credentials, sessionId, rawTitle, context, storage) {
   const scope = context.accountScope(credentials);
-  const store = context.readStore(scope);
   const id = String(sessionId || '').trim();
   const title = String(rawTitle || '').trim().slice(0, 40);
   if (!title) return { ok: false, message: '对话名称不能为空' };
-  const index = store.sessions.findIndex((item) => String(item.id) === id);
-  if (index < 0) return { ok: false, message: '对话不存在' };
-
-  const session = normalizeSession(store.sessions[index], context);
+  const index = storage.readIndex(scope);
+  if (!index.sessions.some((item) => String(item.id) === id)) return { ok: false, message: '对话不存在' };
+  const raw = storage.readSession(scope, id);
+  if (!raw) return { ok: false, message: '对话不存在' };
+  const session = normalizeSession(raw, context);
   session.title = title;
-  // 手动命名后不再让自动标题生成覆盖用户输入。
   session.titleGenerated = true;
-  store.sessions[index] = session;
-  const written = context.writeStore(scope, store);
-  if (!written) return { ok: false, message: '对话历史写入本地失败' };
+  if (!storage.writeSession(scope, session)) return { ok: false, message: '对话历史写入本地失败' };
+  replaceIndexEntry(index, storage.indexEntry(scope, sessionSummary(session)));
+  if (!storage.writeIndex(scope, index)) return { ok: false, message: '对话索引更新失败' };
   return { ok: true, session, summary: sessionSummary(session) };
 }
 
-function setSessionPinned(credentials, id, pinned, context) {
+function setSessionPinned(credentials, id, pinned, context, storage) {
   const scope = context.accountScope(credentials);
-  const store = context.readStore(scope);
-  const session = store.sessions.find((item) => String(item.id) === id);
-  if (!session) throw new AppError('AI_HISTORY_NOT_FOUND', '对话不存在');
+  const index = storage.readIndex(scope);
+  if (!index.sessions.some((item) => String(item.id) === String(id))) {
+    throw new AppError('AI_HISTORY_NOT_FOUND', '对话不存在');
+  }
+  const raw = storage.readSession(scope, id);
+  if (!raw) throw new AppError('AI_HISTORY_NOT_FOUND', '对话不存在');
+  const session = normalizeSession(raw, context);
   const previous = normalizePinnedAt(session.pinnedAt);
   const pinnedAt = pinned ? (previous || context.now()) : 0;
   if (pinnedAt !== previous) {
     session.pinnedAt = pinnedAt;
-    if (!context.writeStore(scope, store)) {
+    if (!storage.writeSession(scope, session)) {
       throw new AppError('AI_HISTORY_PIN_WRITE_FAILED', '未能保存对话置顶状态', { retryable: true });
+    }
+    replaceIndexEntry(index, storage.indexEntry(scope, sessionSummary(session)));
+    if (!storage.writeIndex(scope, index)) {
+      throw new AppError('AI_HISTORY_PIN_WRITE_FAILED', '未能保存对话索引', { retryable: true });
     }
   }
   return { id, pinnedAt };
 }
 
-function createSession(credentials, partial = {}, context = DEFAULT_HISTORY_CONTEXT) {
-  // 空会话只返回内存对象，真正有消息后再 saveSession 落盘
+function createSession(credentials, partial = {}, context, storage) {
   const session = normalizeSession({
-    id: context.randomUUID(),
-    title: '新对话',
-    titleGenerated: false,
+    id: context.randomUUID(), title: '新对话', titleGenerated: false,
     modelId: partial.modelId || '',
     browserConnectionId: partial.browserConnectionId || '',
     browserConnectionIds: Array.isArray(partial.browserConnectionIds) ? partial.browserConnectionIds : [],
-    automationCardId: partial.automationCardId || '',
-    messages: [],
-    createdAt: context.now(),
-    updatedAt: context.now(),
+    automationCardId: partial.automationCardId || '', messages: [],
+    createdAt: context.now(), updatedAt: context.now(),
   }, context);
   const scope = context.accountScope(credentials);
-  const store = context.readStore(scope);
-  store.currentId = session.id;
-  context.writeStore(scope, store);
+  const index = storage.readIndex(scope);
+  index.currentId = session.id;
+  if (!storage.writeIndex(scope, index)) return { ok: false, message: '无法保存当前对话状态', session };
   return { ok: true, session, summary: sessionSummary(session) };
 }
 
-function setCurrent(credentials, sessionId, context = DEFAULT_HISTORY_CONTEXT) {
+function setCurrent(credentials, sessionId, context, storage) {
   const scope = context.accountScope(credentials);
-  const store = context.readStore(scope);
+  const index = storage.readIndex(scope);
   const id = String(sessionId || '').trim();
-  if (id && !store.sessions.some((item) => String(item.id) === id)) {
+  if (id && !index.sessions.some((item) => String(item.id) === id)) {
     return { ok: false, message: '对话不存在' };
   }
-  store.currentId = id;
-  context.writeStore(scope, store);
+  index.currentId = id;
+  if (!storage.writeIndex(scope, index)) return { ok: false, message: '无法保存当前对话状态' };
   return { ok: true, currentId: id };
+}
+
+function createMemoryStorage(options) {
+  return createAiChatHistoryMemoryStore(options);
+}
+
+function createRepositoryMethods(context, storage) {
+  return {
+    createSession: (credentials, partial) => createSession(credentials, partial, context, storage),
+    deleteSession: (credentials, id) => deleteSession(credentials, id, context, storage),
+    getSession: (credentials, id, options = {}) => getSession(credentials, id, options, context, storage),
+    listSessions: (credentials) => listSessions(credentials, context, storage),
+    renameSession: (credentials, id, title) => renameSession(credentials, id, title, context, storage),
+    saveSession: (credentials, session, options = {}) => saveSession(credentials, session, options, context, storage),
+    setSessionPinned: (credentials, id, pinned) => setSessionPinned(credentials, id, pinned, context, storage),
+    setCurrent: (credentials, id) => setCurrent(credentials, id, context, storage),
+  };
 }
 
 function provisionalTitleFromText(text) {
@@ -413,27 +402,34 @@ function provisionalTitleFromText(text) {
 
 function createAiChatHistoryRepository(options = {}) {
   const context = normalizeHistoryContext(options);
-  return {
-    createSession: (credentials, partial) => createSession(credentials, partial, context),
-    deleteSession: (credentials, id) => deleteSession(credentials, id, context),
-    getSession: (credentials, id) => getSession(credentials, id, context),
-    listSessions: (credentials) => listSessions(credentials, context),
-    renameSession: (credentials, id, title) => renameSession(credentials, id, title, context),
-    saveSession: (credentials, session, options) => saveSession(credentials, session, options, context),
-    setSessionPinned: (credentials, id, pinned) => setSessionPinned(credentials, id, pinned, context),
-    setCurrent: (credentials, id) => setCurrent(credentials, id, context),
-  };
+  const injectedStore = typeof options.readStore === 'function' || typeof options.writeStore === 'function';
+  const storage = options.storage || (injectedStore
+    ? createMemoryStorage(options)
+    : createAiChatHistoryFileStore({
+      historyRootDir: options.historyRootDir,
+      fs: options.fs,
+      path: options.path,
+      normalizeSession: (raw) => normalizeSession(raw, context),
+      summarizeSession: (session) => sessionSummary(session),
+    }));
+  return createRepositoryMethods(context, storage);
+}
+
+let defaultRepository;
+function getDefaultRepository() {
+  if (!defaultRepository) defaultRepository = createAiChatHistoryRepository();
+  return defaultRepository;
 }
 
 module.exports = {
   createAiChatHistoryRepository,
-  listSessions,
-  getSession,
-  saveSession,
-  deleteSession,
-  renameSession,
-  createSession,
-  setCurrent,
+  listSessions: (...args) => getDefaultRepository().listSessions(...args),
+  getSession: (...args) => getDefaultRepository().getSession(...args),
+  saveSession: (...args) => getDefaultRepository().saveSession(...args),
+  deleteSession: (...args) => getDefaultRepository().deleteSession(...args),
+  renameSession: (...args) => getDefaultRepository().renameSession(...args),
+  createSession: (...args) => getDefaultRepository().createSession(...args),
+  setCurrent: (...args) => getDefaultRepository().setCurrent(...args),
   normalizeSession,
   sanitizeMessage,
   sanitizeToolEvent,

@@ -240,10 +240,10 @@ async function initial(ui, doubles, history) {
       message.artifacts?.some((artifact) => artifact.sha256 === fixture.files.red.sha256));
   }), 'persisted title and artifact digest');
   await checkRawToolRotation(ui);
-  await checkInlineScreenshot(ui, doubles);
+  await checkInlineScreenshot(ui, doubles, history);
 }
 
-async function checkInlineScreenshot(ui, doubles) {
+async function checkInlineScreenshot(ui, doubles, history) {
   doubles.queue.push({ role: 'assistant', tool_calls: [{ id: 'live-screenshot', type: 'function',
     function: { name: 'browser_screenshot', arguments: '{}' } }] });
   doubles.model.streamAIControlMessage = (key, device, model, messages, options) => {
@@ -254,11 +254,36 @@ async function checkInlineScreenshot(ui, doubles) {
   };
   await ui.send('Capture the page');
   await ui.until(() => ui.evaluate(() => document.querySelector('.ai-chat-screenshot img')?.naturalWidth === 96), 'automatic screenshot while model is still running');
+  await ui.until(() => ui.evaluate(() => {
+    const screenshot = document.querySelector('.ai-chat-screenshot[data-tool-call-id="live-screenshot"]');
+    const tool = document.querySelector('.ai-chat-tool[data-tool-id="live-screenshot"]');
+    return screenshot?.previousElementSibling === tool && screenshot.parentElement === tool?.parentElement;
+  }), 'screenshot immediately below its MCP call');
   await ui.click('.ai-chat-screenshot');
   await ui.visible('#ai-chat-workspace-preview-title', '浏览器截图');
   await ui.click('#ai-chat-workspace-preview-close');
   await ui.click('#ai-chat-send[aria-label="停止 AI 输出"]');
   await ui.visible('#ai-chat-send[aria-label="继续 AI 输出"]');
+  const savedSession = history.sessions().map((summary) => ({
+    ...summary, session: history.readSession(summary.id),
+  })).find(({ session }) => session?.messages.some((message) =>
+    message.artifacts?.some((artifact) => artifact.toolCallId === 'live-screenshot')));
+  assert.ok(savedSession, 'screenshot reference is persisted in chat history');
+  const savedArtifact = savedSession.session.messages.flatMap((message) => message.artifacts || [])
+    .find((artifact) => artifact.toolCallId === 'live-screenshot');
+  assert.equal(savedArtifact.path.startsWith('Chat Screenshots/'), true);
+  assert.ok((await fs.stat(path.join(fixture.workspace, savedArtifact.path))).size > 0);
+  await ui.click('button[aria-label="新建对话"]');
+  await ui.click('#ai-chat-history-trigger');
+  await ui.visible('#ai-chat-history-menu button', savedSession.title);
+  await ui.click('#ai-chat-history-menu button', savedSession.title);
+  await ui.until(() => ui.evaluate(() => {
+    const screenshot = document.querySelector('.ai-chat-screenshot[data-tool-call-id="live-screenshot"] img');
+    const tool = document.querySelector('.ai-chat-tool[data-tool-id="live-screenshot"]');
+    return screenshot?.naturalWidth === 96 && screenshot.parentElement?.previousElementSibling === tool;
+  }), 'historical screenshot restored under its MCP call');
+  assert.equal(await ui.evaluate((artifactPath) => Array.from(document.querySelectorAll('.ai-chat-download-card'))
+    .some((card) => card.textContent.includes(artifactPath)), savedArtifact.path), false);
 }
 
 async function continuation(ui, doubles) {

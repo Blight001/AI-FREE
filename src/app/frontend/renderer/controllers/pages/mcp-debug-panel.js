@@ -210,4 +210,39 @@
     });
     element('tools').replaceChildren(...rows);
   });
+  const restartButton = element('restart-app');
+  const autoRestart = element('auto-restart');
+  let restartPoll;
+  async function refreshRestartStatus() {
+    try {
+      const result = await api.restartStatus();
+      if (!result.ok) { setText('restart-status', result.error.message); return; }
+      const info = result.data;
+      autoRestart.checked = info.autoRestart === true;
+      restartButton.disabled = !info.available || !info.pending || info.restarting || Boolean(info.busyReason);
+      if (!info.available) setText('restart-status', '当前不是可重启的源码开发构建');
+      else if (info.restarting) setText('restart-status', '正在安全关闭并重启应用…');
+      else if (info.pending && info.busyReason) setText('restart-status', `检测到新源码（${info.currentHash.slice(0, 12)}），等待空闲：${info.busyReason}`);
+      else if (info.pending) setText('restart-status', `检测到新源码（${info.currentHash.slice(0, 12)}），可以重启加载`);
+      else setText('restart-status', `源码已是当前构建（${info.appliedHash.slice(0, 12)}）`);
+    } catch (_) { setText('restart-status', '无法读取开发重启状态'); }
+  }
+  autoRestart.addEventListener('change', async () => {
+    autoRestart.disabled = true;
+    try {
+      const result = await api.setAutoRestart(autoRestart.checked);
+      if (!result.ok) setText('restart-status', result.error.message);
+      else await refreshRestartStatus();
+    } finally { autoRestart.disabled = false; }
+  });
+  restartButton.addEventListener('click', async () => {
+    if (!window.confirm('将按正常退出流程关闭并重启 AI-FREE，以加载最新源码。正在执行的操作不会自动重放；重启后请先核对未确认的页面状态。继续吗？')) return;
+    restartButton.disabled = true;
+    const result = await api.restartApp();
+    if (!result.ok) { setText('restart-status', result.error.message); await refreshRestartStatus(); }
+    else setText('restart-status', '正在安全关闭并重启应用…');
+  });
+  void refreshRestartStatus();
+  restartPoll = setInterval(() => void refreshRestartStatus(), 1500);
+  window.addEventListener('unload', () => clearInterval(restartPoll), { once: true });
 })();

@@ -204,3 +204,15 @@ test('managed chat uses the existing sidebar page and ships its controller and s
     }
   }
 });
+
+
+test('long AI histories load the bounded-window controller in source and generated sidebars', () => {
+  const root = path.resolve(__dirname, '../..');
+  const asset = 'client/app/side/controllers/pages/ai-control/ai-control-message-window.js';
+  for (const tree of ['src/app', '.generated/app/src/app']) {
+    const sidebar = path.join(root, tree, 'frontend/sidebar');
+    const page = fs.readFileSync(path.join(sidebar, 'ai-control.html'), 'utf8');
+    assert.ok(page.includes(`./${asset}`));
+    assert.ok(fs.statSync(path.join(sidebar, asset)).size > 0);
+  }
+});

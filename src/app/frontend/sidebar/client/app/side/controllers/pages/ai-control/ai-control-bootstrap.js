@@ -36,6 +36,8 @@
   }
 
   function bindChatForm() {
+    const unsubscribe = window.aiFree?.ai?.onBenchmarkNotice?.(receiveBenchmarkNotice);
+    if (unsubscribe) window.addEventListener('pagehide', unsubscribe, { once: true });
     el('ai-chat-form')?.addEventListener('submit', (event) => {
       event.preventDefault();
       const mode = resolveChatButtonMode(chatInputHasSendableContent());
@@ -43,6 +45,33 @@
       else if (mode.icon === 'play') void resumeAIOutput();
       else void sendMessage();
     });
+  }
+
+  function benchmarkComposerAvailable(input) {
+    const draft = readChatDraft(input);
+    return !state.loading && !state.pausedChat && !managedChatUi.view && !state.aiInputComposing
+      && !draft.content && !draft.pending && !draft.inlineAttachments.length && !hasSelectedChatAttachments();
+  }
+
+  async function receiveBenchmarkNotice(notice) {
+    const input = el('ai-chat-input');
+    const select = el('ai-chat-model');
+    const modelId = select?.value;
+    const session = state.currentSession;
+    const decline = () => window.aiFree.ai.declineBenchmark({ benchmarkId: notice.id });
+    if (!modelId || !session || checkingChatLogin || !benchmarkComposerAvailable(input)) {
+      setStatus('测试未启动：请先结束当前操作、处理草稿并选择模型。', 'warning');
+      return decline();
+    }
+    checkingChatLogin = true;
+    try {
+      if (!selectedModelIsCustom() && !await ensureAuthenticatedForChat()) return decline();
+      if (session !== state.currentSession || modelId !== select.value || !benchmarkComposerAvailable(input)) return decline();
+      const run = prepareChatSend(input, select, notice.content, []);
+      run.benchmarkId = notice.id;
+      checkingChatLogin = false;
+      await performChatRun(run);
+    } finally { checkingChatLogin = false; }
   }
 
   function handleCompositionEnd(chatInput, event) {

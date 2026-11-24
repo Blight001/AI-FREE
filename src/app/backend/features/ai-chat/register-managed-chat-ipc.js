@@ -54,6 +54,7 @@ function registerManagedChatIpc({ ipc, deps, getModels }) {
   });
   return {
     dispose: () => { dispose(); service.dispose(); },
+    hasActiveRuns: () => service.controls.size > 0,
     getExternalTools: () => managedToolSet(service),
     getParentTools: (event, input) => input.localInteraction === true && input.parentSessionId && sidebarMainFrame(event, getSidebar())
       ? managedToolSet(service, `parent:${input.parentSessionId}`, input.parentSessionId) : null,

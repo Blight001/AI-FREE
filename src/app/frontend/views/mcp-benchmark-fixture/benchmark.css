@@ -1,0 +1,4 @@
+:root { font: 16px "Segoe UI", "Microsoft YaHei", sans-serif; color: #17263a; background: #f5f7fb; }
+body { margin: 0; padding: 24px; } main { max-width: 900px; margin: auto; } section { margin: 18px 0; padding: 16px; border: 1px solid #ccd6e4; border-radius: 8px; background: #fff; }
+h1 { color: #234d91; } th, td { padding: 8px 18px; border: 1px solid #ccd6e4; } table { border-collapse: collapse; }
+button, input, a { margin: 6px; padding: 8px; font: inherit; } li { margin: 8px; padding: 10px; background: #e3ebf7; cursor: grab; }

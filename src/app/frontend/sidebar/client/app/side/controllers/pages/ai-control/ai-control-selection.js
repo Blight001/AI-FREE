@@ -46,28 +46,31 @@
   function readLocalHistoryStore() {
     try {
       const raw = localStorage.getItem(HISTORY_LS_PREFIX + historyLocalScope());
-      if (!raw) return { version: 1, sessions: [], currentId: '' };
+      if (!raw) return { version: 2, sessions: [], currentId: '' };
       const data = JSON.parse(raw);
-      return {
-        version: 1,
-        sessions: Array.isArray(data?.sessions) ? data.sessions : [],
-        currentId: String(data?.currentId || ''),
+      const legacySessions = Array.isArray(data?.sessions) ? data.sessions : [];
+      const store = {
+        version: 2,
+        sessions: legacySessions.map(sessionSummaryLocal).filter((item) => item.messageCount > 0),
+        currentId: String(data.currentId || ''),
       };
+      if (legacySessions.some((item) => Array.isArray(item?.messages))) writeLocalHistoryStore(store);
+      return store;
     } catch (_) {
-      return { version: 1, sessions: [], currentId: '' };
+      return { version: 2, sessions: [], currentId: '' };
     }
   }
 
   function writeLocalHistoryStore(store) {
     try {
       localStorage.setItem(HISTORY_LS_PREFIX + historyLocalScope(), JSON.stringify({
-        version: 1,
-        sessions: Array.isArray(store?.sessions) ? store.sessions : [],
+        version: 2,
+        sessions: (Array.isArray(store?.sessions) ? store.sessions : []).map(sessionSummaryLocal),
         currentId: String(store?.currentId || ''),
       }));
       return true;
     } catch (error) {
-      console.warn('[AI 控制] localStorage 历史写入失败:', error?.message || error);
+      console.warn('[AI 控制] localStorage 历史索引写入失败:', error?.message || error);
       return false;
     }
   }
@@ -80,8 +83,12 @@
     return Number(value) || Date.now();
   }
 
+  function localMessageCount(session) {
+    const count = Number(session?.messageCount);
+    return Number.isSafeInteger(count) && count >= 0 ? count : (session?.messages?.length || 0);
+  }
+
   function sessionSummaryLocal(session) {
-    const messages = Array.isArray(session?.messages) ? session.messages : [];
     return {
       id: selectionString(session?.id),
       title: selectionString(session?.title, '新对话'),
@@ -91,7 +98,7 @@
       browserConnectionIds: sessionBrowserIds(session),
       automationCardId: '',
       preview: selectionString(session?.preview),
-      messageCount: messages.length,
+      messageCount: localMessageCount(session),
       createdAt: selectionTimestamp(session?.createdAt),
       updatedAt: selectionTimestamp(session?.updatedAt),
       pinnedAt: Number(session?.pinnedAt) || 0,
@@ -101,23 +108,16 @@
   function upsertLocalSession(session, setCurrent = true) {
     if (!session?.id) return;
     const store = readLocalHistoryStore();
-    const next = {
-      ...session,
-      messages: Array.isArray(session.messages) ? session.messages : [],
-      updatedAt: Date.now(),
-    };
-    // 对话内容被全部撤回/删除后，也要清掉之前落盘的旧记录。
-    if (!next.messages.length) {
-      deleteLocalSession(next.id);
+    const summary = sessionSummaryLocal({ ...session, updatedAt: Date.now() });
+    if (!summary.messageCount) {
+      deleteLocalSession(summary.id);
       return;
     }
-    const index = store.sessions.findIndex((item) => String(item.id) === String(next.id));
-    if (index >= 0) store.sessions[index] = next;
-    else store.sessions.unshift(next);
-    store.sessions = store.sessions
-      .filter((item) => Array.isArray(item.messages) && item.messages.length)
-      .sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0));
-    if (setCurrent) store.currentId = next.id;
+    const index = store.sessions.findIndex((item) => String(item.id) === String(summary.id));
+    if (index >= 0) store.sessions[index] = summary;
+    else store.sessions.unshift(summary);
+    store.sessions.sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0));
+    if (setCurrent) store.currentId = summary.id;
     writeLocalHistoryStore(store);
   }
 
@@ -148,15 +148,6 @@
     session.pinnedAt = pinnedAt;
     if (!writeLocalHistoryStore(store)) throw new Error('未能保存本地对话的置顶状态');
     return true;
-  }
-
-  function getLocalSession(sessionId) {
-    const store = readLocalHistoryStore();
-    const found = store.sessions.find((item) => String(item.id) === String(sessionId || ''));
-    if (!found) return null;
-    store.currentId = found.id;
-    writeLocalHistoryStore(store);
-    return found;
   }
 
   function setStatus(message, type = 'error') {

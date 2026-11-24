@@ -30,6 +30,12 @@ test('provider account save accepts optional notes and validates type and length
 test('AI 历史 ID schema 接受兼容对象并拒绝错误字段类型', () => {
   const input = { id: 'session-1', compatibilityField: true };
   assert.equal(validateIpcPayload('ai-control-history-get', input), input);
+  assert.deepEqual(
+    validateIpcPayload('ai-control-history-get', { id: 'session-1', setCurrent: false }),
+    { id: 'session-1', setCurrent: false },
+  );
+  assert.throws(() => validateIpcPayload('ai-control-history-get', { id: 'session-1', setCurrent: 'false' }),
+    (error) => error instanceof IpcPayloadError && error.details.path === 'setCurrent');
 
   assert.throws(
     () => validateIpcPayload('ai-control-history-delete', { id: 123 }),

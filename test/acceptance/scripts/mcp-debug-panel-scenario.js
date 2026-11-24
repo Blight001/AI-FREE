@@ -12,6 +12,7 @@ async function launchPanel({ shell, automation, manager, panelAppRoot }) {
   const { registerMcpDebugPanelIpc } = require(path.join(backend, 'features/browser/register-mcp-debug-panel-ipc'));
   const ipc = createIpcRegistry(ipcMain);
   let ownerClosed = false;
+  let benchmarkStarted = false;
   const bridge = {
     listConnections: () => automation.listConnections(),
     getConnection: (id) => automation.getConnection(id),
@@ -21,6 +22,7 @@ async function launchPanel({ shell, automation, manager, panelAppRoot }) {
   const dispose = registerMcpDebugPanelIpc(ipc, {
     isDevMode: true, getMainWindow: () => shell, BrowserWindow,
     browserAutomationBridge: bridge, browserRuntimeManager: manager,
+    benchmark: { start: async () => { benchmarkStarted = true; return { sent: true }; } },
     getWindowTools: () => ({ tools: [] }),
   });
   const sender = shell.webContents;
@@ -34,7 +36,7 @@ async function launchPanel({ shell, automation, manager, panelAppRoot }) {
     const panel = await poll(() => BrowserWindow.getAllWindows().find((win) => win.isVisible()
       && win.webContents.getURL().endsWith('mcp-debug-panel.html')), Boolean);
     assert(panel && panel.isVisible(), `panel opened with its own window: ${resolveMcpDebugWindowPaths().view}`);
-    return { panel, dispose, ownerClosed: () => ownerClosed };
+    return { panel, dispose, ownerClosed: () => ownerClosed, benchmarkStarted: () => benchmarkStarted };
   } catch (error) {
     dispose();
     throw error;
@@ -178,8 +180,18 @@ async function checkWebsite({ panel, automation, id, origin, debugHost, manager 
 
 async function checkMcpDebugPanel(context) {
   const { shell, automation, id, manager } = context;
-  const { panel, dispose, ownerClosed } = await launchPanel(context);
+  const { panel, dispose, ownerClosed, benchmarkStarted } = await launchPanel(context);
   try {
+    const inspect = rendererProbe(panel.webContents);
+    assert.deepEqual(await inspect(() => ({ start: Boolean(document.getElementById('benchmark-start')),
+      model: Boolean(document.getElementById('benchmark-model')), score: Boolean(document.getElementById('benchmark-score')),
+      restart: Boolean(document.getElementById('restart-app')), autoRestart: Boolean(document.getElementById('auto-restart')) })),
+    { start: true, model: false, score: false, restart: true, autoRestart: true },
+    'panel exposes a launcher and dev restart controls; model choice and score remain in the AI conversation');
+    await inspect(() => document.getElementById('benchmark-start').click());
+    assert(await poll(benchmarkStarted, Boolean), 'launcher hands off the run to the shared benchmark controller');
+    assert.equal(await inspect(() => document.getElementById('benchmark-status').textContent),
+      '已发送，请在 AI 控制对话中查看进度和成绩。');
     await checkNativeInputs({ ...context, panel });
     shell.restore();
     shell.focus();

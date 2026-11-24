@@ -111,7 +111,7 @@
     return empty;
   }
 
-  function createHistoryMainButton(session, currentId, shell) {
+  function createHistoryMainButton(session) {
     const main = document.createElement('button');
     main.type = 'button';
     main.className = 'ai-select-option-label';
@@ -121,11 +121,6 @@
     time.className = 'ai-select-option-sub';
     time.textContent = formatRelativeTime(session.updatedAt);
     main.append(titleSpan, time);
-    main.addEventListener('click', (event) => {
-      event.preventDefault();
-      closeSelect(shell);
-      if (String(session.id) !== currentId) void loadSessionById(session.id);
-    });
     return main;
   }
 
@@ -174,7 +169,12 @@
     const item = document.createElement('div');
     item.className = 'ai-select-option ai-select-option-history';
     item.setAttribute('aria-selected', String(session.id) === currentId ? 'true' : 'false');
-    item.append(createHistoryMainButton(session, currentId, shell), createHistoryActions(session));
+    item.addEventListener('click', (event) => {
+      if (event.target.closest?.('.ai-select-option-actions')) return;
+      closeSelect(shell);
+      if (String(session.id) !== currentId) void loadSessionById(session.id);
+    });
+    item.append(createHistoryMainButton(session), createHistoryActions(session));
     return item;
   }
 
@@ -252,7 +252,7 @@
   async function refreshHistoryList() {
     const localStore = readLocalHistoryStore();
     const localSummaries = (localStore.sessions || [])
-      .filter((item) => Array.isArray(item.messages) && item.messages.length)
+      .filter((item) => Number(item.messageCount) > 0)
       .map(sessionSummaryLocal);
 
     let remote = [];

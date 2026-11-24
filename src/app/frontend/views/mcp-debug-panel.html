@@ -6,6 +6,7 @@
   <title>MCP 调试面板</title>
   <link rel="stylesheet" href="../renderer/styles/mcp-debug-panel.css">
   <script src="../renderer/controllers/pages/mcp-debug-panel.js" defer></script>
+  <script src="../renderer/controllers/pages/mcp-debug-benchmark.js" defer></script>
 </head>
 <body>
   <header>
@@ -18,7 +19,7 @@
         <option value="active">当前网页标签</option>
         <option value="fixture">内置测试页</option>
       </select></label>
-      <button id="open-fixture" type="button">打开本地测试页</button>
+      <button id="open-fixture" type="button">打开鼠标测试页</button>
       <button id="toggle" type="button">鼠标控制调试</button>
     </div>
   </header>
@@ -39,6 +40,17 @@
         <div><dt>视口坐标</dt><dd id="mapped">—</dd></div>
         <div><dt>最近派发</dt><dd id="receipt">—</dd></div>
       </dl>
+      <section id="benchmark" aria-labelledby="benchmark-heading">
+        <h2 id="benchmark-heading">MCP 综合基准</h2>
+        <button id="benchmark-start" type="button">在 AI 控制中启动测试</button>
+        <p id="benchmark-status" role="status" aria-live="polite">使用侧栏当前模型并消耗相应额度，成绩将出现在该对话中。</p>
+      </section>
+      <section id="dev-restart" aria-labelledby="restart-heading">
+        <h2 id="restart-heading">开发版重启</h2>
+        <button id="restart-app" type="button" disabled>重启并加载新构建</button>
+        <label><input id="auto-restart" type="checkbox"> 本次调试：检测到新构建后，空闲时重启整个应用</label>
+        <p id="restart-status" role="status" aria-live="polite">正在检查源码构建…</p>
+      </section>
       <details>
         <summary>MCP 工具目录</summary>
         <ul id="tools"></ul>

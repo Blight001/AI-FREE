@@ -129,7 +129,7 @@ const NATIVE_BROWSER_TOOL_DEFINITIONS = Object.freeze([
   },
   {
     name: 'browser_action', destructive: true,
-    description: '通过 Chromium 原生输入执行点击、拖拽选文、整段输入、光标/选区定位、局部插入、滚动或组合按键。必须先调用 browser_control action=acquire 接管当前浏览器；接管期间活动页面页面显示紫色发光边框，任何来源触发的文件选择器或阻塞式浏览器模态弹窗都会被阻止。ref 只属于最近一次 browser_observe，连续 observe 后必须使用最后一次返回的 ref；accessibilityFallback 元素会自动使用 clickX/clickY，无需 selector。导航或切换标签后应重新观察并使用当前页面的 ref；完成后 AI 可以调用 browser_control action=release 停止接管。文件上传改用 browser_file action=upload 并附带 path/paths 与 selector/ref。',
+    description: '通过 Chromium 原生输入执行点击、拖拽选文、整段输入、光标/选区定位、局部插入、滚动或组合按键。执行 drag 时必须同时提供起点 x/y 和终点 to_x/to_y，四者均为当前页面视口 CSS 像素、非负数；拖动排序项时从项目中心拖到目标位置中心，随后 observe 并核对实际顺序。不能从观察结果确定坐标时先截图或重新观察，不要省略终点。必须先调用 browser_control action=acquire 接管当前浏览器；接管期间活动页面页面显示紫色发光边框，任何来源触发的文件选择器或阻塞式浏览器模态弹窗都会被阻止。ref 只属于最近一次 browser_observe，连续 observe 后必须使用最后一次返回的 ref；accessibilityFallback 元素会自动使用 clickX/clickY，无需 selector。导航或切换标签后应重新观察并使用当前页面的 ref；完成后 AI 可以调用 browser_control action=release 停止接管。文件上传改用 browser_file action=upload 并附带 path/paths 与 selector/ref。',
     input_schema: objectSchema({
       surface: { type: 'string', enum: ['page', 'shell', 'sidebar', 'chromium', 'chromium_popup', 'dialog'], description: '默认 page。shell/sidebar 使用同界面的 ref。chromium、chromium_popup、dialog 仅限内置 AI，必须使用同界面最新的 observation_id，x/y 是窗口左上角起算的物理像素。' },
       action: { type: 'string', enum: ['click', 'double_click', 'right_click', 'drag', 'scroll', 'type', 'insert_text', 'set_selection', 'press_key', 'select_option', 'set_checked'] },
@@ -144,7 +144,7 @@ const NATIVE_BROWSER_TOOL_DEFINITIONS = Object.freeze([
       observation_id: { type: 'string', description: 'browser_observe 返回的 observationId。与 ref 一起校验引用。纯坐标点击可携带此 ID，要求当前入口最新、未过期且与当前文档一致的观察。' },
       x: { type: 'number', description: '视口起点 X；可覆盖 ref 的默认点击中心' },
       y: { type: 'number', description: '视口起点 Y；可覆盖 ref 的默认点击中心' },
-      to_ref: { type: 'string', description: '原生界面拖拽的终点控件，使用同一次观察返回的 ref。' },
+      to_ref: { type: 'string', description: '拖拽终点控件：使用同一次最新 browser_observe 返回的 ref；可代替 to_x/to_y。' },
       to_x: { type: 'number', description: 'drag 的视口终点 X' },
       to_y: { type: 'number', description: 'drag 的视口终点 Y' },
       start: { type: 'number', description: 'set_selection 的 UTF-16 起始字符位置；start=end 表示光标' },

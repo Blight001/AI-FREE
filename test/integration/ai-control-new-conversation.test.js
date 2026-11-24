@@ -115,6 +115,7 @@ class FakeElement {
     this.textContent = '';
     this.value = '';
     this.dispatched = [];
+    this.dataset = {};
   }
 
   append(...children) {
@@ -177,6 +178,35 @@ test('下拉历史将置顶对话排到前面，保留按更新时间排序的�
   assert.deepEqual(Array.from(vm.runInContext('state.sessionList.map(({ id }) => id)', context)), ['pinned', 'newest', 'previous']);
 });
 
+test('历史对话整行可点击，操作按钮区域不触发切换', () => {
+  const loaded = [];
+  let closed = 0;
+  const context = createControllerContext({
+    closeSelect: () => { closed += 1; },
+    formatRelativeTime: () => "刚刚",
+    loadSessionById: (id) => { loaded.push(id); },
+  });
+  context.document.createElement = (tagName) => new FakeElement(tagName);
+  runController(context, 'ai-control-history-list.js');
+  const item = vm.runInContext(
+    "createHistoryItem({ id: 'history-1', title: '历史标题', updatedAt: Date.now() }, '', {})",
+    context,
+  );
+  const main = item.children[0];
+  const actions = item.children[1];
+  const dispatchRowClick = (target, inActions = false) => item.dispatchEvent({
+    type: 'click',
+    target: { closest: (selector) => selector === '.ai-select-option-actions' && inActions ? actions : null },
+  });
+
+  dispatchRowClick(item);
+  dispatchRowClick(main);
+  dispatchRowClick(actions, true);
+
+  assert.deepEqual(loaded, ['history-1', 'history-1']);
+  assert.equal(closed, 2);
+});
+
 test('新对话空白页不展示快捷任务入口或最近聊天', () => {
   const messages = new FakeElement('div');
   const context = createControllerContext({
@@ -193,4 +223,54 @@ test('新对话空白页不展示快捷任务入口或最近聊天', () => {
   assert.ok(messages.querySelector('.ai-chat-welcome-hero'));
   assert.equal(messages.querySelector('.ai-chat-prompts'), null);
   assert.equal(messages.querySelector('.ai-chat-recent'), null);
+});
+
+
+test('长历史初次只绘制最近窗口，加载更早消息保持原始消息索引', () => {
+  const rendered = [];
+  const olderButton = {
+    addEventListener(_type, handler) { this.onClick = handler; },
+    setAttribute(name, value) { this[name] = value; },
+    remove() {},
+  };
+  const container = {
+    innerHTML: '',
+    firstChild: null,
+    appendChild(child) { this.firstChild ||= child; },
+    insertBefore(child) { this.firstChild = child; },
+    querySelector() { return olderButton; },
+  };
+  const viewport = { scrollHeight: 500, scrollTop: 120, clientHeight: 300 };
+  const messages = Array.from({ length: 240 }, (_, index) => ({
+    role: index % 2 ? 'assistant' : 'user', content: `message-${index}`,
+  }));
+  const context = createControllerContext({
+    currentMessages: () => messages,
+    renderChatMessage: (message, options) => rendered.push({ message, ...options }),
+    renderConversationDownloads() {},
+    isRenderableConversationMessage: () => true,
+    updateSessionTitleUi() {},
+    requestAnimationFrame: (callback) => callback(),
+  });
+  context.aiControlMessageWindowStart = require(
+    '../../src/app/frontend/sidebar/client/app/side/controllers/pages/ai-control/ai-control-message-window',
+  ).aiControlMessageWindowStart;
+  context.document.createElement = () => olderButton;
+  context.document.createDocumentFragment = () => new FakeElement('fragment');
+  context.document.getElementById = (id) => (
+    id === 'ai-chat-message-list' ? container : id === 'ai-chat-messages' ? viewport : null
+  );
+  runController(context, 'ai-control-messages.js');
+
+  vm.runInContext('renderConversation()', context);
+  assert.ok(rendered.length <= 56 + 1);
+  const initialStart = rendered[0].messageIndex;
+  assert.equal(messages[initialStart].role, 'user');
+  const initialCount = rendered.length;
+  olderButton.onClick();
+  const loadedIndices = rendered.slice(initialCount).map(({ messageIndex }) => messageIndex);
+  assert.ok(loadedIndices.length > 0);
+  assert.ok(loadedIndices[0] < initialStart);
+  assert.equal(loadedIndices.at(-1), initialStart - 1);
+  assert.deepEqual(loadedIndices, Array.from({ length: loadedIndices.length }, (_, index) => loadedIndices[0] + index));
 });

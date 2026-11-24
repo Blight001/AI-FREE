@@ -64,6 +64,10 @@ function buildLifecycleDeps({
     providerAccountVault: services.providerAccountVault,
     managedChatRepository: services.managedChatRepository,
     aiModelConfig: services.aiModelConfig,
+    showBenchmarkSidebar: () => {
+      appShell.revealMainWindow();
+      if (!appRuntime.getIsSidebarVisible()) tabHelpers.toggleSidebar();
+    },
     getSideView: appRuntime.getSideView,
     getTabs: () => tabs,
     // AI 默认窗口工具需要的标签页/窗口操作桥。tabManager 的函数在 bootstrap

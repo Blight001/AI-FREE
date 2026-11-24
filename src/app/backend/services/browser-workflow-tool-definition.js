@@ -35,7 +35,7 @@ const BROWSER_WORKFLOW_TOOL = {
 function requestsWorkflowAction(args) {
   const options = ['probes', 'expect', 'identity_probe', 'inherit_config', 'locator',
     'scope', 'nth', 'exact', 'has_text', 'wait_for_stable'];
-  return args.after === undefined || options.some((key) => args[key] !== undefined);
+  return options.some((key) => args[key] !== undefined);
 }
 
 module.exports = { BROWSER_WORKFLOW_TOOL, checkedActionProperties, requestsWorkflowAction };

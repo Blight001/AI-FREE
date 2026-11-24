@@ -8,7 +8,8 @@ const { PAGE_BATCH_TOOL } = require('../../services/browser-page-batch');
 const { dispatchChatUpload } = require('./chat-browser-upload');
 const { recoverChatUpload } = require('./chat-upload-recovery');
 const { commandMetadata, executeLocalCommand, isLocalCommand, visibleCommandOutput } = require('./chat-local-command');
-const { createDownloadArtifact, verifyWorkspaceArtifactSync } = require('./ai-workspace-service');
+const { createChatScreenshotArtifact, createDownloadArtifact, verifyWorkspaceArtifactSync, SCREENSHOT_TOOLS } = require('./ai-workspace-service');
+const { writeDebugConsoleOnly } = require('../../runtime/debug-console-log');
 const { mcpToolResult } = require('../../services/mcp-tool-result');
 const { dispatchAutomationMcpShortcut } = require('../../services/automation-mcp-shortcuts');
 const {
@@ -260,13 +261,32 @@ function compactToolActivityResult(context, result, toolName) {
   return context.compactToolValue(result ?? null);
 }
 
+function persistScreenshotArtifact(context, activity, dataUrl) {
+  if (!context.artifacts || context.artifacts.length >= 16) return null;
+  try {
+    const artifact = createChatScreenshotArtifact({
+      workspaceDir: context.workspaceDir, toolName: activity.name, toolCallId: activity.id, dataUrl,
+    });
+    if (!artifact) return null;
+    context.artifacts.push(artifact);
+    context.emit({ type: 'artifacts', artifacts: [...context.artifacts] });
+    return artifact;
+  } catch (error) {
+    writeDebugConsoleOnly('warn', '[AIControlScreenshot]', {
+      toolName: activity.name, errorCode: error?.code || error?.name || 'SCREENSHOT_SAVE_FAILED',
+    });
+    return null;
+  }
+}
+
 function publishToolImage(context, activity, imageMessage, failed) {
   if (!imageMessage) return;
   context.pendingImageMessages?.push(imageMessage);
-  if (failed || !context.localInteraction || !['browser_screenshot', 'browser_observe', 'browser_action'].includes(activity.name)) return;
+  if (failed || !context.localInteraction || !SCREENSHOT_TOOLS.has(activity.name)) return;
   const dataUrl = imageMessage.content[1]?.image_url?.url;
   if (!dataUrl || dataUrl.length > 16 * 1024 * 1024 || !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(dataUrl)) return;
-  context.emit({ type: 'screenshot', toolCallId: activity.id, dataUrl });
+  const artifact = persistScreenshotArtifact(context, activity, dataUrl);
+  context.emit({ type: 'screenshot', toolCallId: activity.id, dataUrl, ...(artifact ? { artifact } : {}) });
 }
 
 function executeChatTool(context, activity, args) {

@@ -107,6 +107,24 @@ test('history restores bounded artifact metadata without absolute paths, URL or 
   assert.doesNotMatch(JSON.stringify(data.read()), /absolutePath|dataUrl|sourceUrl/);
 });
 
+test('历史仅保存截图文件引用，不保存 data URL', () => {
+  const data = fixture();
+  const screenshot = {
+    path: 'Chat Screenshots/shot.png', kind: 'image', size: 32, sha256: 'b'.repeat(64),
+    toolName: 'browser_screenshot', toolCallId: 'shot-1', dataUrl: 'data:image/png;base64,private-image',
+  };
+  data.repository.saveSession({}, {
+    id: 'screenshots',
+    messages: [{ role: 'assistant', content: '完成', artifacts: [screenshot, { ...screenshot, path: '../outside.png' }] }],
+  });
+  const [message] = data.repository.getSession({}, 'screenshots').session.messages;
+  assert.deepEqual(message.artifacts, [{
+    path: 'Chat Screenshots/shot.png', name: 'shot.png', kind: 'image', size: 32,
+    sha256: 'b'.repeat(64), toolName: 'browser_screenshot', toolCallId: 'shot-1',
+  }]);
+  assert.doesNotMatch(JSON.stringify(data.read()), /dataUrl|private-image/);
+});
+
 test('工具协议和活动时间线在保存后完整恢复', () => {
   const data = fixture();
   const tool = {

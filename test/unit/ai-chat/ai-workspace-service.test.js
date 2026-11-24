@@ -11,6 +11,7 @@ const {
   buildAttachmentMessages,
   buildInlineAttachmentMessages,
   createAiWorkspaceService,
+  createChatScreenshotArtifact,
   createDownloadArtifact,
   inspectWorkspaceFileSync,
   verifyWorkspaceArtifactSync,
@@ -49,6 +50,28 @@ test('工作区服务导入、列出并预览文本文件', async (t) => {
   assert.equal(preview.file.kind, 'text');
   assert.equal(preview.file.content, 'fixture content');
   assert.throws(() => service.read({ path: '../outside.txt' }), /超出 AI 工作区|不存在/);
+});
+
+test('浏览器截图写入工作区并通过受校验引用恢复预览', (t) => {
+  const { root } = fixture(t);
+  const bytes = Buffer.from('89504e470d0a1a0a', 'hex');
+  const artifact = createChatScreenshotArtifact({
+    workspaceDir: root, toolName: 'browser_screenshot', toolCallId: 'shot-1',
+    dataUrl: 'data:image/png;base64,' + bytes.toString('base64'),
+  });
+  assert.equal(artifact.path.startsWith('Chat Screenshots/browser-'), true);
+  assert.equal(artifact.kind, 'image');
+  assert.equal(fs.readFileSync(path.join(root, artifact.path)).equals(bytes), true);
+  const service = createAiWorkspaceService({ workspaceDir: root });
+  const preview = service.read({ path: artifact.path, artifact });
+  assert.equal(preview.ok, true);
+  assert.equal(preview.file.dataUrl, 'data:image/png;base64,' + bytes.toString('base64'));
+  assert.equal(createChatScreenshotArtifact({
+    workspaceDir: root, toolName: 'external_tool', toolCallId: 'bad', dataUrl: 'data:image/png;base64,' + bytes.toString('base64'),
+  }), null);
+  assert.equal(createChatScreenshotArtifact({
+    workspaceDir: root, toolName: 'browser_screenshot', toolCallId: 'bad', dataUrl: 'data:image/png;base64,not-valid',
+  }), null);
 });
 
 test('粘贴文件导入工作区并在正文标记处内联图片或文本内容', (t) => {

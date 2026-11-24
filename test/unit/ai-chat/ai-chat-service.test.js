@@ -81,6 +81,23 @@ test('内置模型正常返回完整消息链并发布流式完成事件', async
   assert.equal(fixture.sent.at(-1).payload.type, 'done');
 });
 
+test('模型确认扣费后立即发送带请求 ID 的积分增量事件', async () => {
+  const service = createService({ sendAIControlMessage: async () => ({
+    ok: true, quota_cost_increment: 0.375, message: { role: 'assistant', content: '完成' },
+  }) });
+  const fixture = eventFixture();
+  const result = await service.chat(fixture.event, {
+    modelId: 'builtin', messages: [{ role: 'user', content: '开始' }],
+    disableTools: true, stream: true, requestId: 'live-quota-1',
+  });
+  const quotaEvent = fixture.sent.find(({ payload }) => payload.type === 'quota_usage');
+  assert.deepEqual(quotaEvent, {
+    channel: 'ai-control-chat-event',
+    payload: { requestId: 'live-quota-1', type: 'quota_usage', amount: 0.375 },
+  });
+  assert.equal(result.quotaUsed, 0.375);
+});
+
 test('工具回合后模型失败时仍保留本次请求已确认的扣费', async () => {
   let round = 0;
   const client = { sendAIControlMessage: async () => [

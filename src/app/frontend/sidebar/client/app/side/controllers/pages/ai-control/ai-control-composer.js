@@ -184,6 +184,23 @@
 
   function handleChatStreamEvent(run, event) {
     if (!event || event.requestId !== run.requestId) return;
+    if (event.type === 'quota_usage') {
+      const amount = window.AiFreeQuotaDisplay.parseChatQuotaUsed(event.amount);
+      if (!(amount > 0)) return;
+      run.streamQuotaUsed = window.AiFreeQuotaDisplay.addChatQuotaUsed(run.streamQuotaUsed, amount);
+      if (state.currentSession) {
+        state.currentSession.quotaUsed = window.AiFreeQuotaDisplay.addChatQuotaUsed(
+          state.currentSession.quotaUsed, amount,
+        );
+        renderConversationQuotaUsed();
+        if (!run.useCustomApi && state.quota && state.quota.unlimited !== true) {
+          const used = window.AiFreeQuotaDisplay.addChatQuotaUsed(state.quota.used, amount);
+          state.quota = { ...state.quota, used, remaining: Math.max(0, Number(state.quota.quota || 0) - used) };
+          renderQuota(state.quota);
+        }
+      }
+      return;
+    }
     applyChatPresentationEvent(run, event);
   }
 
@@ -197,6 +214,7 @@
       return { stream: true, requestId: run.requestId, resumeRequestId: run.resumeRequestId, quota: state.quota };
     }
     return {
+      ...(run.benchmarkId && { benchmarkId: run.benchmarkId }),
       parentSessionId: state.currentSession?.id || '',
       modelId: run.modelId,
       messages: run.messages,
@@ -292,7 +310,7 @@
       renderChatScreenshot(el('ai-chat-message-list')?.querySelector('.assistant:last-child .ai-chat-assistant-stack'), run.screenshot);
     }
     await persistCurrentSession();
-    if (run.wasFirstExchange) void maybeGenerateTitle(run.modelId);
+    if (run.wasFirstExchange && !run.benchmarkId) void maybeGenerateTitle(run.modelId);
   }
 
   async function handleChatSendError(run, error) {
@@ -309,11 +327,15 @@
 
   function applyChatRequestQuota(run, result) {
     const amount = result?.quotaUsed;
-    if (amount > 0 && state.currentSession) {
-      state.currentSession.quotaUsed = window.AiFreeQuotaDisplay.addChatQuotaUsed(state.currentSession.quotaUsed, amount);
-      // Resumed failures do not append a new error turn, so save their charges here.
-      if (run.resumeRequestId && !result.ok) void persistCurrentSession();
+    const streamedAmount = run.streamQuotaUsed || 0;
+    const unstreamedAmount = Math.max(0, (amount || 0) - streamedAmount);
+    if (unstreamedAmount > 0 && state.currentSession) {
+      state.currentSession.quotaUsed = window.AiFreeQuotaDisplay.addChatQuotaUsed(
+        state.currentSession.quotaUsed, unstreamedAmount,
+      );
     }
+    // Resumed failures do not append a new error turn, so save streamed or final charges here.
+    if (run.resumeRequestId && !result.ok && amount > 0) void persistCurrentSession();
     if (!result?.ok && !(amount > 0)) return;
     state.lastQuotaCost = amount > 0 ? amount : null;
     renderQuota(run.useCustomApi ? state.quota : (result.quota || state.quota));

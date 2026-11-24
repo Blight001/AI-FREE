@@ -283,10 +283,17 @@
   function syncPausedChatRows(assistantRow) {
     const container = el('ai-chat-message-list');
     if (!container) return;
+    const messages = currentMessages();
     const userRows = [...container.querySelectorAll(':scope > [data-message-kind="user-bubble"]')];
-    let position = 0;
-    currentMessages().forEach(({ role }, index) => {
-      if (role === 'user' && userRows[position]) userRows[position++].dataset.messageIndex = String(index);
+    let nextIndex = 0;
+    userRows.forEach((row) => {
+      const currentIndex = Number(row.dataset.messageIndex);
+      if (Number.isInteger(currentIndex) && messages[currentIndex]?.role === 'user') {
+        nextIndex = currentIndex + 1;
+        return;
+      }
+      while (nextIndex < messages.length && messages[nextIndex]?.role !== 'user') nextIndex += 1;
+      if (nextIndex < messages.length) row.dataset.messageIndex = String(nextIndex++);
     });
     const lastUser = userRows.at(-1);
     if (lastUser && assistantRow && (assistantRow.compareDocumentPosition(lastUser) & Node.DOCUMENT_POSITION_FOLLOWING)) {
@@ -294,21 +301,73 @@
     }
   }
 
+  const AI_HISTORY_INITIAL_WINDOW = 56;
+  const AI_HISTORY_PAGE_SIZE = 40;
+
+  function addLoadOlderMessagesButton(container) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'ai-chat-history-load-older';
+    button.textContent = '加载更早的消息';
+    button.setAttribute('aria-label', '加载更早的对话消息');
+    button.addEventListener('click', loadOlderConversationMessages);
+    container.appendChild(button);
+  }
+
+  function renderMessageRange(messages, start, end, container) {
+    for (let index = start; index < end; index += 1) {
+      const message = messages[index];
+      if (isRenderableConversationMessage(message)) {
+        renderChatMessage(message, { messageIndex: index }, container);
+      }
+    }
+  }
+
+  function loadOlderConversationMessages() {
+    const messages = currentMessages();
+    const end = Number(state.historyMessageWindowStart) || 0;
+    if (!end) return;
+    const start = aiControlMessageWindowStart(messages, end, AI_HISTORY_PAGE_SIZE);
+    if (start >= end) return;
+    const viewport = el('ai-chat-messages');
+    const container = el('ai-chat-message-list');
+    if (!container) return;
+    const oldHeight = viewport?.scrollHeight || 0;
+    const oldTop = viewport?.scrollTop || 0;
+    container.querySelector('.ai-chat-history-load-older')?.remove();
+    const fragment = document.createDocumentFragment();
+    if (start > 0) addLoadOlderMessagesButton(fragment);
+    renderMessageRange(messages, start, end, fragment);
+    container.insertBefore(fragment, container.firstChild);
+    state.historyMessageWindowStart = start;
+    if (viewport) requestAnimationFrame(() => {
+      viewport.scrollTop = oldTop + viewport.scrollHeight - oldHeight;
+    });
+  }
+
   function renderConversation() {
     if (typeof syncWorkspaceDraftSession === 'function') syncWorkspaceDraftSession();
     const container = el('ai-chat-message-list');
     if (!container) return;
-    container.innerHTML = '';
     const messages = currentMessages();
+    const viewport = el('ai-chat-messages');
+    const sessionId = String(state.currentSession?.id || '');
+    const changedSession = state.historyMessageWindowSessionId !== sessionId;
+    const atBottom = !viewport || viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop <= 4;
+    let start = Number(state.historyMessageWindowStart);
+    if (changedSession || atBottom || !Number.isInteger(start) || start >= messages.length) {
+      start = aiControlMessageWindowStart(messages, messages.length, AI_HISTORY_INITIAL_WINDOW);
+    }
+    state.historyMessageWindowSessionId = sessionId;
+    state.historyMessageWindowStart = start;
+    container.innerHTML = '';
     renderConversationDownloads(messages);
-    const visible = messages
-      .map((message, index) => ({ message, index }))
-      .filter(({ message }) => isRenderableConversationMessage(message));
-    if (!visible.length) {
+    if (start > 0) addLoadOlderMessagesButton(container);
+    if (!messages.length || !messages.some(isRenderableConversationMessage)) {
       renderWelcome();
       return;
     }
-    visible.forEach(({ message, index }) => renderChatMessage(message, { messageIndex: index }, container));
+    renderMessageRange(messages, start, messages.length, container);
     updateSessionTitleUi();
   }
 

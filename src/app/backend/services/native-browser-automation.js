@@ -12,7 +12,7 @@ const { browserFile, resolvedFileAction } = require('./native-browser-file');
 const { PAGE_TOKEN, bindPage, bindingFailure, boundToolFailure, expectedPageToken, runtimeBindingFailure } = require('./native-browser-page-binding');
 const { AUTOMATION_CARD_READ_ONLY_ACTIONS, sameBrowserInstance } = require('./automation-card-contract');
 const {
-  EXTERNAL_OBSERVATIONS, clearObservations, resolveObservedTarget, recoverObservedTarget, rememberObservation,
+  EXTERNAL_OBSERVATIONS, clearObservations, resolveDragEndpoint, resolveObservedTarget, recoverObservedTarget, rememberObservation,
 } = require('./native-browser-ref-store');
 const { browserMedia } = require('./native-browser-media');
 const { executeBrowserTab } = require('./native-browser-tabs');
@@ -262,6 +262,9 @@ class NativeBrowserAutomation {
     }
     let input = this.resolveObservedTarget(connection, args);
     if (input.observedRefRecoveryCandidate) input = await this.recoverObservedTarget(connection, input);
+    const dragTarget = resolveDragEndpoint(this, connection, input);
+    if (dragTarget.failure) return dragTarget.failure;
+    input = dragTarget.input;
     const resolved = await this.resolveAccessibleAction(connection, input);
     if (resolved.failure) return resolved.failure;
     input = resolved.input;

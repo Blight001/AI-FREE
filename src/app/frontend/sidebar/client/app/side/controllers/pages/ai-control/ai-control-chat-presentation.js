@@ -25,7 +25,7 @@
   }
 
   function renderChatMessage(message, options, container) {
-    return appendMessage(message.role, message.content, {
+    const view = appendMessage(message.role, message.content, {
       pending: message.pending,
       reasoning: message.reasoning,
       toolEvents: message.tool_events,
@@ -35,6 +35,8 @@
       artifacts: message.artifacts,
       ...options,
     }, container);
+    renderChatScreenshots(view?.stack, message.artifacts);
+    return view;
   }
 
   function resolveChatButtonMode(hasContent, chat = state) {
@@ -77,6 +79,7 @@
     },
     screenshot: (run, event) => {
       run.screenshot = event;
+      if (!event.artifact) setStatus('截图已显示，但未能保存到历史记录', 'warning');
       renderChatScreenshot(run.streamView?.stack, event);
     },
     user_inserted: (run) => handleInsertedStreamMessage(run),
@@ -87,24 +90,82 @@
     if (Object.hasOwn(chatStreamHandlers, event.type)) chatStreamHandlers[event.type](run, event);
   }
 
-  function renderChatScreenshot(stack, screenshot) {
-    if (!stack || !screenshot?.dataUrl) return;
-    let button = stack.querySelector('.ai-chat-screenshot');
-    if (button?.dataset.toolCallId === screenshot.toolCallId) return;
-    if (!button) {
-      button = document.createElement('button');
-      button.className = 'ai-chat-screenshot';
-      button.type = 'button';
-      button.title = '查看浏览器截图';
-      button.addEventListener('click', () => openChatScreenshot(button.firstElementChild.src));
-      stack.prepend(button);
-    }
+  const SCREENSHOT_TOOL_NAMES = new Set(['browser_screenshot', 'browser_observe', 'browser_action']);
+
+  function isChatScreenshotArtifact(artifact) {
+    return SCREENSHOT_TOOL_NAMES.has(artifact?.toolName);
+  }
+
+  function renderChatScreenshots(stack, artifacts) {
+    if (!Array.isArray(artifacts)) return;
+    artifacts.filter(isChatScreenshotArtifact).forEach((artifact) => renderChatScreenshot(stack, artifact));
+  }
+
+  function screenshotDisplayType(screenshot) {
+    if (typeof screenshot?.dataUrl === 'string' && screenshot.dataUrl.startsWith('data:image/')) return 'inline';
+    if (isChatScreenshotArtifact(screenshot) && typeof screenshot.path === 'string') return 'artifact';
+    return '';
+  }
+
+  function findScreenshotTool(stack, toolCallId) {
+    return [...stack.querySelectorAll('.ai-chat-tool[data-tool-id]')]
+      .find((card) => card.dataset.toolId === toolCallId);
+  }
+
+  function findScreenshotButton(stack, toolCallId) {
+    return [...stack.querySelectorAll('.ai-chat-screenshot')]
+      .find((item) => item.dataset.toolCallId === toolCallId);
+  }
+
+  function createScreenshotButton(toolCallId, screenshot, displayType) {
+    const button = document.createElement('button');
+    button.className = 'ai-chat-screenshot';
+    button.type = 'button';
+    button.title = displayType === 'inline' ? '查看浏览器截图' : '正在加载历史截图';
+    button.dataset.toolCallId = toolCallId;
     const image = document.createElement('img');
     image.alt = '浏览器截图';
     image.decoding = 'async';
-    image.src = screenshot.dataUrl;
-    button.dataset.toolCallId = screenshot.toolCallId;
-    button.replaceChildren(image);
+    button.addEventListener('click', () => {
+      if (displayType === 'inline') openChatScreenshot(image.src);
+      else void previewWorkspaceFile(screenshot.path, screenshot);
+    });
+    button.appendChild(image);
+    return { button, image };
+  }
+
+  function markScreenshotUnavailable(button, image, label) {
+    image.alt = label;
+    button.title = '查看截图文件';
+  }
+
+  function loadHistoricalScreenshot(button, image, screenshot) {
+    void Promise.resolve().then(() => readWorkspacePreview(screenshot.path, screenshot)).then((result) => {
+      if (!button.isConnected) return;
+      if (result?.ok && result.file?.dataUrl) {
+        image.src = result.file.dataUrl;
+        button.title = '查看浏览器截图';
+      } else markScreenshotUnavailable(button, image, '历史截图文件不可用');
+    }).catch(() => {
+      if (button.isConnected) markScreenshotUnavailable(button, image, '历史截图加载失败');
+    });
+  }
+
+  function renderChatScreenshot(stack, screenshot) {
+    const toolCallId = String(screenshot?.toolCallId || '');
+    const displayType = screenshotDisplayType(screenshot);
+    if (!stack || !displayType || !toolCallId) return;
+    const tool = findScreenshotTool(stack, toolCallId);
+    if (!tool) return;
+    const existing = findScreenshotButton(stack, toolCallId);
+    if (existing) {
+      if (tool.nextElementSibling !== existing) tool.after(existing);
+      return;
+    }
+    const { button, image } = createScreenshotButton(toolCallId, screenshot, displayType);
+    tool.after(button);
+    if (displayType === 'inline') image.src = screenshot.dataUrl;
+    else loadHistoricalScreenshot(button, image, screenshot);
   }
 
   function chatActionButton(label, title, action) {
@@ -132,6 +193,7 @@
     if (!container) return;
     const unique = new Map();
     for (const artifact of [...messages.flatMap((message) => message.artifacts || []), ...live]) {
+      if (isChatScreenshotArtifact(artifact)) continue;
       if (typeof artifact?.path !== 'string' || !artifact.sha256 || !artifact.toolCallId) continue;
       unique.set(JSON.stringify([artifact.path, artifact.sha256]), artifact);
     }

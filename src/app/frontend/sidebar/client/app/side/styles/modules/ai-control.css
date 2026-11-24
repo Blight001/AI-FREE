@@ -478,6 +478,17 @@
 }
 .ai-chat-messages:focus-visible { outline: 1px solid var(--site-accent); outline-offset: -1px; }
 .ai-chat-message-list { display: flow-root; min-height: 100%; }
+.ai-chat-history-load-older {
+  display: block;
+  margin: 6px auto 12px;
+  padding: 6px 12px;
+  border: 1px solid var(--site-border);
+  border-radius: 999px;
+  color: var(--site-text-muted);
+  background: var(--site-panel);
+  cursor: pointer;
+}
+.ai-chat-history-load-older:hover { color: var(--site-accent); border-color: currentColor; }
 .ai-chat-jump-bottom {
   position: absolute;
   z-index: 1;

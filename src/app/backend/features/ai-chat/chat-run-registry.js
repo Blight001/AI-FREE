@@ -56,7 +56,7 @@ function createChatRunRegistry() {
   }
 
   return { begin, finish, get: (event, requestId) => runs.get(runKey(event, requestId)),
-    insert, stop, saveContinuation, getContinuation };
+    insert, stop, saveContinuation, getContinuation, hasActiveRuns: () => runs.size > 0 };
 }
 
 module.exports = { createChatRunRegistry, runKey };

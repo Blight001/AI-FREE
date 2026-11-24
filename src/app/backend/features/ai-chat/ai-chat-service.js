@@ -97,7 +97,7 @@ function createAiChatService(deps = {}) {
       return chatRuns.stop(_event, requestId);
     }
 
-    async function chat(_event, input = {}) {
+    async function chat(_event, input = {}, grant = null) {
       const getWindowTools = () => combineToolSets(getAiBrowserWindowTools(), deps.getParentChatTools?.(_event, input));
       let activeRun = null;
       let activeRunKey = '';
@@ -105,15 +105,18 @@ function createAiChatService(deps = {}) {
       try {
         const request = input.resumeRequestId
           ? prepareChatContinuation(deps, _event, input, chatRuns)
-          : prepareChatRequest(deps, _event, input, chatRuns, getWindowTools);
+          : prepareChatRequest(deps, _event, input, chatRuns, getWindowTools, grant);
         activeRunKey = request.runKey || '';
         activeRun = request.run || null;
         if (request.error) return request.error;
         // A resumed invocation reports only the new charges from this invocation.
-        request.onQuotaUsed = (amount) => { quotaUsed = addChatQuotaUsed(quotaUsed, amount); };
+        request.onQuotaUsed = (amount) => {
+          quotaUsed = addChatQuotaUsed(quotaUsed, amount);
+          request.emit?.({ type: 'quota_usage', amount });
+        };
         const result = await runChatConversation(request);
         const settled = { ...result, quotaUsed };
-        if (result.stopped && chatRuns.saveContinuation(_event, activeRunKey, activeRun)) {
+        if (!grant && result.stopped && chatRuns.saveContinuation(_event, activeRunKey, activeRun)) {
           return { ...settled, resumable: true };
         }
         return settled;
@@ -128,7 +131,7 @@ function createAiChatService(deps = {}) {
     }
 
     return {
-      chat, getWindowTools: getAiBrowserWindowTools, insert, stop,
+      chat, getWindowTools: getAiBrowserWindowTools, hasActiveRuns: chatRuns.hasActiveRuns, insert, stop,
     };
 }
 

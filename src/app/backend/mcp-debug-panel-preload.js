@@ -10,5 +10,9 @@ contextBridge.exposeInMainWorld('aiFree', Object.freeze({
     stop: invoke('stop'),
     frame: invoke('frame'),
     input: (event) => ipcRenderer.invoke('mcp-debug-panel-request', 'input', event),
+    benchmarkStart: invoke('benchmarkStart'),
+    restartStatus: invoke('restartStatus'),
+    setAutoRestart: (enabled) => ipcRenderer.invoke('mcp-debug-panel-request', 'setAutoRestart', { enabled }),
+    restartApp: invoke('restartApp'),
   }),
 }));

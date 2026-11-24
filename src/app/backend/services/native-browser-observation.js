@@ -80,6 +80,7 @@ function expiredObservedRefResult(input) {
   return {
     success: false,
     action: text(input.action).toLowerCase(),
+    actionExecuted: false,
     errorCode: 'OBSERVED_REF_EXPIRED',
     error: input.observedRefRecoveryError
       || '该元素 ref 不属于最近一次 browser_observe 结果。请重新观察并立即使用最新 ref，或改用稳定 selector。',
@@ -101,7 +102,7 @@ function mismatchedObservationResult(input) {
       ? 'observation_id 与最近一次 browser_observe 快照不一致。请重新观察后使用新返回的 observationId 和 ref。'
       : '坐标对应的观察已失效或无法确认页面身份，请重新观察并从同一页面的新快照取点。',
     ref,
-    ...(!ref ? { actionExecuted: false } : {}),
+    actionExecuted: false,
     observationId: text(input.observation_id),
     suggestedTool: 'browser_observe',
   };

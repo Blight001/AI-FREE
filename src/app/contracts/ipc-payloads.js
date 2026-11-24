@@ -218,11 +218,17 @@ const IPC_PAYLOAD_SCHEMAS = Object.freeze({
     stringField(channel, input, 'id');
     return input;
   },
+  'ai.benchmark-decline': (channel, payload) => {
+    const input = objectPayload(channel, payload);
+    stringField(channel, input, 'benchmarkId', { required: true, maxLength: 64 });
+    return input;
+  },
   'ai.chat': (channel, payload) => {
     const input = objectPayload(channel, payload, { optional: true });
     for (const key of ['modelId', 'requestId', 'browserConnectionId', 'automationCardId']) {
       stringField(channel, input, key);
     }
+    stringField(channel, input, 'benchmarkId', { maxLength: 64 });
     stringField(channel, input, 'resumeRequestId', { maxLength: 128 });
     stringField(channel, input, 'parentSessionId', { maxLength: 128 });
     stringListField(channel, input, 'browserConnectionIds');
@@ -332,6 +338,12 @@ const IPC_PAYLOAD_SCHEMAS = Object.freeze({
   'ai.history-id': (channel, payload) => {
     const input = objectPayload(channel, payload, { optional: true });
     stringField(channel, input, 'id');
+    return input;
+  },
+  'ai.history-get': (channel, payload) => {
+    const input = objectPayload(channel, payload, { optional: true });
+    stringField(channel, input, 'id');
+    booleanField(channel, input, 'setCurrent');
     return input;
   },
   'ai.history-rename': (channel, payload) => {

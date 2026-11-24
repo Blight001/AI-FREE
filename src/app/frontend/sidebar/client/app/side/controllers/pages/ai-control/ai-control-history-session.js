@@ -28,11 +28,13 @@
       && state.currentSession.id !== sessionId;
   }
 
-  async function loadRemoteHistorySession(sessionId) {
+  async function loadRemoteHistorySession(sessionId, options = {}) {
     const historyGet = window.aiFree?.ai?.historyGet;
     if (!historyGet) return null;
-    const result = await historyGet({ id: sessionId });
-    return result?.ok && result.session ? result.session : null;
+    const result = await historyGet({ id: sessionId, setCurrent: options.setCurrent !== false });
+    if (result?.ok && result.session) return result.session;
+    if (result?.ok === false) throw new Error(result.message || '对话不存在');
+    return null;
   }
 
   async function loadSessionById(sessionId, options = {}) {
@@ -42,8 +44,7 @@
       if (shouldSaveBeforeSessionSwitch(sessionId, options)) {
         await persistCurrentSession();
       }
-      let session = await loadRemoteHistorySession(sessionId);
-      if (!session) session = getLocalSession(sessionId);
+      const session = await loadRemoteHistorySession(sessionId);
       if (!session) throw new Error('对话不存在');
       applySession(session);
       closeAllSelects();
@@ -170,7 +171,9 @@
   async function applyGeneratedSessionTitle(sessionId, result) {
     if (result?.quota) renderQuota(result.quota);
     const isCurrent = state.currentSession?.id === sessionId;
-    const session = isCurrent ? state.currentSession : getLocalSession(sessionId);
+    const session = isCurrent
+      ? state.currentSession
+      : await loadRemoteHistorySession(sessionId, { setCurrent: false });
     if (!session) return;
     const title = result?.ok && !session.titleGenerated ? sanitizeGeneratedTitle(result.message?.content) : '';
     if (!title && !(result?.quotaUsed > 0)) return;

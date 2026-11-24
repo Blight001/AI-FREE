@@ -1,17 +1,18 @@
 'use strict';
 
+const crypto = require('node:crypto');
 const fs = require('fs');
 const path = require('path');
 const { resolveInside } = require('../../services/ai-sandbox-file-tools');
 const {
-  MAX_ARTIFACTS, WorkspaceArtifactError, assertFileArtifact, inspectWorkspaceFile, invalidArtifact,
+  MAX_ARTIFACTS, MAX_SCREENSHOT_BYTES, SCREENSHOT_TOOLS, WorkspaceArtifactError, assertFileArtifact, inspectWorkspaceFile, invalidArtifact,
   normalizeArtifactPath, normalizeFileArtifact,
 } = require('./workspace-file-artifacts');
 
 const MAX_IMPORT_FILES = 32;
 const MAX_PASTED_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_PREVIEW_BYTES = 256 * 1024;
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_IMAGE_BYTES = MAX_SCREENSHOT_BYTES;
 const MAX_VIDEO_BYTES = 64 * 1024 * 1024;
 const MAX_AUDIO_BYTES = 24 * 1024 * 1024;
 const MAX_ATTACHMENT_TEXT_CHARS = 256 * 1024;
@@ -168,6 +169,29 @@ function createDownloadArtifact({ toolName, action, result, toolCallId }) {
   return normalizeFileArtifact({
     toolName, toolCallId, path: result.relative_path, kind: fileKind(result.relative_path).kind,
     size: result.size, sha256: result.sha256,
+  });
+}
+
+function createChatScreenshotArtifact({ workspaceDir, toolName, toolCallId, dataUrl }) {
+  if (!SCREENSHOT_TOOLS.has(toolName)) return null;
+  if (!workspaceDir || typeof toolCallId !== 'string' || !toolCallId.trim() || toolCallId.length > 256) return null;
+  const match = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(String(dataUrl || ''));
+  if (!match || match[0].length > Math.ceil(MAX_SCREENSHOT_BYTES * 4 / 3) + 32) return null;
+  const bytes = Buffer.from(match[2], 'base64');
+  if (!bytes.length || bytes.length > MAX_SCREENSHOT_BYTES || bytes.toString('base64') !== match[2]) return null;
+  const root = workspaceRoot(workspaceDir);
+  const directory = path.join(root, 'Chat Screenshots');
+  fs.mkdirSync(directory, { recursive: true });
+  const realDirectory = fs.realpathSync(directory);
+  resolveInside(root, path.relative(root, realDirectory));
+  const extension = match[1] === 'jpeg' ? 'jpg' : match[1];
+  const name = 'browser-' + Date.now() + '-' + crypto.randomUUID() + '.' + extension;
+  const absolutePath = path.join(realDirectory, name);
+  fs.writeFileSync(absolutePath, bytes, { flag: 'wx' });
+  const relativePath = path.relative(root, absolutePath).replace(/\\/g, '/');
+  return normalizeFileArtifact({
+    path: relativePath, name, kind: 'image', size: bytes.length,
+    sha256: crypto.createHash('sha256').update(bytes).digest('hex'), toolName, toolCallId,
   });
 }
 
@@ -355,6 +379,6 @@ function buildInlineAttachmentMessages(workspaceDir, messages = []) {
 module.exports = {
   buildAttachmentMessages, buildVerifiedAttachmentMessages: buildAttachmentMessages,
   buildInlineAttachmentMessages,
-  createAiWorkspaceService, createDownloadArtifact, inspectWorkspaceFileSync, readPreview,
+  createAiWorkspaceService, createChatScreenshotArtifact, createDownloadArtifact, inspectWorkspaceFileSync, readPreview, SCREENSHOT_TOOLS,
   resolveAttachmentArtifacts, verifyWorkspaceArtifactSync,
 };

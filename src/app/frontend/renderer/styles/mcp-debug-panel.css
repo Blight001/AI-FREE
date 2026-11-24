@@ -30,3 +30,14 @@ footer { padding: 0 14px 11px; font-size: 12px; color: #42536b; }
   dt, p, footer { color: #b6c8e3; }
   dl > div { border-color: #3c4e6a; }
 }
+
+#benchmark { margin-top: 18px; padding-top: 14px; border-top: 1px solid #d5dfeb; }
+#benchmark-status { line-height: 1.45; }
+#benchmark-start { background: #227452; color: #fff; border-color: #227452; }
+@media (prefers-color-scheme: dark) { #benchmark { border-color: #3c4e6a; } }
+#dev-restart { margin-top: 18px; padding-top: 14px; border-top: 1px solid #d5dfeb; }
+#dev-restart label { display: flex; align-items: flex-start; gap: 6px; margin-top: 10px; line-height: 1.4; }
+#dev-restart button { margin-top: 10px; white-space: normal; }
+#dev-restart small { display: block; margin-top: 8px; color: #53647b; line-height: 1.4; }
+#restart-status { overflow-wrap: anywhere; }
+@media (prefers-color-scheme: dark) { #dev-restart { border-color: #3c4e6a; } #dev-restart small { color: #b6c8e3; } }

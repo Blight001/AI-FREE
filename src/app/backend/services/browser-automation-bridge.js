@@ -59,6 +59,7 @@ class BrowserAutomationBridgeRuntime {
     this.runManager.subscribe(({ run }) => {
       if (run.finishedAt && !run.retryAvailable) this.runScopes.delete(run.id);
     });
+    this.activeOperations = 0;
     this.server = null;
     this.externalMcpGateway = createBrowserAutomationExternalGateway({
       descriptorPath: options.externalMcpDescriptorPath,
@@ -136,7 +137,8 @@ class BrowserAutomationBridgeRuntime {
 
   async withBackgroundLease(operation, options = {}) {
     const lease = this.backgroundExecutionLeases?.acquire?.({ timeoutMs: options.timeoutMs });
-    try { return await operation(); } finally { lease?.release?.(); }
+    this.activeOperations += 1;
+    try { return await operation(); } finally { this.activeOperations -= 1; lease?.release?.(); }
   }
 
   manageCard(connectionId, args = {}, options = {}) {
@@ -305,6 +307,7 @@ function createBrowserAutomationBridge(options = {}) {
     saveBrowserSession: (...args) => runtime.saveBrowserSession(...args),
     selectCard: (...args) => runtime.selectCard(...args),
     setCardCacheState: (...args) => runtime.setCardCacheState(...args),
+    hasActiveOperations: () => Boolean(runtime.activeOperations || runtime.externalMcpGateway.activeCalls || runtime.runManager.hasActiveRuns()),
     refreshExternalMcpAccess: () => runtime.refreshExternalMcpAccess(),
     start: () => runtime.start(),
     stop: () => runtime.stop(),

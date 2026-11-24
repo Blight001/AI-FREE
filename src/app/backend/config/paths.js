@@ -78,8 +78,18 @@ function resolveMcpDebugFixturePath(file) {
   return path.join(__dirname, '../../frontend/views/mcp-debug-fixture', file);
 }
 
+function resolveMcpBenchmarkFixturePath(file) {
+  return path.join(__dirname, '../../frontend/views/mcp-benchmark-fixture', file);
+}
+
+function resolveMcpBenchmarkHistoryPath(app) {
+  return path.join(app.getPath('userData'), 'mcp-benchmark-history.json');
+}
+
 module.exports = {
   resolveMcpDebugFixturePath,
+  resolveMcpBenchmarkFixturePath,
+  resolveMcpBenchmarkHistoryPath,
   resolveMcpDebugWindowPaths,
   resolveAiSandboxDir,
   resolveLegacyAiSandboxDir,

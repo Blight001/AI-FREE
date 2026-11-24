@@ -8,6 +8,8 @@ const { MAX_ALLOWED_BYTES } = require('../../services/browser-download-service')
 
 const MAX_ARTIFACTS = 16;
 const DOWNLOAD_TOOLS = new Set(['browser_file', 'browser_media']);
+const SCREENSHOT_TOOLS = new Set(['browser_screenshot', 'browser_observe', 'browser_action']);
+const MAX_SCREENSHOT_BYTES = 10 * 1024 * 1024;
 const ARTIFACT_KINDS = new Set(['image', 'video', 'audio', 'text', 'binary']);
 
 function normalizeArtifactPath(value) {
@@ -17,10 +19,17 @@ function normalizeArtifactPath(value) {
     ? '' : normalized;
 }
 
+function artifactMaximumBytes(toolName) {
+  if (SCREENSHOT_TOOLS.has(toolName)) return MAX_SCREENSHOT_BYTES;
+  if (DOWNLOAD_TOOLS.has(toolName)) return MAX_ALLOWED_BYTES;
+  return 0;
+}
+
 function normalizeFileArtifact(value) {
   const relative = normalizeArtifactPath(value?.path);
-  if (!relative || !DOWNLOAD_TOOLS.has(value?.toolName) || !ARTIFACT_KINDS.has(value?.kind)) return null;
-  if (!Number.isSafeInteger(value.size) || value.size < 0 || value.size > MAX_ALLOWED_BYTES) return null;
+  const maxBytes = artifactMaximumBytes(value?.toolName);
+  if (!relative || !maxBytes || !ARTIFACT_KINDS.has(value?.kind)) return null;
+  if (!Number.isSafeInteger(value.size) || value.size < 0 || value.size > maxBytes) return null;
   if (typeof value.sha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(value.sha256)) return null;
   if (typeof value.toolCallId !== 'string' || !value.toolCallId.trim() || value.toolCallId.length > 256) return null;
   return {
@@ -123,6 +132,6 @@ function inspectWorkspaceFile(root, relativePath, expected = null, captureBytes 
 }
 
 module.exports = {
-  MAX_ARTIFACTS, WorkspaceArtifactError, assertFileArtifact, invalidArtifact, normalizeArtifactPath,
+  MAX_ARTIFACTS, MAX_SCREENSHOT_BYTES, SCREENSHOT_TOOLS, WorkspaceArtifactError, assertFileArtifact, invalidArtifact, normalizeArtifactPath,
   normalizeFileArtifact, normalizeFileArtifacts, inspectWorkspaceFile,
 };

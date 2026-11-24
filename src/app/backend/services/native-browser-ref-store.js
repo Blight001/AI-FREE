@@ -63,6 +63,21 @@ function resolveCoordinateObservation(owner, connection, args) {
   return { ...args, observation_id: observationId, observationMismatch: true };
 }
 
+function resolveDragEndpoint(owner, connection, args) {
+  if (text(args.action) !== 'drag' || Number.isFinite(Number(args.to_x)) && Number.isFinite(Number(args.to_y))) return { input: args };
+  const observationId = text(args.observation_id ?? args.observationId);
+  const ref = text(args.to_ref);
+  const target = observationStore(owner, connection).observeTargets.get(connection.id)?.get(ref);
+  const token = expectedPageToken(connection);
+  if (!observationId || !ref || !matchesPage(target, token) || target.observationId !== observationId
+    || !Number.isFinite(Number(target.x)) || !Number.isFinite(Number(target.y))
+    || Number(target.x) < 0 || Number(target.y) < 0) {
+    return { failure: { success: false, errorCode: 'DRAG_TARGET_INVALID',
+      error: '拖拽终点必须是同一次最新观察中的有效 to_ref，或提供 to_x/to_y 坐标。', actionExecuted: false } };
+  }
+  return { input: { ...args, to_x: target.x, to_y: target.y } };
+}
+
 function resolveObservedTarget(owner, connection, args) {
   const ref = observedRef(args);
   if (!ref) return resolveCoordinateObservation(owner, connection, args);
@@ -169,4 +184,4 @@ async function recoverObservedTarget(owner, connection, input) {
 }
 
 
-module.exports = { EXTERNAL_OBSERVATIONS, clearObservations, resolveObservedTarget, recoverObservedTarget, rememberObservation };
+module.exports = { EXTERNAL_OBSERVATIONS, clearObservations, resolveDragEndpoint, resolveObservedTarget, recoverObservedTarget, rememberObservation };

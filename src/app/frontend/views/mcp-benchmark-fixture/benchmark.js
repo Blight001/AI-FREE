@@ -1,0 +1,14 @@
+'use strict';
+const route = location.pathname.replace(/\/$/, '');
+const send = (event, data = {}) => fetch(`${route}/event`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event, ...data }) });
+document.getElementById('remove').addEventListener('click', () => { document.getElementById('remove').disabled = true; setTimeout(() => { document.getElementById('check-wrap').hidden = true; document.getElementById('add').hidden = false; }, 250); });
+document.getElementById('add').addEventListener('click', () => { document.getElementById('add').disabled = true; setTimeout(() => { document.getElementById('check-wrap').hidden = false; document.getElementById('check').checked = false; document.getElementById('add').hidden = true; document.getElementById('enable').disabled = false; }, 250); });
+document.getElementById('enable').addEventListener('click', () => { document.getElementById('value').disabled = false; });
+document.getElementById('submit-value').addEventListener('click', async () => { const value = document.getElementById('value').value; const checked = document.getElementById('check').checked; const response = await send('controls', { value, checked }); document.getElementById('control-result').textContent = response.ok ? '控件验证已记录' : '验证失败'; });
+let dragged = null;
+const list = document.getElementById('sortable');
+list.addEventListener('dragstart', (event) => { dragged = event.target.closest('[data-id]'); if (dragged) event.dataTransfer.setData('text/plain', dragged.dataset.id); });
+list.addEventListener('dragover', (event) => { event.preventDefault(); });
+list.addEventListener('drop', async (event) => { event.preventDefault(); const target = event.target.closest('[data-id]'); if (!dragged || !target || dragged === target) return; list.insertBefore(dragged, target); await send('sort', { order: [...list.querySelectorAll('[data-id]')].map((item) => item.dataset.id) }); dragged = null; });
+document.getElementById('download').addEventListener('click', () => { void send('download-started'); });
+document.getElementById('upload-form').addEventListener('submit', async (event) => { event.preventDefault(); const form = event.currentTarget; const result = await fetch(`${route}/upload`, { method: 'POST', body: new FormData(form) }); document.getElementById('upload-result').textContent = result.ok ? await result.text() : '上传校验失败'; });

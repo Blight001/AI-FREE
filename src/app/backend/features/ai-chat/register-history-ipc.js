@@ -13,7 +13,7 @@ function registerAiHistoryIpc({ ipc, historyRepository, getCredentials, getSideb
 
   ipc.handle('ai-control-history-get', async (_event, input = {}) => {
     try {
-      return historyRepository.getSession(getCredentials(), input?.id);
+      return historyRepository.getSession(getCredentials(), input?.id, { setCurrent: input?.setCurrent !== false });
     } catch (error) {
       return { ok: false, message: error?.message || String(error) };
     }

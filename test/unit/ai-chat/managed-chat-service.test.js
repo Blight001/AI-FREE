@@ -7,7 +7,7 @@ const { createManagedChatService } = require('../../../src/app/backend/features/
 function fixture(run) {
   let disk = [];
   const options = {
-    repository: { read: () => structuredClone(disk), save: (record) => { disk = [...disk.filter(({ id }) => id !== record.id), structuredClone(record)]; } },
+    repository: { read: () => structuredClone(disk), save: (record) => { disk = [...disk.filter(({ id }) => id !== record.id), structuredClone(record)]; }, delete: (id) => { disk = disk.filter((record) => record.id !== id); } },
     getModels: async () => ({ ok: true, models: [{ id: 'test', name: 'Test' }] }),
     getAccount: () => 'account',
     run,

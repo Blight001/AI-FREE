@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>AI-FREE MCP 综合基准</title>
+<link rel="stylesheet" href="{{route}}/benchmark.css"><script src="{{route}}/benchmark.js" defer></script></head>
+<body><main>
+<h1>AI-FREE MCP 综合基准</h1><p>本页仅用于本机自动化能力评测；任务事件由本地服务独立验收。</p>
+<section><h2>1. 读取动态表格</h2><table><thead><tr><th>Process</th><th>CPU</th></tr></thead><tbody><tr><td>Renderer</td><td>2.1%</td></tr><tr><td>Chrome</td><td id="target-cpu">{{cpu}}</td></tr></tbody></table></section>
+<section><h2>2. 异步控件与输入</h2><button id="remove">Remove</button><button id="add" hidden>Add</button><label id="check-wrap"><input id="check" type="checkbox"> Ready</label><button id="enable" disabled>Enable</button><input id="value" disabled aria-label="测试值"><button id="submit-value">提交验证</button><output id="control-result"></output></section>
+<section><h2>3. 拖拽排序</h2><p>把 Item 4 拖到最前面。</p><ol id="sortable"><li draggable="true" data-id="1">Item 1</li><li draggable="true" data-id="2">Item 2</li><li draggable="true" data-id="3">Item 3</li><li draggable="true" data-id="4">Item 4</li></ol></section>
+<section><h2>4. 下载合成文件</h2><a id="download" href="{{route}}/download">下载 mcp-benchmark.txt</a></section>
+<section><h2>5. 上传本轮专用合成文件</h2><form id="upload-form" action="{{route}}/upload" method="post" enctype="multipart/form-data"><label>选择文件 <input id="upload-file" name="file" type="file" required></label><button>上传校验</button></form><output id="upload-result"></output></section>
+</main></body></html>
