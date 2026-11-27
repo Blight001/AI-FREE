@@ -123,51 +123,11 @@ html.theme-light .vip-use-gift-code { color: #2a1d05; }
 }
 
 .account-general-settings {
-  position: absolute;
-  top: 40px;
-  right: 12px;
-  z-index: 8;
-  display: none;
-  width: min(300px, calc(100% - 24px));
-  margin: 0;
-  border: 1px solid rgba(99, 137, 188, .22);
-  border-radius: 12px;
-  background: rgba(18, 26, 38, .96);
+  width: min(680px, calc(100% - 32px));
+  height: 360px;
+  max-height: min(360px, calc(100% - 24px));
   overflow: hidden;
-  box-shadow: 0 16px 36px rgba(0, 0, 0, .28);
-}
-.account-general-settings[open] {
-  display: block;
-  overflow: visible;
-}
-
-.account-general-settings > summary {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  color: #edf5ff;
-  font-size: 12px;
-  font-weight: 700;
-  list-style: none;
-}
-
-.account-general-settings > summary::-webkit-details-marker { display: none; }
-
-.account-general-settings-chevron {
-  width: 7px;
-  height: 7px;
-  border-right: 1.5px solid currentColor;
-  border-bottom: 1.5px solid currentColor;
-  transform: rotate(45deg) translate(-2px, 2px);
-  transition: transform .16s ease;
-}
-
-.account-general-settings[open] .account-general-settings-chevron {
-  transform: rotate(225deg) translate(-2px, 2px);
+  box-sizing: border-box;
 }
 
 .account-app-preferences {
@@ -334,8 +294,6 @@ html.theme-light .vip-use-gift-code { color: #2a1d05; }
 .account-switch:has(input:disabled) { cursor: wait; opacity: .58; }
 
 html.theme-light .account-app-preferences { border-color: transparent; background: transparent; }
-html.theme-light .account-general-settings { border-color: rgba(86, 121, 165, .2); background: #f7faff; }
-html.theme-light .account-general-settings > summary { color: #294057; }
 html.theme-light .account-app-preferences strong { color: #294057; }
 html.theme-light .account-ui-scale-preference { border-color: rgba(86, 121, 165, .18); }
 html.theme-light .account-ui-scale-copy strong { color: #294057; }
@@ -447,32 +405,6 @@ html.theme-light .account-switch { color: #60758f; }
 
 .announcement-mail-dot[hidden] {
   display: none !important;
-}
-
-.account-settings-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 28px;
-  padding: 0 8px 0 7px;
-  border: 1px solid rgba(255, 255, 255, .22);
-  border-radius: 999px;
-  color: #f4f7fb;
-  background: rgba(15, 23, 35, .38);
-  font: inherit;
-  cursor: pointer;
-}
-
-.account-settings-btn b {
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: .04em;
-}
-
-.account-settings-btn:hover,
-.account-settings-btn[aria-expanded='true'] {
-  color: #fff;
-  background: rgba(15, 23, 35, .58);
 }
 
 .account-profile-main {
@@ -1179,16 +1111,6 @@ html.theme-light .announcement-mail-btn[aria-expanded='true'] {
   background: #fff;
 }
 html.theme-light .announcement-mail-dot { border-color: #fff; }
-html.theme-light .account-settings-btn {
-  color: #31475f;
-  border-color: rgba(86, 121, 165, .28);
-  background: rgba(255, 255, 255, .78);
-}
-html.theme-light .account-settings-btn:hover,
-html.theme-light .account-settings-btn[aria-expanded='true'] {
-  color: #1f3348;
-  background: #fff;
-}
 html.theme-light .account-profile-card > .announcement-bar {
   background: #fff;
   border-color: rgba(84, 120, 165, .2);

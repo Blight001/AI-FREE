@@ -40,6 +40,72 @@
     return chips;
   }
 
+  function insertPendingPastedTextChip(input) {
+    const batch = crypto.randomUUID();
+    const chip = makeInlineChatChip('正在保存粘贴文本…', '文件');
+    chip.dataset.batch = batch;
+    document.execCommand('insertHTML', false, chip.outerHTML);
+    const inserted = input.querySelector(`[data-batch="${batch}"]`);
+    if (inserted) {
+      const caret = document.createRange();
+      caret.setStartAfter(inserted);
+      caret.collapse(true);
+      window.getSelection().removeAllRanges();
+      window.getSelection().addRange(caret);
+    }
+    return inserted;
+  }
+
+  async function resolvePastedTextAttachment(input, text, chip, replaced, sessionId) {
+    try {
+      const file = await savePastedText(text);
+      attachPastedTextFile(input, chip, replaced, sessionId, file);
+    } catch (error) {
+      restorePastedTextChip(input, chip, replaced);
+      setStatus(error?.message || String(error), 'warning');
+    } finally {
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }
+
+  async function savePastedText(text) {
+    const result = await window.aiFree?.ai?.workspaceImportPasted?.({ text });
+    const [file] = result?.files || [];
+    if (!result?.ok || !file?.path) throw new Error(result?.message || '长文本保存失败');
+    return file;
+  }
+
+  function attachPastedTextFile(input, chip, replaced, sessionId, file) {
+    if (!isPastedTextChipCurrent(input, chip, replaced, sessionId)) return;
+    if (!toggleChatAttachment(file.path, true)) throw new Error('无法将长文本附加到消息');
+    replacePastedTextChip(chip, file.path);
+    setStatus(`长文本已保存并附加：${file.path}`, 'success');
+    void loadWorkspaceFiles();
+  }
+
+  function isPastedTextChipCurrent(input, chip, replaced, sessionId) {
+    if (input.contains(chip) && (state.currentSession?.id || '') === sessionId) return true;
+    restorePastedTextChip(input, chip, replaced);
+    setStatus('对话已切换，长文本已保存但未附加到当前消息', 'warning');
+    return false;
+  }
+
+  function replacePastedTextChip(chip, filePath) {
+    const marker = document.createTextNode(`（超长粘贴文本已保存为工作区文件：${filePath}，请阅读全文后再回答。）`);
+    chip.replaceWith(marker);
+    const caret = document.createRange();
+    caret.setStartAfter(marker);
+    caret.collapse(true);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(caret);
+  }
+
+  function restorePastedTextChip(input, chip, replaced) {
+    if (!input.contains(chip)) return;
+    chip.before(replaced);
+    chip.remove();
+  }
+
   async function resolvePastedChatChips(input, files, chips, replaced) {
     try {
       const payload = await Promise.all(files.map(readPastedFile));
@@ -67,8 +133,22 @@
     event.preventDefault();
     const files = clipboardFiles(clipboard);
     if (!files.length) {
-      const text = clipboard.getData('text/plain').slice(0, chatDraftRemaining(input));
-      if (text) document.execCommand('insertText', false, text);
+      const text = clipboard.getData('text/plain');
+      if (!text) return;
+      if (text.length <= chatDraftRemaining(input)) {
+        document.execCommand('insertText', false, text);
+        return;
+      }
+      if (state.attachmentPaths.length >= 16) {
+        setStatus('每条消息最多附加 16 个文件，请先移除一个附件', 'warning');
+        return;
+      }
+      const range = chatDraftSelection(input);
+      if (!range) return;
+      const replaced = range.cloneContents();
+      const sessionId = state.currentSession?.id || '';
+      const chip = insertPendingPastedTextChip(input);
+      if (chip) void resolvePastedTextAttachment(input, text, chip, replaced, sessionId);
       return;
     }
     const range = chatDraftSelection(input);

@@ -63,6 +63,16 @@ test('可选 AI payload 保留既有省略参数行为，数组成员仍逐项�
   );
 });
 
+test('AI 长文本粘贴导入校验文本载荷并限制大小', () => {
+  const channel = 'ai-control-workspace-import-pasted';
+  const payload = { text: 'large pasted text' };
+  assert.deepEqual(validateIpcPayload(channel, payload), payload);
+  assert.throws(() => validateIpcPayload(channel, { text: 7 }),
+    (error) => error instanceof IpcPayloadError && error.details.path === 'text');
+  assert.throws(() => validateIpcPayload(channel, { text: 'x'.repeat(2 * 1024 * 1024 + 1) }),
+    (error) => error instanceof IpcPayloadError && error.details.path === 'text');
+});
+
 test('AI 剪贴板文件导入限制文件数量与 payload 字段', () => {
   const channel = 'ai-control-workspace-import-pasted';
   const payload = { files: [{ name: 'image.png', data: 'aGVsbG8=' }] };

@@ -1,0 +1,9 @@
+#home-skills { padding: 1.5rem; overflow: auto; color: inherit; }
+#home-skills header, .home-skill-actions { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+#home-skills header { justify-content: space-between; }
+#home-skills button { font: inherit; color: inherit; background: transparent; border: 1px solid currentColor; border-radius: .6rem; padding: .45rem .8rem; cursor: pointer; }
+.home-skills-layout { display: grid; grid-template-columns: minmax(12rem, 1fr) 2fr; gap: 1.2rem; }
+#skill-library-list button { display: grid; gap: .35rem; width: 100%; text-align: start; margin: 0 0 .45rem; }
+#skill-library-list small { opacity: .8; }
+#skill-preview-body { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+@media (max-width: 760px) { .home-skills-layout { grid-template-columns: 1fr; } }

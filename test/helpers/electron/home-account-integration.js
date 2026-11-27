@@ -281,7 +281,8 @@ async function checkVipShop(win, layout, shell) {
       return dialog.width > 0 && dialog.left >= layer.left && dialog.right <= layer.right
         && dialog.top >= layer.top && dialog.bottom <= layer.bottom;
     }), true, 'VIP dialog fits inside the home layout');
-    assert.equal(await shell(() => document.getElementById('browser-settings-tutorial').textContent), '使用教程和商城');
+    assert.equal(await shell(() => document.getElementById('browser-settings-tutorial')
+      .textContent.trim()), '使用教程和商城');
     await click('vip-use-gift-code');
     assert.equal(await poll(isBrowserVisible, Boolean), true);
     assert.equal(await shell(() => document.getElementById('tabs-container').textContent.includes('使用教程和商城')), true);

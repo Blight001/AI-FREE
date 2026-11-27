@@ -68,6 +68,7 @@ function createAiSupportService(deps = {}) {
     selectAutomationCard: cardService.selectAutomationCard,
     workspaceImport: workspaceService.importFiles,
     workspaceImportPasted: workspaceService.importPastedFiles,
+    workspaceImportPastedText: workspaceService.importPastedText,
     workspaceList: workspaceService.list,
     workspaceRead: workspaceService.read,
     workflow,

@@ -95,6 +95,25 @@
 
 结果未知时列为“待人工核对”，不得记成功或失败分，也不得重跑前轮。人工确认页面或服务端状态已恢复干净后，才可以开启独立新一轮。
 
+## 本轮真实 UI 迭代记录（2026-11-25）
+
+- 在用户可见的 AI-FREE 开发版中实际启动基准后，测试通知确实进入侧栏所选模型（DeepSeek-v4-Flash）的普通对话，但在第一条消息即返回“基准测试未启用”，没有发出任何 MCP 工具调用；因此这不是浏览器操作分数，也不是可比的 0 分成绩。
+- 根因：启动装配在 `app-ready-bootstrap.js` 创建了基准控制器并交给 MCP 调试面板，却未把同一个实例注入 AI 聊天 IPC；侧栏带 `benchmarkId` 的请求因此走到“未启用”保护分支。此反例推翻了“面板发出通知即表示测试链路已接通”的假设。
+- 修复：将同一个 benchmark controller 注入 `registerAiChatIpc`，新增 IPC 路由回归测试，验证有效控制器接收基准请求及缺失控制器时安全拒绝。最小测试、guardrails、verify 已通过。
+- 本轮首次 UI 运行**失败/无成绩**，不是成绩提升；修复后的构建仍需通过方案 A 正常重启并在同一真实侧栏对话中重新验证。不得重放刚才那条失败消息；必须启动全新、干净的基准运行。
+
+## 本轮真实 UI 复测（2026-11-25）
+
+- 通过 CUA 精确选择现有 AI-FREE 主窗口（句柄 4137002）并从首页进入 MCP 管理；确认独立窗口标题为「MCP 调试面板」，面板报告运行构建 sourceHash 为 94504dfacc55a86373d6b08347a96d186e198a583edf55be464fcade4a2013b3。全程没有启动裸 electron.exe，也没有 shell kill。
+- 只启动了一次干净的本机基准通知，实际进入 AI 控制普通新对话；UI 显示当前所选模型 DeepSeek-v4-Flash，历史记录精确 modelId 为 deepseek-v4-flash-b035eb43，benchmarkVersion=1，runId=dda61122-b3ec-44e6-97f2-d8119c0f7270。因此之前“侧栏未启用 benchmark”的装配故障已被真实运行推翻为本轮阻塞点：这次请求已触发完整 AI-FREE 工具事件链。
+- 独立历史记录状态为 cancelled、score=null；这不是 0/100，也不是有效完成成绩。可核验的局部业务结果仅有异步控件：服务端记录 MCP-OK 且已勾选（20 个潜在分值，但取消轮不得形成总分）。读取值未由最终 JSON 确认；夹具顺序仍为 Item 1、2、3、4；下载未发现匹配产物；上传无匹配文件。故不能把局部 20 分称作总成绩。
+- 对话时间线显示第一轮拖拽调用失败（12 秒），之后 browser_observe 失败（44 秒）、browser_wait 失败（1 分 43 秒），后续工具链仍继续并出现 browser_control 约 2 分 59 秒、更多排查调用；AI-FREE 侧栏额度显示本轮消耗约 53.863。由于重复调用/逐步扩大的等待和夹具仍未排序，按防死循环规则用侧栏停止按钮中止；取消后在 AI-FREE 页面核对过列表仍是原顺序；随后确认专用基准标签/Profile 已关闭，历史落盘为 cancelled。本轮 fixture 端口 57716 已无监听，目录 C:\Users\admin\Desktop\AI-Workspace\mcp-benchmark-pUpB9e 不存在。窗口回到原有 127.0.0.1:62788 失效调试页，这是旧调试页残留而非基准 fixture。没有重放失败消息或重新启动第二轮。
+- 现已从 AI 控制原对话的工具卡片核对脱敏细节（不是重放）：第一次拖拽为 `browser_action` 参数 `action=drag, x=430, y=787, to_x=430, to_y=640`，结果 `dispatched=true, success=true, inputMode=chromium-visible-pointer-drag, targetMode=viewport-drag`；结果只证明 Chromium 接受了原生指针派发，不证明 HTML `drop` 或业务排序成功。该调用后的观察耗时 0.1 秒；取消前本机夹具仍为 `1,2,3,4`。
+- 第二次拖拽改用同一观察产生的 `ref=e5, to_ref=e2`（坐标 `430,787 -> 430,626`），返回 `RUNTIME_COMMAND_TIMEOUT`，错误为 Runtime Bridge `page-bound-command` 超时，`phase=tool_dispatch, recoverable=true`；结果没有 `actionExecuted` 或 dispatched 标记，所以副作用状态不明，不能断言“未执行”。紧随其后的 `browser_observe(keyword=Item, include_text=true, limit=20)` 再次以 `RUNTIME_COMMAND_TIMEOUT` 失败，命令为 `list-tabs`，同属 `tool_dispatch`。这说明至少存在第二条独立的 Runtime Bridge 无响应证据，不能把全部问题归因于 HTML drop 事件。
+- 反方检验后的判断：两个失败模式不同——第一次已派发但没有业务排序结果；第二次在 page-bound-command 层超时，随后 list-tabs 也超时。现有证据仍不能把它们压成一个生产根因。下一步应先做确定性本地回归：使用与基准相同的原生 HTML5 可排序列表，分别断言 trusted `dragstart/dragover/drop/dragend`、最终 DOM/服务端顺序 `4,1,2,3`，并在 ref 拖拽后确认 Runtime Bridge 仍能完成一次观察。旧实现须至少在对应失败路径上稳定失败，才允许做单点生产修复；不得调坐标、加等待或改 fixture 来掩盖差异。
+- 可比性：不可比。历史中唯一可见的 completed 20/100 属 GPT-6.2-sol，且 sourceHash 为空；本轮模型不同、取消且无 score。当前 sourceHash 已成功记录，但不构成该模型的有效基线或后测。
+- 结论：已真实验证测试消息和工具事件链可达，但本轮 cancelled、score=null，未达到 100。已取回拖拽、观察、等待的工具卡片参数和首个结构化错误；重复出现 Runtime Bridge 超时（page-bound-command 两次、list-tabs 一次），且第一次被派发的拖拽没有完成业务排序。为避免再次消耗模型额度或把不确定副作用重放，停止所有真实 AI 基准重跑。仅在隔离的本地确定性回归能区分“原生拖拽未产生有效 drop”与“页面绑定命令/桥接在超时后失去响应”，并证实旧实现稳定失败后，才继续单点修复和正常 UI 重启；否则维持停止并报告阻塞，不宣称优化成功。
+
 ## 长期维护边界
 
 - 不做动态 `require` 清缓存、运行时替换工具目录、worker 热迁移、第二套 MCP 执行器或基准结果页。全进程重启的成本是模型对话流中断、Profile/服务恢复需核对、构建变慢；换来的好处是生命周期只有一个所有者，使用生产同一启动/清理路径，降低旧代码与新代码并存的不可预测性。

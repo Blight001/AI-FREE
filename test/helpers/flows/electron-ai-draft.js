@@ -35,7 +35,9 @@ async function checkDraftInteractions(webContents) {
   const read = () => evaluate(() => {
     const input = /** @type {HTMLElement} */ (document.getElementById('ai-chat-input'));
     const chips = [...input.querySelectorAll('[contenteditable=false][data-path]:not([data-path=""])')];
-    return { text: input.innerText, chips: chips.map((chip) => chip.textContent) };
+    const attachments = [...document.querySelectorAll('#ai-chat-attachment-chips .ai-chat-attachment-chip')];
+    return { text: input.innerText, chips: chips.map((chip) => chip.textContent),
+      attachments: attachments.map((chip) => chip.textContent) };
   });
   async function paste(name) {
     await evaluate((fileName) => {
@@ -49,18 +51,30 @@ async function checkDraftInteractions(webContents) {
   }
   await evaluate(() => {
     const requests = [];
+    const pastedTexts = [];
+    const largeRequests = [];
     Object.defineProperty(window, 'aiFree', { value: {
       account: { getSession: async () => ({ authenticated: true }) },
       ai: {
         workspaceList: async () => ({ ok: true, files: [] }),
-        workspaceImportPasted: async ({ files }) => ({ ok: true,
-          files: files.map(({ name }) => ({ name, path: `Uploads/${name}` })) }),
+        workspaceImportPasted: async ({ files, text }) => {
+          if (typeof text === 'string') {
+            pastedTexts.push(text);
+            return { ok: true, files: [{ name: 'pasted-text.txt', path: 'tmp/2026-11-26/pasted-text.txt' }] };
+          }
+          return { ok: true, files: files.map(({ name }) => ({ name, path: `Uploads/${name}` })) };
+        },
         getModels: async () => ({ ok: true, models: [{ id: 'fixture-model', custom_api: true }] }),
-        chat: async ({ messages }) => {
+        chat: async ({ messages, attachmentPaths }) => {
           requests.push(structuredClone(messages.at(-1)));
+          if (attachmentPaths?.length) largeRequests.push({
+            message: structuredClone(messages.at(-1)), attachmentPaths: [...attachmentPaths],
+          });
           return { ok: true, message: { role: 'assistant', content: 'fixture reply' } };
         },
         requests,
+        pastedTexts,
+        largeRequests,
       },
     } });
     document.getElementById('ai-chat-input').focus();
@@ -105,7 +119,28 @@ async function checkDraftInteractions(webContents) {
     getSelection().collapse(input, 0);
   });
   await pressKey(webContents.debugger, 'Delete', 46);
-  assert.deepEqual(await waitFor(read, ({ chips }) => !chips.length), { text: '保留文字', chips: [] });
+  assert.deepEqual(await waitFor(read, ({ chips }) => !chips.length), { text: '保留文字', chips: [], attachments: [] });
+  await evaluate(() => {
+    const input = document.getElementById('ai-chat-input');
+    input.replaceChildren();
+    document.querySelectorAll('#ai-chat-attachment-chips button').forEach((button) => /** @type {HTMLButtonElement} */ (button).click());
+    input.focus();
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  const largeText = '长文本内容'.repeat(3000);
+  await evaluate((text) => {
+    const input = document.getElementById('ai-chat-input');
+    const clipboardData = new DataTransfer();
+    clipboardData.setData('text/plain', text);
+    input.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData }));
+  }, largeText);
+  const attached = await waitFor(read, (value) => value.attachments.some((chip) => chip.includes('tmp/2026-11-26/pasted-text.txt')));
+  assert.equal(attached.text.includes('tmp/2026-11-26/pasted-text.txt'), true);
+  assert.equal(await evaluate(() => /** @type {any} */ (window).aiFree.ai.pastedTexts[0].length), largeText.length);
+  await evaluate(() => document.getElementById('ai-chat-send').click());
+  const largeRequest = await waitFor(() => evaluate(() => /** @type {any} */ (window).aiFree.ai.largeRequests[0]), Boolean);
+  assert.deepEqual(largeRequest.attachmentPaths, ['tmp/2026-11-26/pasted-text.txt']);
+  assert.match(largeRequest.message.content, /tmp\/2026-11-26\/pasted-text\.txt/);
 }
 
 module.exports = { exerciseAiDraft };

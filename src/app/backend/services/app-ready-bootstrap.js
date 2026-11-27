@@ -6,6 +6,7 @@ const { registerMcpCatalogIpc } = require('../features/browser/register-mcp-cata
 const { createAiSupportService } = require('../features/ai-chat/ai-support-service');
 const { registerAiHistoryIpc } = require('../features/ai-chat/register-history-ipc');
 const { createAiChatHistoryRepository } = require('../features/ai-chat/history-repository');
+const { registerSkillIpc } = require('../features/ai-chat/register-skill-ipc');
 const { registerAiSupportIpc } = require('../features/ai-chat/register-support-ipc');
 const { registerManagedChatIpc } = require('../features/ai-chat/register-managed-chat-ipc');
 const { combineToolSets } = require('./combine-tool-sets');
@@ -139,6 +140,8 @@ function createAndRegisterAiServices(deps, ipc) {
     logger: deps.logger,
   });
   registerAiSupportIpc({ ipc, service: aiSupport });
+  const disposeSkills = registerSkillIpc(ipc, { ...deps, openDirectory: dir => require('electron').shell.openPath(dir) });
+  deps.app?.once('will-quit', disposeSkills);
   const managedChat = deps.managedChatRepository ? registerManagedChatIpc({ ipc, deps, getModels: aiSupport.getModels }) : null;
   if (managedChat) deps.app?.once?.('before-quit', managedChat.dispose);
   const benchmark = deps.isDevMode && deps.app?.getPath ? createMcpBenchmarkController(deps) : null;
@@ -146,6 +149,7 @@ function createAndRegisterAiServices(deps, ipc) {
   const aiChatService = registerAiChatIpc({
     getParentChatTools: managedChat?.getParentTools,
     ...deps,
+    benchmark,
     ipc,
     readStoreConfigSafe: deps.readStoreConfigSafe,
     getGlobalHttpClient: deps.getGlobalHttpClient,

@@ -10,8 +10,11 @@ function registerWorkspaceIpc(ipc, service) {
     catch (error) { return { ok: false, message: error?.message || String(error), files: [] }; }
   });
   ipc.handle('ai-control-workspace-import-pasted', async (_event, input = {}) => {
-    try { return service.workspaceImportPasted(input.files || []); }
-    catch (error) { return { ok: false, message: error?.message || String(error), files: [] }; }
+    try {
+      return typeof input.text === 'string'
+        ? service.workspaceImportPastedText(input.text)
+        : service.workspaceImportPasted(input.files || []);
+    } catch (error) { return { ok: false, message: error?.message || String(error), files: [] }; }
   });
   ipc.handle('ai-control-workspace-read', async (_event, input = {}) => {
     try { return service.workspaceRead(input); }

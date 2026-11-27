@@ -78,26 +78,28 @@
         <div id="ai-chat-downloads" class="ai-chat-downloads" role="group" aria-label="下载文件" hidden></div>
         <form id="ai-chat-form" class="ai-chat-composer">
           <div id="ai-chat-attachment-chips" class="ai-chat-attachment-chips" hidden></div>
-          <div id="ai-chat-workspace-panel" class="ai-chat-workspace-panel" hidden>
-            <header>
-              <div class="ai-chat-workspace-heading">
-                <strong>工作文件</strong>
-                <span>桌面 / AI-Workspace</span>
-              </div>
-              <div class="ai-chat-workspace-actions">
-                <button id="ai-chat-workspace-upload" class="is-primary" type="button">＋ 导入</button>
-                <button id="ai-chat-workspace-refresh" class="is-icon" type="button" aria-label="刷新" title="刷新文件列表">↻</button>
-                <button id="ai-chat-workspace-close" class="is-icon" type="button" aria-label="关闭" title="关闭">×</button>
-              </div>
-            </header>
-            <div id="ai-chat-workspace-files" class="ai-chat-workspace-files"></div>
+          <div id="ai-chat-workspace-panel" class="ai-chat-workspace-panel ai-chat-add-menu" hidden role="menu" aria-label="添加">
+            <strong class="ai-chat-add-heading">添加</strong>
+            <button id="ai-chat-workspace-upload" type="button" role="menuitem"><span aria-hidden="true">＋</span> 文件和文件夹</button>
+            <button id="ai-chat-add-skill" type="button" role="menuitem" title="选择本轮使用的工作区技能"><span aria-hidden="true">✳</span> 引用技能</button>
           </div>
+          <section id="ai-skill-picker" class="ai-chat-workspace-panel ai-skill-picker" hidden aria-label="引用技能" aria-describedby="ai-skill-description">
+            <header class="ai-skill-picker-header">
+              <div><strong>引用技能</strong><p id="ai-skill-description">选择本轮要使用的方法，可以同时选择多个</p></div>
+              <button id="ai-skill-close" class="ai-skill-close" type="button" aria-label="关闭技能选择">×</button>
+            </header>
+            <label class="ai-skill-search-wrap"><span aria-hidden="true">⌕</span>
+              <input id="ai-skill-search" type="search" aria-label="搜索技能" placeholder="搜索技能名称或用途">
+            </label>
+            <div id="ai-skill-results" class="ai-skill-results" role="group" aria-label="可用技能" aria-live="polite"></div>
+          </section>
+          <div id="ai-skill-chips" class="ai-chat-attachment-chips" hidden></div>
           <div id="ai-chat-mention-menu" class="ai-chat-mention-menu" role="listbox" hidden></div>
           <div id="ai-chat-input" class="ai-chat-text-input" contenteditable="true" role="textbox" aria-multiline="true"
                aria-label="输入消息" aria-placeholder="输入消息，@ 引用工具或文件，Enter 发送" data-empty></div>
           <div class="ai-chat-footer-bar">
             <div class="ai-chat-footer-left">
-              <button id="ai-chat-attach" class="ai-chat-attach" type="button" aria-label="添加文件" title="上传或选择 AI-Workspace 文件">+</button>
+              <button id="ai-chat-attach" class="ai-chat-attach" type="button" aria-label="打开添加菜单" title="添加文件、文件夹或引用技能">+</button>
             </div>
             <div class="ai-chat-footer-right">
               <div id="ai-chat-quota" class="ai-chat-quota-widget" title="选择模型后即可开始对话">
@@ -184,6 +186,7 @@
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-data-loaders.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-draft.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-inline-files.js"></script>
+  <script src="./client/app/side/controllers/pages/ai-control/ai-control-skills.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-files.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-file-preview.js"></script>
   <script src="./client/app/side/controllers/pages/ai-control/ai-control-composer.js"></script>

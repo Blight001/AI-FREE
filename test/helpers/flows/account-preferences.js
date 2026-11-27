@@ -4,18 +4,25 @@ const { bindDomain } = require('./domains');
 const { dispatchControl, poll, rendererProbe } = require('./electron-controls');
 
 const controls = Object.freeze({
-  authMode: '#sidebar-auth-mode-switch', settings: '#account-settings-btn',
+  authMode: '#sidebar-auth-mode-switch', browsers: '#home-browsers-tab',
+  settings: '#account-settings-btn', closeSettings: '[data-account-settings-close]',
   closeToTray: 'input[name="window-close-behavior"][value="hide"]',
   closeAsk: 'input[name="window-close-behavior"][value="ask"]', startup: '#app-startup-enabled',
 });
 
 function readAccount() {
-  const heading = document.querySelector('#home-personal h1').getBoundingClientRect();
-  const tutorial = document.getElementById('browser-settings-tutorial').getBoundingClientRect();
-  const tutorialSharesHeadingRow = heading.width > 0 && tutorial.width > 0 && tutorial.left >= heading.right
-    && tutorial.top < heading.bottom && tutorial.bottom > heading.top;
   const get = (id) => document.getElementById(id);
-  const settings = document.querySelector('details#account-general-settings');
+  const tutorial = get('browser-settings-tutorial');
+  const settingsButton = get('account-settings-btn');
+  const personalTab = get('home-personal-tab');
+  const shortcuts = tutorial?.closest('.shell-home-shortcuts');
+  const settings = /** @type {HTMLDialogElement | null} */ (get('account-general-settings'));
+  const settingsBounds = settings?.getBoundingClientRect();
+  const personalTop = personalTab.getBoundingClientRect().top;
+  const tutorialAbovePersonal = Boolean(shortcuts?.contains(tutorial)
+    && tutorial.getBoundingClientRect().top < personalTop);
+  const settingsAbovePersonal = Boolean(shortcuts?.contains(settingsButton)
+    && settingsButton.getBoundingClientRect().top < personalTop);
   const options = [...document.querySelectorAll('.account-close-behavior-options label')];
   const activeClose = /** @type {HTMLInputElement | null} */ (document.querySelector('input[name="window-close-behavior"]:checked'));
   return {
@@ -24,10 +31,15 @@ function readAccount() {
     authSubmit: get('sidebar-auth-submit')?.textContent.trim(),
     authSwitch: get('sidebar-auth-mode-label')?.textContent.trim(),
     hasModeArrow: get('sidebar-auth-mode-switch')?.querySelector('.sidebar-auth-mode-arrow')?.textContent === '→',
-    settingsOpen: settings?.hasAttribute('open'),
-    tutorialSharesHeadingRow,
-    settingsTitle: settings?.querySelector('summary')?.textContent.trim(),
-    settingsBelowAnnouncement: get('announcement-bar')?.nextElementSibling === settings,
+    settingsOpen: settings?.open === true,
+    settingsTitle: get('account-general-settings-title')?.textContent.trim(),
+    settingsInDialogLayer: get('home-dialog-layer')?.contains(settings) === true,
+    settingsLarge: (settingsBounds?.width || 0) >= 450,
+    settingsFixedHeight: settings ? getComputedStyle(settings).height === '360px' : false,
+    settingsNoVerticalOverflow: Boolean(settings && settings.scrollHeight <= settings.clientHeight),
+    personalSelected: personalTab?.getAttribute('aria-selected') === 'true',
+    tutorialAbovePersonal,
+    settingsAbovePersonal,
     compactCloseOptions: options.length === 3 && options[0].getBoundingClientRect().width > 0
       && new Set(options.map((label) => Math.round(label.getBoundingClientRect().top))).size === 1
       && !document.querySelector('.account-close-behavior-options small'),
@@ -49,7 +61,9 @@ function accountPreferencesDrivers(win, shellPath, saved) {
     },
     openPersonal,
     reload: async () => { await win.loadFile(shellPath); return { loaded: true }; },
-    inspect: ({ ready = {} }, { signal }) => poll(() => execute(readAccount), (state) => matches(state, ready), signal),
+    inspect: ({ ready = {} }, { signal }) => poll(
+      () => execute(readAccount), (state) => matches(state, ready), signal,
+    ),
     inspectSaved: () => saved(),
   });
 }

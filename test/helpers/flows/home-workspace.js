@@ -17,7 +17,7 @@ function readWorkspace() {
   const visible = (node) => Boolean(node?.getBoundingClientRect().width);
   const menu = document.querySelector('[role="tablist"][aria-label="首页栏目"]');
   if (!menu) return { errorCode: 'HOME_MENU_MISSING' };
-  const tabs = [...menu.querySelectorAll('[role="tab"]')].filter(visible);
+  const tabs = [...menu.closest('aside').querySelectorAll('[role="tablist"] [role="tab"]')].filter(visible);
   const personal = get('home-personal-tab');
   const personalBounds = personal.getBoundingClientRect();
   const railBounds = menu.closest('aside').getBoundingClientRect();
@@ -34,7 +34,7 @@ function readWorkspace() {
     personalName: get('home-personal-name')?.textContent,
     personalAvatarVisible: visible(personalAvatar) && personalAvatar.naturalWidth > 0
       && personalAvatar.currentSrc === profileAvatar.currentSrc,
-    personalAtBottom: tabs.at(-1) === personal && Math.abs(personalBounds.bottom - railBounds.bottom) < 1
+    personalAtBottom: Math.abs(personalBounds.bottom - railBounds.bottom) < 1
       && Math.abs(personalBounds.left - railBounds.left) < 1 && Math.abs(personalBounds.right - railBounds.right) <= 2,
     selected: tabs.filter((tab) => tab.getAttribute('aria-selected') === 'true').map((tab) => tab.id),
     panels: tabs.map(panel).filter(visible).map((node) => node.id),

@@ -34,9 +34,13 @@ html:not(.theme-gold) .shell-home-rail {
   backdrop-filter: var(--shell-frost-blur);
 }
 
-html:not(.theme-gold) .shell-home-tabs button { color: var(--shell-text); }
-html:not(.theme-gold) .shell-home-tabs button:hover { background: var(--shell-frost-selected); }
-html:not(.theme-gold) .shell-home-tabs button[aria-selected="true"] {
+html:not(.theme-gold) :is(.shell-home-tabs button, .shell-home-shortcut, .shell-home-personal-tab) {
+  color: var(--shell-text);
+}
+html:not(.theme-gold) :is(.shell-home-tabs button, .shell-home-shortcut, .shell-home-personal-tab):hover {
+  background: var(--shell-frost-selected);
+}
+html:not(.theme-gold) :is(.shell-home-tabs button, .shell-home-personal-tab)[aria-selected="true"] {
   border-color: var(--shell-frost-accent);
   color: var(--shell-frost-selected-ink);
   background: var(--shell-frost-selected);

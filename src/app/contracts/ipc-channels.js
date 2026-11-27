@@ -22,7 +22,11 @@ const INVOKE_CHANNELS = [
   { channel: 'ai-control-workflow', kind: 'invoke', domain: 'ai', registrar: 'src/app/backend/features/ai-chat/register-support-ipc.js', requestSchema: 'ai.workflow' },
   { channel: 'ai-control-get-models', kind: 'invoke', domain: 'ai', registrar: 'src/app/backend/features/ai-chat/register-support-ipc.js' },
   { channel: 'ai-control-workspace-import', kind: 'invoke', domain: 'ai', registrar: 'src/app/backend/features/ai-chat/register-support-ipc.js' },
-  { channel: 'ai-control-workspace-import-pasted', kind: 'invoke', domain: 'ai', registrar: 'src/app/backend/features/ai-chat/register-support-ipc.js', requestSchema: 'ai.workspace-pasted-files' },
+  { channel: 'ai-control-workspace-import-pasted', kind: 'invoke', domain: 'ai', registrar: 'src/app/backend/features/ai-chat/register-support-ipc.js', requestSchema: 'ai.workspace-pasted-content' },
+  { channel: 'ai-skill-list', resultEnvelope: true, kind: 'invoke', domain: 'ai', registrar: 'src/app/backend/features/ai-chat/register-skill-ipc.js' },
+  { channel: 'ai-skill-read', resultEnvelope: true, kind: 'invoke', domain: 'ai', registrar: 'src/app/backend/features/ai-chat/register-skill-ipc.js', requestSchema: 'ai.skill-read' },
+  { channel: 'ai-skill-open-directory', resultEnvelope: true, kind: 'invoke', domain: 'ai', registrar: 'src/app/backend/features/ai-chat/register-skill-ipc.js' },
+  { channel: 'ai-skill-create-draft', resultEnvelope: true, kind: 'invoke', domain: 'ai', registrar: 'src/app/backend/features/ai-chat/register-skill-ipc.js' },
   { channel: 'ai-control-workspace-list', kind: 'invoke', domain: 'ai', registrar: 'src/app/backend/features/ai-chat/register-support-ipc.js' },
   { channel: 'ai-control-workspace-read', kind: 'invoke', domain: 'ai', registrar: 'src/app/backend/features/ai-chat/register-support-ipc.js', requestSchema: 'ai.workspace-read' },
   { channel: 'ai-control-manage-automation-card', kind: 'invoke', domain: 'ai', registrar: 'src/app/backend/features/ai-chat/register-support-ipc.js', requestSchema: 'ai.automation-card-operation' },
@@ -179,6 +183,7 @@ const EVENT_CHANNELS = [
 ];
 
 const PUSH_CHANNELS = [
+  { channel: 'ai-skill-draft-selected', kind: 'push', domain: 'ai' },
   { channel: 'ai-control-benchmark-notice', kind: 'push', domain: 'ai' },
   // 下面一组经间接写法发送（sendToSide?.() 可选链 / 三元选择通道名 / 捕获的
   // webContents 变量），静态扫描不易命中，由 preload 白名单告警核实后登记。

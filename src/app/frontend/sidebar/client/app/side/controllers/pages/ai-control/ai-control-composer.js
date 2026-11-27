@@ -217,7 +217,7 @@
       ...(run.benchmarkId && { benchmarkId: run.benchmarkId }),
       parentSessionId: state.currentSession?.id || '',
       modelId: run.modelId,
-      messages: run.messages,
+      messages: skillRequestMessages(run.messages, run.skills),
       quota: run.useCustomApi ? null : state.quota,
       localInteraction: true,
       automationCardId: '',
@@ -401,17 +401,48 @@
     await performChatRun(run);
   }
 
+  function defaultAttachmentPrompt() {
+    if (typeof chatSkills !== 'undefined' && chatSkills.hasSelection()) return '请使用所选技能。';
+    return hasSelectedChatAttachments() ? '请查看并处理所附文件。' : '';
+  }
+
+  async function prepareSkillChat(input, select, content, draft) {
+    if (typeof chatSkills === 'undefined' || !chatSkills.hasSelection()) {
+      return prepareChatSend(input, select, content, draft.inlineAttachments);
+    }
+    const session = state.currentSession;
+    const model = select.value;
+    const signature = chatSkills.signature();
+    let skills;
+    try { skills = await chatSkills.resolve(); }
+    catch (error) { setStatus(error.message, 'warning'); return null; }
+    const current = readChatDraft(input);
+    if (state.loading || state.currentSession !== session || model !== select.value || signature !== chatSkills.signature()
+      || JSON.stringify(current) !== JSON.stringify(draft)) return null;
+    const sources = skills.map(skill => skill.title + ' (' + skill.name + '@' + skill.digest.slice(0, 8) + ')');
+    const run = prepareChatSend(input, select, content + '\n\n引用技能：' + sources.join('、'), draft.inlineAttachments);
+    if (run) { run.skills = skills; chatSkills.clear(); }
+    return run;
+  }
+
+  function skillRequestMessages(messages, skills) {
+    if (!skills?.length) return messages;
+    const last = messages.at(-1);
+    const context = skills.map(skill => '技能 ' + skill.name + '\n' + skill.body).join('\n\n');
+    return [...messages.slice(0, -1), { ...last, content: last.content + '\n\n本轮引用的工作区技能：\n' + context }];
+  }
+
   async function sendMessage() {
     const input = el('ai-chat-input');
     const select = el('ai-chat-model');
     const draft = readChatDraft(input);
     if (draft.pending) return;
     const typedContent = draft.content.trim();
-    const content = typedContent || (hasSelectedChatAttachments() ? '请查看并处理所附文件。' : '');
+    const content = typedContent || defaultAttachmentPrompt();
     if (!content) return;
     if (state.loading) {
-      if (draft.inlineAttachments.length) {
-        setStatus('图片附件可在当前回复结束后发送', 'warning');
+      if (draft.inlineAttachments.length || hasSelectedChatAttachments()) {
+        setStatus('文件附件可在当前回复结束后发送', 'warning');
         return;
       }
       await insertMessageDuringRun(content, input);
@@ -430,7 +461,7 @@
       if (currentDraft.pending || currentDraft.content.trim() !== typedContent
         || JSON.stringify(currentDraft.inlineAttachments) !== JSON.stringify(draft.inlineAttachments)) return;
     }
-    const run = prepareChatSend(input, select, content, draft.inlineAttachments);
+    const run = await prepareSkillChat(input, select, content, draft);
     if (!run) return;
     await performChatRun(run);
   }

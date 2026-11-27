@@ -114,7 +114,7 @@ test('个人中心常规设置默认折叠在公告下方且内容宽度自适�
     appRoot, 'frontend/sidebar/client/scripts/ui-scale.js',
   ), 'utf8');
   const announcementIndex = accountHtml.indexOf('id="announcement-bar"');
-  const settingsIndex = accountHtml.indexOf('class="account-general-settings"');
+  const settingsIndex = accountHtml.indexOf('id="account-general-settings"');
 
   assert.ok(announcementIndex >= 0 && settingsIndex > announcementIndex);
 

@@ -5,6 +5,7 @@
 
 const { AppError, fail: ipcFailure } = require('./ipc-result');
 const { getRequestSchema, hasResultEnvelope } = require('./ipc-channels');
+const { createWorkspacePayloadSchemas } = require('./ipc-workspace-payloads');
 
 const MAX_ID_LENGTH = 512;
 const MAX_TEXT_LENGTH = 2 * 1024 * 1024;
@@ -158,6 +159,9 @@ function providerRecordPayload(channel, payload) {
 }
 
 const IPC_PAYLOAD_SCHEMAS = Object.freeze({
+  ...createWorkspacePayloadSchemas({
+    fail, isPlainObject, objectPayload, stringField, booleanField, validateArtifactPayload, maxTextLength: MAX_TEXT_LENGTH,
+  }),
   'account.provider-list': providerPayload,
   'account.provider-save': (channel, payload) => {
     const input = providerPayload(channel, payload);
@@ -387,24 +391,6 @@ const IPC_PAYLOAD_SCHEMAS = Object.freeze({
   'ui.startup-settings': (channel, payload) => {
     const input = objectPayload(channel, payload);
     booleanField(channel, input, 'enabled');
-    return input;
-  },
-  'ai.workspace-read': (channel, payload) => {
-    const input = objectPayload(channel, payload);
-    stringField(channel, input, 'path', { required: true, maxLength: 4096 });
-    booleanField(channel, input, 'validateOnly');
-    if (input.artifact !== undefined) validateArtifactPayload(channel, input.artifact);
-    return input;
-  },
-  'ai.workspace-pasted-files': (channel, payload) => {
-    const input = objectPayload(channel, payload);
-    if (!Array.isArray(input.files) || input.files.length < 1 || input.files.length > 16) fail(channel, 'files', '必须是 1 到 16 个文件');
-    input.files.forEach((file, index) => {
-      const filePath = `files[${index}]`;
-      if (!isPlainObject(file)) fail(channel, filePath, '必须是对象');
-      stringField(channel, file, 'name', { required: true, maxLength: 512, path: `${filePath}.name` });
-      stringField(channel, file, 'data', { required: true, maxLength: 14 * 1024 * 1024, path: `${filePath}.data` });
-    });
     return input;
   },
   'ui.sidebar-width': (channel, payload) => {

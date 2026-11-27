@@ -1,37 +1,33 @@
 'use strict';
 
-function bindAccountSettingsPopover() {
-  const details = document.getElementById('account-general-settings');
+function bindAccountSettingsDialog() {
+  const dialog = document.getElementById('account-general-settings');
   const button = document.getElementById('account-settings-btn');
-  if (!details || !button || button.dataset.bound === 'true') return;
+  const closeButton = dialog?.querySelector('[data-account-settings-close]');
+  if (!dialog || !button || !closeButton || button.dataset.bound === 'true') return;
   button.dataset.bound = 'true';
 
-  const sync = () => {
-    button.setAttribute('aria-expanded', String(details.open === true));
-    if (details.open === true && typeof setAnnouncementMailOpen === 'function') {
-      setAnnouncementMailOpen(false);
-    }
-  };
+  const sync = () => button.setAttribute('aria-expanded', String(dialog.open));
+  const close = () => homeDialogs.close(dialog);
 
   button.addEventListener('click', (event) => {
     event.preventDefault();
     event.stopPropagation();
-    details.open = !details.open;
+    document.getElementById('home-personal-tab')?.click();
+    if (homeDialogs.open(dialog, {
+      focus: closeButton,
+      onClose: sync,
+    })) {
+      if (typeof setAnnouncementMailOpen === 'function') setAnnouncementMailOpen(false);
+      sync();
+    }
   });
-  details.addEventListener('toggle', sync);
-  document.addEventListener('click', (event) => {
-    if (details.open !== true) return;
-    if (event.target?.closest?.('#account-general-settings, #account-settings-btn')) return;
-    details.open = false;
-  });
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') details.open = false;
-  });
+  closeButton.addEventListener('click', close);
   sync();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  bindAccountSettingsPopover();
+  bindAccountSettingsDialog();
   const wraps = Array.from(document.querySelectorAll('.account-pref-hint-wrap'));
   if (!wraps.length) return;
 

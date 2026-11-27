@@ -52,6 +52,23 @@ test('工作区服务导入、列出并预览文本文件', async (t) => {
   assert.throws(() => service.read({ path: '../outside.txt' }), /超出 AI 工作区|不存在/);
 });
 
+test('超长粘贴文本写入工作区按日期归档，并作为 AI 附件可读取', (t) => {
+  const { root } = fixture(t);
+  const now = new Date(2026, 10, 26, 12, 30, 0);
+  const service = createAiWorkspaceService({ workspaceDir: root, now: () => now });
+  const text = 'large pasted text\n'.repeat(4000);
+  const result = service.importPastedText(text);
+
+  assert.equal(result.ok, true);
+  assert.match(result.files[0].path, /^tmp\/2026-11-26\/pasted-text-.*\.txt$/);
+  assert.equal(fs.readFileSync(path.join(root, result.files[0].path), 'utf8'), text);
+  const context = buildAttachmentMessages(root, [result.files[0].path]);
+  assert.match(context[0].content, new RegExp(result.files[0].path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(context[0].content, /内容已截断/);
+  assert.throws(() => service.importPastedText('x'.repeat(5 * 1024 * 1024 + 1)), /超过 5 MB/);
+  assert.equal(fs.readdirSync(path.join(root, 'tmp', '2026-11-26')).length, 1);
+});
+
 test('浏览器截图写入工作区并通过受校验引用恢复预览', (t) => {
   const { root } = fixture(t);
   const bytes = Buffer.from('89504e470d0a1a0a', 'hex');

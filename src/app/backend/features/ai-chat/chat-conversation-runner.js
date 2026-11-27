@@ -247,16 +247,6 @@ function finishWithoutTools(state, result) {
 }
 
 function validateToolRound(state, toolCalls) {
-  const knownTools = new Set(
-    (state.toolContext.tools || []).map((tool) => String(tool?.name || '').trim()).filter(Boolean),
-  );
-  const unknownTool = toolCalls.find(
-    (call) => !knownTools.has(String(call?.function?.name || '').trim()),
-  );
-  if (unknownTool) {
-    const name = String(unknownTool?.function?.name || '').trim() || '未提供工具名';
-    return toolFailureResult(state, `暂无该 MCP 调用：${name}`);
-  }
   if (toolCalls.length >= MAX_AI_CONTROL_TOOL_CALLS_PER_ROUND) {
     return toolFailureResult(state, `模型单轮请求了 ${toolCalls.length} 个浏览器工具，超过可安全处理的数量`);
   }
@@ -310,7 +300,6 @@ async function dispatchToolRound(state, toolCalls, round) {
     windowTools: state.windowTools,
     workspaceDir: state.workspaceDir,
   });
-  if (execution.unresolvedToolFailure) state.unresolvedToolFailure = execution.unresolvedToolFailure;
   return execution;
 }
 
@@ -325,18 +314,12 @@ async function requestRoundSafely(state, round) {
     return { done: false, result };
   } catch (error) {
     if (isChatStopped(state.run, error)) return { done: true, result: stoppedResult(state) };
-    if (state.unresolvedToolFailure) {
-      return { done: true, result: toolFailureResult(state, error?.message || state.unresolvedToolFailure) };
-    }
     throw error;
   }
 }
 
 function handleFailedModelResult(state, result) {
   if (result?.ok) return null;
-  if (state.unresolvedToolFailure) {
-    return { result: toolFailureResult(state, result?.message || result?.error) };
-  }
   state.emit({ type: 'error', message: result?.message || result?.error || '对话请求失败' });
   return { result };
 }

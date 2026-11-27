@@ -11,7 +11,7 @@ test('AI 控制页装配上传、工作文件和 @ 引用资源', () => {
   const html = fs.readFileSync(path.join(sidebarRoot, 'ai-control.html'), 'utf8');
   for (const id of [
     'ai-chat-attach', 'ai-chat-attachment-chips', 'ai-chat-workspace-panel',
-    'ai-chat-workspace-upload', 'ai-chat-workspace-files', 'ai-chat-workspace-preview',
+    'ai-chat-workspace-upload', 'ai-chat-add-skill', 'ai-chat-workspace-preview',
     'ai-chat-mention-menu',
   ]) {
     assert.match(html, new RegExp(`id=["']${id}["']`));
@@ -27,6 +27,9 @@ test('AI 控制页装配上传、工作文件和 @ 引用资源', () => {
     assert.equal(fs.existsSync(path.join(sidebarRoot, relativePath)), true, relativePath);
     assert.match(html, new RegExp(relativePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
+  assert.match(html, /文件和文件夹/);
+  assert.match(html, /id="ai-skill-picker"/);
+  assert.match(html, /id="ai-skill-search"/);
   assert.doesNotMatch(html, /ai-chat-(?:upload-confirmation|confirmation-)|ai-control-browser-target/);
   assert.doesNotMatch(html, /id="(?:ai-chat-browser|ai-chat-target)"/);
   const fileCss = fs.readFileSync(path.join(

@@ -114,9 +114,13 @@ async function checkHomeConsole(win, layout) {
   try {
     await win.loadFile(layout.pages.shell, { query: { dev: '1' } });
     assert.equal(reads, 0);
-    assert.equal(await inspect(selectLast), 'home-personal-tab');
+    assert.equal(await inspect(selectLast), 'home-console-tab');
     assert.equal(await inspect(() => {
       document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+      return document.activeElement.id;
+    }), 'home-mcp-tab');
+    assert.equal(await inspect(() => {
+      document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
       return document.activeElement.id;
     }), 'home-console-tab');
     assert.equal(await inspect(() => {

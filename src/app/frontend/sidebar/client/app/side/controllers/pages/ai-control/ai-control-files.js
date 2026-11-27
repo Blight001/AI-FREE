@@ -68,6 +68,7 @@
         syncChatDraftPlaceholder(input);
         resizeInput();
       }
+      chatSkills.clear();
       draftFileArtifacts.clear();
       closeWorkspacePreview();
       renderAttachmentChips();
@@ -246,7 +247,7 @@
   }
 
   function hasSelectedChatAttachments() {
-    return state.attachmentPaths.length > 0;
+    return state.attachmentPaths.length > 0 || chatSkills.hasSelection();
   }
 
   function takeChatAttachmentContext(content = '', inlineAttachments = []) {
@@ -269,15 +270,17 @@
     el('ai-chat-attach')?.addEventListener('click', () => {
       const panel = el('ai-chat-workspace-panel');
       panel.hidden = !panel.hidden;
-      if (!panel.hidden) void loadWorkspaceFiles();
     });
     el('ai-chat-workspace-close')?.addEventListener('click', () => { el('ai-chat-workspace-panel').hidden = true; });
     el('ai-chat-workspace-refresh')?.addEventListener('click', loadWorkspaceFiles);
-    el('ai-chat-workspace-upload')?.addEventListener('click', importWorkspaceFiles);
+    el('ai-chat-workspace-upload')?.addEventListener('click', async () => {
+      el('ai-chat-workspace-panel').hidden = true;
+      await importWorkspaceFiles();
+    });
+    chatSkills.bind();
     el('ai-chat-workspace-preview-close')?.addEventListener('click', closeWorkspacePreview);
     document.querySelector('[data-workspace-preview-close]')?.addEventListener('click', closeWorkspacePreview);
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape' && !el('ai-chat-workspace-preview')?.hidden) closeWorkspacePreview();
     });
-    void loadWorkspaceFiles();
   }

@@ -84,12 +84,16 @@ html.sidebar-collapsed #browser-empty-state {
 .shell-home-brand img { width: 24px; height: 24px; object-fit: contain; }
 .shell-home-tabs {
   display: flex;
-  flex: 1 0 auto;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 3px;
+  min-height: 0;
+  overflow-y: auto;
 }
 
-.shell-home-tabs button {
+.shell-home-tabs button,
+.shell-home-shortcut,
+.shell-home-personal-tab {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -106,15 +110,20 @@ html.sidebar-collapsed #browser-empty-state {
   cursor: pointer;
 }
 
-.shell-home-tabs button:hover { background: var(--shell-tab-bg); }
-.shell-home-tabs button[aria-selected="true"] {
+.shell-home-tabs button:hover,
+.shell-home-shortcut:hover,
+.shell-home-personal-tab:hover { background: var(--shell-tab-bg); }
+.shell-home-tabs button[aria-selected="true"],
+.shell-home-personal-tab[aria-selected="true"] {
   border-color: var(--shell-tab-active-border);
   color: var(--shell-tab-active-text);
   background: var(--shell-tab-active-bg);
   font-weight: 700;
 }
 
-.shell-home-tabs button svg, .shell-home-heading button svg {
+.shell-home-tabs button svg,
+.shell-home-shortcut svg,
+.shell-home-heading button svg {
   flex: 0 0 auto;
   width: 15px;
   height: 15px;
@@ -125,12 +134,33 @@ html.sidebar-collapsed #browser-empty-state {
   stroke-linejoin: round;
 }
 
-.shell-home-tabs .shell-home-personal-tab {
-  margin-block-start: auto;
+.shell-home-shortcuts {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 3px;
+  padding: 8px 0;
+  border-block-start: 1px solid var(--shell-border);
+}
+
+.shell-home-shortcut {
+  width: 100%;
+  min-width: 0;
+  border-color: transparent;
+  text-align: start;
+}
+
+.shell-home-shortcut span { overflow: hidden; text-overflow: ellipsis; }
+.shell-home-personal-tabs {
+  flex: 0 0 auto;
   margin-inline: calc(-1 * var(--home-rail-gutter));
-  padding-inline: calc(var(--home-rail-gutter) + 4px);
+  border-block-start: 1px solid var(--shell-border);
+}
+
+.shell-home-personal-tabs .shell-home-personal-tab {
+  width: 100%;
   min-height: 50px;
-  border-color: var(--shell-border);
+  padding-inline: calc(var(--home-rail-gutter) + 4px);
+  border-color: transparent;
   border-radius: 0;
 }
 

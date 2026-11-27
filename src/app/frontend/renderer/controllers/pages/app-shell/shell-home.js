@@ -63,14 +63,18 @@
   }
 
   function bindHomeTabs() {
-    const tabList = document.querySelector('.shell-home-tabs');
-    if (!tabList) return;
-    const tabs = [...tabList.querySelectorAll('[role="tab"]:not([hidden])')];
+    const tabLists = [...document.querySelectorAll('.shell-home-tabs, .shell-home-personal-tabs')];
+    const tabs = tabLists.flatMap((tabList) => [
+      ...tabList.querySelectorAll('[role="tab"]:not([hidden])'),
+    ]);
+    if (!tabs.length) return;
     const panels = tabs.map((tab) => document.getElementById(tab.getAttribute('aria-controls')));
-    const select = (selected) => {
+    const select = (selectedTab) => {
+      const selected = tabs.indexOf(selectedTab);
+      if (selected < 0) return;
       if (panels[selected].id !== 'home-personal' && !document.getElementById('home-personal').hidden) leavePersonal();
       if (panels[selected].id !== 'home-accounts') leaveAccounts();
-      if (tabs[selected].getAttribute('aria-selected') !== 'true') homeDialogs.reset();
+      if (selectedTab.getAttribute('aria-selected') !== 'true') homeDialogs.reset();
       tabs.forEach((tab, index) => {
         const active = index === selected;
         tab.setAttribute('aria-selected', String(active));
@@ -81,18 +85,21 @@
       syncMcp?.();
       modelSettings?.sync();
     };
-    tabList.addEventListener('click', (event) => {
-      const index = tabs.indexOf(event.target.closest('[role="tab"]'));
-      if (index !== -1) select(index);
-    });
-    tabList.addEventListener('keydown', (event) => {
-      const current = tabs.indexOf(event.target);
-      if (current === -1) return;
-      const next = tabIndexFromKey(event.key, current, tabs.length);
-      if (next === -1) return;
-      event.preventDefault();
-      select(next);
-      tabs[next].focus();
+    tabLists.forEach((tabList) => {
+      tabList.addEventListener('click', (event) => {
+        const tab = event.target.closest('[role="tab"]');
+        if (tab && tabList.contains(tab)) select(tab);
+      });
+      tabList.addEventListener('keydown', (event) => {
+        const listTabs = [...tabList.querySelectorAll('[role="tab"]:not([hidden])')];
+        const current = listTabs.indexOf(event.target.closest('[role="tab"]'));
+        if (current < 0) return;
+        const next = tabIndexFromKey(event.key, current, listTabs.length);
+        if (next < 0) return;
+        event.preventDefault();
+        select(listTabs[next]);
+        listTabs[next].focus();
+      });
     });
   }
 
@@ -108,6 +115,7 @@
     modelSettings = bindHomeModels();
     window.aiFree?.ui?.onOpenHomeModelSettings?.(modelSettings.open);
     window.AppShellAutomation?.bind();
+    window.AppShellSkills?.bind();
   }
 
   window.AppShellHome = Object.freeze({ bind, setVisible, openPersonal });

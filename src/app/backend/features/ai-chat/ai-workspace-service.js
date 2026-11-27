@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const fs = require('fs');
 const path = require('path');
 const { resolveInside } = require('../../services/ai-sandbox-file-tools');
+const { createWorkspacePastedTextFile } = require('./workspace-pasted-text');
 const {
   MAX_ARTIFACTS, MAX_SCREENSHOT_BYTES, SCREENSHOT_TOOLS, WorkspaceArtifactError, assertFileArtifact, inspectWorkspaceFile, invalidArtifact,
   normalizeArtifactPath, normalizeFileArtifact,
@@ -262,6 +263,9 @@ function createAiWorkspaceService(options = {}) {
     },
     importPastedFiles(files) {
       return { ok: true, files: importPastedFiles(getRoot(), files) };
+    },
+    importPastedText(text) {
+      return { ok: true, files: [createWorkspacePastedTextFile(getRoot(), text, options.now?.() || new Date())] };
     },
     read(input = {}) {
       const root = getRoot();

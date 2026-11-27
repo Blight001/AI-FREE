@@ -303,7 +303,7 @@ function setAnnouncementMailOpen(open) {
     const dot = safeGetEl('announcement-mail-dot');
     if (dot) dot.hidden = true;
     const settings = safeGetEl('account-general-settings');
-    if (settings) settings.open = false;
+    if (settings?.open) homeDialogs.close(settings);
   }
 }
 
